@@ -115,11 +115,16 @@ function seedDemo(){
     { id:2, name:'บ.อมตะ คอร์ปอเรชัน',  customer_type:'เอกชน',      work_type:'Supply & Construction', contact:'คุณวิภา 089-xxx',  lbs_qty:4, desired_date:isoIn(22), location:'นิคมอมตะนคร ชลบุรี', scope:'ติดตั้ง LBS',        note:'', sr_id:1 },
     { id:3, name:'บ.ปิโตรเคมีไทย',     customer_type:'เอกชน',      work_type:'Supply',                contact:'คุณเอก 086-xxx',   lbs_qty:3, desired_date:isoIn(45), location:'มาบตาพุด ระยอง',    scope:'ขยายเขตจ่ายไฟ',      note:'', sr_id:2 },
     { id:4, name:'เทศบาลนครนนทบุรี',   customer_type:'ราชการ',     work_type:'Supply',                contact:'กองช่าง 02-xxx',   lbs_qty:2, desired_date:null,      location:'นนทบุรี',           scope:'สำรวจงาน LBS',       note:'', sr_id:null },
+    // ▼ ลูกค้าที่อยู่ใน SR-2026-003 (ฝ่ายขายรวบรวมส่งมาแล้ว แต่ฝ่ายโครงการยังไม่สร้าง Stock — ใช้ทดสอบ flow ดึงสร้าง Project Stock)
+    { id:5, name:'บ.สหวิริยาสตีลอินดัสตรี', customer_type:'เอกชน',  work_type:'Supply & Construction', contact:'คุณมานพ 088-xxx', lbs_qty:5, desired_date:isoIn(35), location:'บางสะพาน ประจวบฯ', scope:'ติดตั้ง LBS โรงเหล็ก', note:'', sr_id:3 },
+    { id:6, name:'เทศบาลเมืองมาบตาพุด',  customer_type:'ราชการ',     work_type:'Supply',                contact:'กองช่าง 038-xxx',  lbs_qty:2, desired_date:isoIn(50), location:'มาบตาพุด ระยอง',   scope:'ขยายเขตจ่ายไฟ',       note:'', sr_id:3 },
   ];
   // ---- Sales Requisition (Sales รวบรวมลูกค้า → ส่งฝ่ายโครงการ) — ผูก Stock ผ่าน stock_id ----
   const srs = [
     { id:1, sr_no:'SR-2026-001', cust_po_no:'CPO-115/2569', contract_status:'ทำสัญญาแล้ว', note:'งานภาคตะวันออก 2 ราย', stock_id:1, created_at:new Date().toISOString() },
     { id:2, sr_no:'SR-2026-002', cust_po_no:'',             contract_status:'ได้รับ PO แล้ว', note:'', stock_id:2, created_at:new Date().toISOString() },
+    // ▼ SR ที่รอฝ่ายโครงการสร้าง Stock (stock_id:null = โผล่ใน Inbox ของ Project Department)
+    { id:3, sr_no:'SR-2026-003', cust_po_no:'PO-SVI-2569/077', contract_status:'ได้รับ PO แล้ว', note:'งานภาคใต้ + ระยอง — รอฝ่ายโครงการสร้าง Stock', stock_id:null, created_at:new Date().toISOString() },
   ];
   // ---- Project Stock (Project รวมหลาย SR) — มี BOM No. + bom_status ----
   const projects = [
@@ -1001,23 +1006,34 @@ function FieldService({state, role, onTask, onAddTask, onAddMember, onRemoveMemb
   );
 }
 const MEMBER_BLANK = { name:'', role:'Technician', phone:'' };
+const WD_TH = ['อา','จ','อ','พ','พฤ','ศ','ส'];
 function ServiceTeam({state, canEdit, onAddMember, onRemoveMember, onAddSchedule, onRemoveSchedule}){
   const [ym,setYm]=useState(curYM());
+  const [view,setView]=useState('calendar');                 // calendar | roster
+  const [dayView,setDayView]=useState(null);                 // วันที่ (YYYY-MM-DD) ที่กดดู Event
   const [mf,setMf]=useState(MEMBER_BLANK); const [mOpen,setMOpen]=useState(false);
   const [sf,setSf]=useState({ member_id:'', project_id:'', start_date:'', end_date:'', note:'' }); const [sOpen,setSOpen]=useState(false);
   const [y,m] = ym.split('-').map(Number);
   const daysInMonth = new Date(y, m, 0).getDate();
+  const firstWeekday = new Date(y, m-1, 1).getDay();          // 0=อา
   const days = Array.from({length:daysInMonth},(_,i)=>i+1);
+  const cells = [...Array(firstWeekday).fill(null), ...days]; // ช่องว่างนำหน้า + วันจริง
+  const todayStr = new Date().toISOString().slice(0,10);
   const shiftMonth = delta => { const d=new Date(y, m-1+delta, 1); setYm(d.toISOString().slice(0,7)); };
   const projColor = pid => { const idx=state.projects.findIndex(p=>p.id===pid); return ['#f59e0b','#6366f1','#10b981','#f43f5e','#8b5cf6','#38bdf8'][idx%6]; };
   const projOf = pid => state.projects.find(p=>p.id===pid);
+  const memOf  = id  => state.team.find(t=>t.id===id);
+  const eventsOn = dayStr => state.schedule.filter(s => s.start_date<=dayStr && (s.end_date||s.start_date)>=dayStr);  // งานที่คาบเกี่ยววันนั้น
   const cellOf = (memberId, day) => { const dayStr = `${ym}-${pad2(day)}`; return state.schedule.find(s => s.member_id===memberId && s.start_date<=dayStr && (s.end_date||s.start_date)>=dayStr); };
   const monthSchedules = state.schedule.filter(s => (s.start_date||'').slice(0,7)===ym || (s.end_date||'').slice(0,7)===ym);
+  const dayEvents = dayView ? eventsOn(dayView) : [];
+  const TabBtn = ({id,label,icon}) => <button onClick={()=>setView(id)} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5 transition" style={view===id?{background:DEPT.service.c+'22',color:DEPT.service.c}:{color:'#94a3b8'}}>{icon} {label}</button>;
   return (
     <Card className="overflow-hidden">
       <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between flex-wrap gap-2">
-        <h3 className="text-slate-200 font-semibold flex items-center gap-2">{Icon.users} ทีมงาน Service & ตารางคิวงานรายเดือน</h3>
-        <div className="flex items-center gap-2">
+        <h3 className="text-slate-200 font-semibold flex items-center gap-2">{Icon.users} ทีมงาน Service & Scheduling Calendar</h3>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-0.5 rounded-lg border border-slate-700 p-0.5"><TabBtn id="calendar" label="ปฏิทิน" icon={Icon.cal}/><TabBtn id="roster" label="รายชื่อ" icon={Icon.users}/></div>
           <div className="flex items-center gap-1">
             <button onClick={()=>shiftMonth(-1)} className="w-7 h-7 grid place-items-center rounded-md border border-slate-700 text-slate-300 hover:bg-slate-800">‹</button>
             <span className="text-sm text-slate-200 font-medium w-28 text-center">{MONTHS_TH[m-1]} {y+543}</span>
@@ -1051,33 +1067,93 @@ function ServiceTeam({state, canEdit, onAddMember, onRemoveMember, onAddSchedule
           </div>
         </div>
       )}
-      {/* ปฏิทินคิวงาน: แถว = สมาชิก, คอลัมน์ = วันในเดือน */}
-      <div className="overflow-x-auto">
-        <table className="text-sm border-collapse">
-          <thead><tr className="text-[10px] text-slate-500 border-b border-slate-800">
-            <th className="px-3 py-2 font-medium text-left sticky left-0 bg-slate-900 z-10 min-w-[150px]">สมาชิก ({state.team.length})</th>
-            {days.map(d=><th key={d} className="w-7 font-normal text-center border-l border-slate-800/40">{d}</th>)}
-          </tr></thead>
-          <tbody>
-            {state.team.length===0 && <tr><td colSpan={days.length+1} className="px-5 py-8 text-center text-slate-500">ยังไม่มีสมาชิกทีม</td></tr>}
-            {state.team.map(mem => (
-              <tr key={mem.id} className="border-b border-slate-800/40">
-                <td className="px-3 py-2 sticky left-0 bg-slate-900 z-10">
-                  <div className="flex items-center justify-between gap-2">
-                    <div><div className="text-[12px] text-slate-200 leading-tight">{mem.name}</div><div className="text-[10px] text-slate-500">{mem.role}</div></div>
-                    {canEdit && <button onClick={()=>onRemoveMember(mem.id)} className="text-slate-600 hover:text-rose-400 shrink-0">{Icon.trash}</button>}
+
+      {/* ===== Scheduling Calendar (กดวันที่มีงานเพื่อดู Event) ===== */}
+      {view==='calendar' && (
+        <div className="p-4">
+          <div className="grid grid-cols-7 gap-1 mb-1">{WD_TH.map(w=><div key={w} className="text-center text-[11px] font-medium text-slate-500 py-1">{w}</div>)}</div>
+          <div className="grid grid-cols-7 gap-1">
+            {cells.map((d,i)=>{
+              if(d===null) return <div key={'b'+i}/>;
+              const dayStr=`${ym}-${pad2(d)}`; const evs=eventsOn(dayStr); const has=evs.length>0; const isToday=dayStr===todayStr;
+              return (
+                <button key={d} disabled={!has} onClick={()=>setDayView(dayStr)}
+                  className="min-h-[78px] rounded-lg border p-1.5 text-left flex flex-col gap-1 transition disabled:cursor-default"
+                  style={has?{borderColor:DEPT.service.c+'55',background:DEPT.service.c+'0e'}:{borderColor:'#1e293b66',cursor:'default'}}>
+                  <span className="text-[11px] font-semibold inline-flex items-center justify-center w-5 h-5 rounded-full" style={isToday?{background:DEPT.service.c,color:'#0b0f17'}:{color:has?'#cbd5e1':'#475569'}}>{d}</span>
+                  <div className="flex flex-col gap-0.5 overflow-hidden">
+                    {evs.slice(0,2).map(s=>{ const p=projOf(s.project_id); return <span key={s.id} className="text-[9px] rounded px-1 py-0.5 truncate font-medium" style={{background:projColor(s.project_id)+'cc',color:'#0b0f17'}} title={`${memOf(s.member_id)?.name} · ${p?.project_stock_no}`}>{memOf(s.member_id)?.name?.split(' ')[0]||'?'}</span>; })}
+                    {evs.length>2 && <span className="text-[9px] text-slate-400 px-1">+{evs.length-2} เพิ่มเติม</span>}
                   </div>
-                </td>
-                {days.map(d=>{ const a=cellOf(mem.id,d); const dayStr=`${ym}-${pad2(d)}`; const first=a&&a.start_date===dayStr; const p=a&&projOf(a.project_id); return (
-                  <td key={d} className="border-l border-slate-800/40 h-9 p-0.5" title={a?`${p?.project_stock_no||''} ${a.note||''}`:''}>
-                    {a && <div className="h-full rounded-sm grid place-items-center overflow-hidden" style={{background:projColor(a.project_id)+'cc'}}>{first && <span className="text-[8px] font-bold text-slate-900 px-0.5 truncate">{(p?.project_stock_no||'').replace('STK-2026-','')}</span>}</div>}
+                </button>
+              );
+            })}
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-3 text-[10px] text-slate-500">
+            <span>คลิกวันที่ไฮไลต์เพื่อดูรายละเอียดงาน (Event)</span>
+            <span className="flex items-center gap-1.5">{state.projects.map(p=><span key={p.id} className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{background:projColor(p.id)}}/>{p.project_stock_no}</span>)}</span>
+          </div>
+        </div>
+      )}
+
+      {/* ===== Roster: แถว = สมาชิก, คอลัมน์ = วันในเดือน ===== */}
+      {view==='roster' && (
+        <div className="overflow-x-auto">
+          <table className="text-sm border-collapse">
+            <thead><tr className="text-[10px] text-slate-500 border-b border-slate-800">
+              <th className="px-3 py-2 font-medium text-left sticky left-0 bg-slate-900 z-10 min-w-[150px]">สมาชิก ({state.team.length})</th>
+              {days.map(d=><th key={d} className="w-7 font-normal text-center border-l border-slate-800/40">{d}</th>)}
+            </tr></thead>
+            <tbody>
+              {state.team.length===0 && <tr><td colSpan={days.length+1} className="px-5 py-8 text-center text-slate-500">ยังไม่มีสมาชิกทีม</td></tr>}
+              {state.team.map(mem => (
+                <tr key={mem.id} className="border-b border-slate-800/40">
+                  <td className="px-3 py-2 sticky left-0 bg-slate-900 z-10">
+                    <div className="flex items-center justify-between gap-2">
+                      <div><div className="text-[12px] text-slate-200 leading-tight">{mem.name}</div><div className="text-[10px] text-slate-500">{mem.role}</div></div>
+                      {canEdit && <button onClick={()=>onRemoveMember(mem.id)} className="text-slate-600 hover:text-rose-400 shrink-0">{Icon.trash}</button>}
+                    </div>
                   </td>
-                );})}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+                  {days.map(d=>{ const a=cellOf(mem.id,d); const dayStr=`${ym}-${pad2(d)}`; const first=a&&a.start_date===dayStr; const p=a&&projOf(a.project_id); return (
+                    <td key={d} className="border-l border-slate-800/40 h-9 p-0.5 cursor-pointer" onClick={()=>a&&setDayView(dayStr)} title={a?`${p?.project_stock_no||''} ${a.note||''}`:''}>
+                      {a && <div className="h-full rounded-sm grid place-items-center overflow-hidden" style={{background:projColor(a.project_id)+'cc'}}>{first && <span className="text-[8px] font-bold text-slate-900 px-0.5 truncate">{(p?.project_stock_no||'').replace('STK-2026-','')}</span>}</div>}
+                    </td>
+                  );})}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* ===== Event modal: รายละเอียดงานในวันที่กด ===== */}
+      {dayView && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onClick={()=>setDayView(null)}>
+          <div className="w-full max-w-md rounded-xl border border-slate-700 bg-slate-900 fade-up" onClick={e=>e.stopPropagation()}>
+            <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between">
+              <div className="text-slate-100 font-semibold flex items-center gap-2">{Icon.cal} งานวันที่ {Number(dayView.slice(8))} {MONTHS_TH[m-1]} {y+543}</div>
+              <button onClick={()=>setDayView(null)} className="text-slate-400 hover:text-slate-100">{Icon.x}</button>
+            </div>
+            <div className="p-4 space-y-2.5 max-h-[60vh] overflow-y-auto">
+              {dayEvents.length===0 && <div className="text-center text-slate-500 py-6 text-sm">ไม่มีงานในวันนี้</div>}
+              {dayEvents.map(s=>{ const mem=memOf(s.member_id); const p=projOf(s.project_id); return (
+                <div key={s.id} className="rounded-lg border border-slate-700/60 p-3" style={{borderLeft:'3px solid '+projColor(s.project_id)}}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="text-[13px] text-slate-100 font-medium">{mem?.name||'?'} <span className="text-[11px] text-slate-500">· {mem?.role}</span></div>
+                      <div className="text-[12px] mt-0.5" style={{color:projColor(s.project_id)}}>{p?.project_stock_no} · {p?.name}</div>
+                      <div className="text-[11px] text-slate-500 mt-1">📅 {s.start_date} → {s.end_date||s.start_date}{s.note?' · '+s.note:''}</div>
+                    </div>
+                    {canEdit && <button onClick={()=>{ onRemoveSchedule(s.id); setDayView(null); }} className="text-slate-500 hover:text-rose-400 shrink-0" title="ลบงานนี้">{Icon.trash}</button>}
+                  </div>
+                </div>
+              );})}
+            </div>
+            {canEdit && <div className="px-4 py-3 border-t border-slate-800 text-right"><button onClick={()=>{ setSf(f=>({...f,start_date:dayView,end_date:dayView})); setSOpen(true); setDayView(null); }} className="text-xs font-medium rounded-lg px-3 py-1.5" style={{background:DEPT.service.c+'22',color:DEPT.service.c}}>{Icon.plus} เพิ่มงานวันนี้</button></div>}
+          </div>
+        </div>
+      )}
+
       {/* รายการมอบหมายเดือนนี้ */}
       {monthSchedules.length>0 && (
         <div className="px-5 py-3 border-t border-slate-800 flex flex-wrap gap-2">
