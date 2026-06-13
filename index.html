@@ -34,6 +34,7 @@ const SUPABASE_URL  = ""; // เช่น https://xxxxx.supabase.co
 const SUPABASE_ANON = ""; // anon public key  → ใส่ครบ = LIVE
 const LIVE = !!(SUPABASE_URL && SUPABASE_ANON);
 const sb = LIVE ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON) : null;
+const ok = ({data,error}) => { if(error) throw error; return data; };   // โยน error ให้ UI จับ (แก้ปัญหา fail เงียบ)
 
 /* ============================ CONSTANTS ============================ */
 const DEPT = {
@@ -44,43 +45,46 @@ const DEPT = {
   service:    { label:'ฝ่ายบริการ',   en:'Service',    icon:'🛠️', c:'#10b981' },
   executive:  { label:'ผู้บริหาร',    en:'Executive',  icon:'📊', c:'#8b5cf6' },
 };
-const PHASES = ['project','purchasing','service','closed'];   // เฟสของ Project Stock (sales ทำที่ระดับลูกค้า)
-const PHASE_STEPS = ['project','purchasing','service'];        // ไว้แสดง ribbon/bottleneck
+const PHASES = ['project','purchasing','service','closed'];
+const PHASE_STEPS = ['project','purchasing','service'];
 const PHASE_LABEL = { sales:'ฝ่ายขาย', project:'ฝ่ายโครงการ', purchasing:'ฝ่ายจัดซื้อ', service:'ฝ่ายบริการ', closed:'ปิดงาน' };
-const SALE_STATUS = { Interested:'สนใจ', Reserved:'สั่งจอง', Ordered:'สั่งซื้อ' };
-const CUSTOMER_TYPE = ['ราชการ','เอกชน','รัฐวิสาหกิจ'];          // ประเภทลูกค้า
-const WORK_TYPE = ['Supply','Supply & Construction'];           // ประเภทงาน
+const CUSTOMER_TYPE = ['ราชการ','เอกชน','รัฐวิสาหกิจ'];
+const WORK_TYPE = ['Supply','Supply & Construction'];
+const CONTRACT_STATUS = ['รอ PO/สัญญา','ได้รับ PO แล้ว','ทำสัญญาแล้ว'];
 const TASK_STATUS = ['Pending','In Progress','Completed'];
 const TASK_TH = { Pending:'รอดำเนินการ', 'In Progress':'กำลังทำ', Completed:'เสร็จแล้ว' };
-const PO_STATUS = ['รอออก','ออกแล้ว','กำลังส่ง','รับครบ'];
+const CURRENCY = ['THB','USD'];
+const BOM_CAT = ['LBS','Accessory'];
+const PROJECT_PHASES = ['Phase 1','Phase 2','Phase 3'];
+const MONTHS_TH = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
 
 /* permission helpers */
 const isDev    = r => r==='developer';
-const canDept  = (r,dep) => r==='developer' || r===dep;     // แก้งานของฝ่ายตัวเอง / dev ทำได้หมด
+const canDept  = (r,dep) => r==='developer' || r===dep;
 
 const TASK_TEMPLATE = {
   sales: [
-    ['สำรวจความต้องการ','ออกพบลูกค้า สำรวจหน้างาน เลือกแบบงาน Supply หรือ Supply & Construction'],
-    ['เสนอขาย & บันทึกข้อมูล','ระบุสถานะ สนใจ/สั่งจอง/สั่งซื้อ, ข้อมูลลูกค้า, Scope, สถานที่, วันที่ต้องการ, ราคา, แนบไฟล์'],
-    ['ส่งต่อฝ่ายโครงการ','ส่งแผนการขายและสถานะลูกค้าให้ฝ่ายโครงการ เพื่อประเมินปริมาณการสั่งซื้อ by Project Stock No.'],
-    ['ติดตาม PO & สัญญาซื้อขาย','ติดตามใบสั่งซื้อ/สัญญาลูกค้า และสรุปยอดขายรายเดือน'],
+    ['เพิ่ม & บันทึกข้อมูลลูกค้า','ชื่อ ประเภทลูกค้า ประเภทงาน ผู้ติดต่อ จำนวน LBS วันที่ต้องการ สถานที่ Scope'],
+    ['รวบรวมส่งฝ่ายโครงการ (ออก SR No.)','เลือกลูกค้ารวบรวมเป็น Sales Requisition แล้วส่งฝ่ายโครงการ'],
+    ['ติดตาม PO & สัญญาซื้อขาย','ติดตาม PO/สัญญาจากลูกค้า แล้วอัปเดตใน Sales Requisition No.'],
   ],
   project: [
-    ['ตรวจสอบ & แยกประเภท','แยกประเภทลูกค้าตามสถานะการขาย'],
-    ['สร้าง Project Stock No.','สรุปปริมาณ LBS และ Accessory ที่จะสั่งซื้อทั้งหมดใน Stock No. นี้'],
-    ['สร้าง Project Budget & Flow','จัดทำต้นทุน กำไร กระแสเงินสด · จัดทำ Phase ID เพื่อสร้าง Job No.'],
-    ['จัดทำ BOM LBS & Accessory','รวมปริมาณ แล้วตัดสินใจจำนวน LBS ที่จะสั่งซื้อ'],
-    ['ออก PR','ส่งฝ่ายจัดซื้อเพื่อเสนอออก PO ให้ Supplier'],
-    ['กำหนดแผนรับของ','วางแผนรับสินค้าให้เป็นไปตามแผนส่งมอบงานลูกค้า'],
+    ['ทบทวน Sales Requisition ที่รับเข้า','ตรวจรายละเอียด SR: จำนวน LBS, ประเภทงาน, วันที่, สถานที่ติดตั้ง'],
+    ['สร้าง Project Stock & งบประมาณ','รวม SR เป็น Stock No. · ออก Job No. · ต้นทุน/กำไร/กระแสเงินสด'],
+    ['จัดทำ Material List (BOM)','LBS & Accessory: Epicor Code, Due Date, IUM, Cost/Currency, Phase'],
+    ['ตรวจสอบจำนวน LBS เทียบ SR','ยอด LBS ใน BOM ต้องตรงกับจำนวนที่ลูกค้าต้องการ'],
+    ['ส่ง Material List (BOM) ให้จัดซื้อ','ส่ง BOM No. ไปฝ่ายจัดซื้อเพื่อออก PO'],
+    ['แจ้งแผนส่งมอบให้ฝ่ายบริการ','ส่งแผนวันส่ง/ติดตั้งให้ฝ่ายบริการตามแผนลูกค้า'],
   ],
   purchasing: [
-    ['รับ PR & เปรียบเทียบราคา','คัดเลือกผู้ขายที่เหมาะสม'],
-    ['ออก PO & ติดตามของเข้า','ติดตามกำหนดส่ง และประเมินผู้ขาย'],
+    ['รับ BOM & ออก PO','ออก PO ตาม Material List (BOM) No.'],
+    ['อัปเดต PO แจ้งกลับฝ่ายโครงการ','อัปเดตสถานะ PO ราย BOM แล้วแจ้งกลับ'],
+    ['ติดตามวันส่งมอบ แจ้งกลับฝ่ายโครงการ','ติดตามของเข้า/วันส่ง แล้วแจ้งกลับฝ่ายโครงการ'],
   ],
   service: [
-    ['รับแผนการจัดส่ง','เฉพาะสถานะสั่งซื้อ + ได้รับ PO และมีกำหนดส่งแล้ว'],
-    ['จัดทีมงาน','ตรวจรายละเอียดสัญญา จัดทีมหน้างานตามแผน'],
-    ['ส่งมอบ & ลงนาม DO','ส่งมอบ/ติดตั้ง แล้วลงนามเอกสาร DO ปิดงาน'],
+    ['รับแผนวันส่ง/ติดตั้ง','รับแผนส่งมอบจากฝ่ายโครงการ'],
+    ['จัดทีมงาน','มอบหมายทีม + จัดตารางคิวงานรายเดือน'],
+    ['ส่งมอบ & ลงนาม DO','ส่งมอบ/ติดตั้ง ลงนามเอกสาร DO ปิดงาน'],
   ],
 };
 
@@ -89,163 +93,183 @@ const baht = n => '฿' + Number(n||0).toLocaleString('th-TH',{maximumFractionDi
 const bahtShort = n => { n=Number(n||0); if(n>=1e6) return '฿'+(n/1e6).toFixed(2)+'M'; if(n>=1e3) return '฿'+(n/1e3).toFixed(0)+'K'; return '฿'+n; };
 const daysUntil = d => d ? Math.ceil((new Date(d) - new Date())/86400000) : null;
 const phaseIndex = p => Math.max(0, PHASES.indexOf(p));
+const pad2 = n => String(n).padStart(2,'0');
+const pad3 = n => String(n).padStart(3,'0');
+const pad4 = n => String(n).padStart(4,'0');
+const num = v => { const n=Number(v); return isNaN(n)?0:n; };
+// บรรทัด BOM → มูลค่ารวมเป็นบาท (USD คูณอัตราแลกเปลี่ยน)
+const lineTHB = b => num(b.quantity) * num(b.unit_cost) * (b.currency==='USD' ? num(b.fx_rate)||1 : 1);
+// ออกเลขถัดไปจากเลขมากสุดที่มีอยู่ (กัน gap/ลบแล้วชน — แก้บั๊กการนับจาก length)
+const nextSeq = (arr, field) => { let mx=0; (arr||[]).forEach(x=>{ const m=String(x[field]||'').match(/(\d+)\s*$/); if(m) mx=Math.max(mx, parseInt(m[1],10)); }); return mx; };
 
 /* ============================ DATA LAYER (DEMO + LIVE) ============================ */
 let _id = 1000;
 const nid = () => ++_id;
 function isoIn(days){ const d=new Date(); d.setDate(d.getDate()+days); return d.toISOString().slice(0,10); }
+function curYM(){ return new Date().toISOString().slice(0,7); }
 
 function seedDemo(){
-  // ---- ลูกค้า (Sales สร้าง + แยกประเภท) ----
+  // ---- ลูกค้า (Sales) — มีจำนวน LBS ที่ต้องการ, ผูกกับ SR ผ่าน sr_id ----
   const customers = [
-    { id:1, name:'การไฟฟ้าส่วนภูมิภาค', customer_type:'ราชการ',      work_type:'Supply & Construction', sale_status:'Ordered',    contact:'คุณสมชาย 081-xxx', location:'บางปะกง ฉะเชิงเทรา', scope:'ปรับปรุงสถานีไฟฟ้า', desired_date:isoIn(9),  est_price:8500000, note:'', forwarded:true },
-    { id:2, name:'บ.อมตะ คอร์ปอเรชัน',  customer_type:'เอกชน',       work_type:'Supply & Construction', sale_status:'Ordered',    contact:'คุณวิภา 089-xxx',  location:'นิคมอมตะนคร ชลบุรี', scope:'ติดตั้ง LBS',        desired_date:isoIn(22), est_price:6200000, note:'', forwarded:true },
-    { id:3, name:'บ.ปิโตรเคมีไทย',     customer_type:'เอกชน',       work_type:'Supply',                sale_status:'Reserved',   contact:'คุณเอก 086-xxx',   location:'มาบตาพุด ระยอง',    scope:'ขยายเขตจ่ายไฟ',      desired_date:isoIn(45), est_price:4100000, note:'', forwarded:true },
-    { id:4, name:'เทศบาลนครนนทบุรี',   customer_type:'ราชการ',      work_type:'Supply',                sale_status:'Interested', contact:'กองช่าง 02-xxx',    location:'นนทบุรี',           scope:'สำรวจงาน LBS',       desired_date:null,      est_price:0,       note:'', forwarded:false },
+    { id:1, name:'การไฟฟ้าส่วนภูมิภาค', customer_type:'ราชการ',     work_type:'Supply & Construction', contact:'คุณสมชาย 081-xxx', lbs_qty:6, desired_date:isoIn(9),  location:'บางปะกง ฉะเชิงเทรา', scope:'ปรับปรุงสถานีไฟฟ้า', note:'', sr_id:1 },
+    { id:2, name:'บ.อมตะ คอร์ปอเรชัน',  customer_type:'เอกชน',      work_type:'Supply & Construction', contact:'คุณวิภา 089-xxx',  lbs_qty:4, desired_date:isoIn(22), location:'นิคมอมตะนคร ชลบุรี', scope:'ติดตั้ง LBS',        note:'', sr_id:1 },
+    { id:3, name:'บ.ปิโตรเคมีไทย',     customer_type:'เอกชน',      work_type:'Supply',                contact:'คุณเอก 086-xxx',   lbs_qty:3, desired_date:isoIn(45), location:'มาบตาพุด ระยอง',    scope:'ขยายเขตจ่ายไฟ',      note:'', sr_id:2 },
+    { id:4, name:'เทศบาลนครนนทบุรี',   customer_type:'ราชการ',     work_type:'Supply',                contact:'กองช่าง 02-xxx',   lbs_qty:2, desired_date:null,      location:'นนทบุรี',           scope:'สำรวจงาน LBS',       note:'', sr_id:null },
   ];
-  // ---- Project Stock (Project สร้างโดยเลือกลูกค้า) — อ้าง customer_id + denormalize ไว้แสดงผล ----
-  const cInfo = id => customers.find(c=>c.id===id);
+  // ---- Sales Requisition (Sales รวบรวมลูกค้า → ส่งฝ่ายโครงการ) — ผูก Stock ผ่าน stock_id ----
+  const srs = [
+    { id:1, sr_no:'SR-2026-001', cust_po_no:'CPO-115/2569', contract_status:'ทำสัญญาแล้ว', note:'งานภาคตะวันออก 2 ราย', stock_id:1, created_at:new Date().toISOString() },
+    { id:2, sr_no:'SR-2026-002', cust_po_no:'',             contract_status:'ได้รับ PO แล้ว', note:'', stock_id:2, created_at:new Date().toISOString() },
+  ];
+  // ---- Project Stock (Project รวมหลาย SR) — มี BOM No. + bom_status ----
   const projects = [
-    { id:1, customer_id:1, project_stock_no:'STK-2026-001', job_no:'JOB-001', name:'ปรับปรุงสถานีไฟฟ้าบางปะกง', current_phase:'service',    total_budget:8500000, margin:18.5, cash_flow_status:'ปกติ',     delivery_date:isoIn(9)  },
-    { id:2, customer_id:2, project_stock_no:'STK-2026-002', job_no:'JOB-002', name:'ติดตั้ง LBS นิคมอมตะนคร',   current_phase:'purchasing', total_budget:6200000, margin:15.0, cash_flow_status:'เฝ้าระวัง', delivery_date:isoIn(22) },
-    { id:3, customer_id:3, project_stock_no:'STK-2026-003', job_no:null,      name:'ขยายเขตจ่ายไฟโรงงานระยอง', current_phase:'project',    total_budget:4100000, margin:20.0, cash_flow_status:'ปกติ',     delivery_date:isoIn(45) },
+    { id:1, project_stock_no:'STK-2026-001', job_no:'JOB-001', bom_no:'BOM-2026-001', bom_status:'Sent to Purchasing', name:'งานตะวันออก รอบ 1', current_phase:'service',    phase_acked:true, total_budget:14700000, margin:18.0, cash_flow_status:'ปกติ',     delivery_date:isoIn(9),  do_signed:false },
+    { id:2, project_stock_no:'STK-2026-002', job_no:'JOB-002', bom_no:'BOM-2026-002', bom_status:'Draft',              name:'ขยายเขตจ่ายไฟระยอง', current_phase:'project',    phase_acked:true, total_budget:4100000,  margin:20.0, cash_flow_status:'เฝ้าระวัง', delivery_date:isoIn(45), do_signed:false },
   ];
-  projects.forEach(p => { const c=cInfo(p.customer_id); p.customer_name=c.name; p.customer_type=c.customer_type; p.work_type=c.work_type; });
-
   const tasks = [];
-  // งานฝ่ายขาย → ผูกกับลูกค้า (forwarded = ทำครบแล้ว)
+  // งานฝ่ายขาย → ผูกลูกค้า
   customers.forEach(c => TASK_TEMPLATE.sales.forEach(([title,detail],ti) => {
-    let status = c.forwarded ? 'Completed' : (ti===0 ? 'In Progress' : 'Pending');
+    const inSr = !!c.sr_id;
+    let status = inSr ? (ti<=1 ? 'Completed' : 'In Progress') : (ti===0 ? 'In Progress' : 'Pending');
     tasks.push({ id:nid(), customer_id:c.id, project_id:null, department:'sales', task_title:title, task_detail:detail, sort_order:ti, status, updated_by:'seed', updated_at:new Date().toISOString() });
   }));
-  // งานฝ่ายโครงการ/จัดซื้อ/บริการ → ผูกกับ Project Stock
+  // งานฝ่ายโครงการ/จัดซื้อ/บริการ → ผูก Project Stock
   projects.forEach(p => {
     const reached = PHASE_STEPS.indexOf(p.current_phase);
-    PHASE_STEPS.forEach((dep, di) => {
-      TASK_TEMPLATE[dep].forEach(([title,detail], ti) => {
-        let status = 'Pending';
-        if (di < reached) status = 'Completed';
-        else if (di === reached) status = ti === 0 ? 'In Progress' : 'Pending';
-        tasks.push({ id:nid(), customer_id:null, project_id:p.id, department:dep, task_title:title, task_detail:detail, sort_order:ti, status, updated_by:'seed', updated_at:new Date().toISOString() });
-      });
-    });
+    PHASE_STEPS.forEach((dep, di) => TASK_TEMPLATE[dep].forEach(([title,detail], ti) => {
+      let status = 'Pending';
+      if (di < reached) status = 'Completed';
+      else if (di === reached) status = ti === 0 ? 'In Progress' : 'Pending';
+      tasks.push({ id:nid(), customer_id:null, project_id:p.id, department:dep, task_title:title, task_detail:detail, sort_order:ti, status, updated_by:'seed', updated_at:new Date().toISOString() });
+    }));
   });
-  const materials = [
-    { id:nid(), code:'M-LBS-01', name:'LBS 115kV 3-Pole Motorized', category:'LBS', unit:'ชุด', default_cost:850000 },
-    { id:nid(), code:'M-LBS-02', name:'LBS 115kV 3-Pole Manual',    category:'LBS', unit:'ชุด', default_cost:720000 },
-    { id:nid(), code:'M-ACC-01', name:'Surge Arrester 115kV',       category:'Accessory', unit:'ตัว', default_cost:42000 },
-    { id:nid(), code:'M-ACC-02', name:'Control Cabinet',            category:'Accessory', unit:'ตู้', default_cost:95000 },
-  ];
-  const mid = code => materials.find(m=>m.code===code).id;
+  // ---- BOM (คอลัมน์ Epicor) ----
   const bom = [
-    { id:nid(), project_id:1, material_id:mid('M-LBS-01'), item_name:'LBS 115kV 3-Pole Motorized', category:'LBS', quantity:6, unit:'ชุด', unit_cost:850000, pr_status:'Sent to Purchasing', po_status:'Delivered' },
-    { id:nid(), project_id:1, material_id:mid('M-ACC-01'), item_name:'Surge Arrester 115kV', category:'Accessory', quantity:18, unit:'ตัว', unit_cost:42000, pr_status:'Sent to Purchasing', po_status:'Delivered' },
-    { id:nid(), project_id:2, material_id:mid('M-LBS-02'), item_name:'LBS 115kV 3-Pole Manual', category:'LBS', quantity:4, unit:'ชุด', unit_cost:720000, pr_status:'Sent to Purchasing', po_status:'PO Received' },
-    { id:nid(), project_id:2, material_id:mid('M-ACC-02'), item_name:'Control Cabinet', category:'Accessory', quantity:4, unit:'ตู้', unit_cost:95000, pr_status:'PR Issued', po_status:'Awaiting PO' },
-    { id:nid(), project_id:3, material_id:mid('M-LBS-01'), item_name:'LBS 115kV 3-Pole Motorized', category:'LBS', quantity:3, unit:'ชุด', unit_cost:850000, pr_status:'Draft', po_status:'Awaiting PO' },
+    { id:nid(), project_id:1, epicor_code:'LBS-115-MOT', description:'LBS 115kV 3-Pole Motorized', category:'LBS',       due_date:isoIn(-15), ium:'EA', quantity:6,  currency:'USD', unit_cost:24500, fx_rate:36.5, project_phase:'Phase 1', po_status:'Delivered' },
+    { id:nid(), project_id:1, epicor_code:'LBS-115-MAN', description:'LBS 115kV 3-Pole Manual',    category:'LBS',       due_date:isoIn(-10), ium:'EA', quantity:4,  currency:'USD', unit_cost:20000, fx_rate:36.5, project_phase:'Phase 1', po_status:'Delivered' },
+    { id:nid(), project_id:1, epicor_code:'ACC-SA-115',  description:'Surge Arrester 115kV',        category:'Accessory', due_date:isoIn(-8),  ium:'EA', quantity:30, currency:'THB', unit_cost:42000, fx_rate:1,    project_phase:'Phase 1', po_status:'Delivered' },
+    { id:nid(), project_id:2, epicor_code:'LBS-115-MOT', description:'LBS 115kV 3-Pole Motorized', category:'LBS',       due_date:isoIn(30),  ium:'EA', quantity:3,  currency:'USD', unit_cost:24500, fx_rate:36.5, project_phase:'Phase 1', po_status:'Awaiting PO' },
+    { id:nid(), project_id:2, epicor_code:'ACC-CC-01',   description:'Control Cabinet',             category:'Accessory', due_date:isoIn(30),  ium:'EA', quantity:3,  currency:'THB', unit_cost:95000, fx_rate:1,    project_phase:'Phase 1', po_status:'Awaiting PO' },
   ];
   const pos = [
-    { id:nid(), project_id:1, po_no:'PO-2026-1001', supplier:'ABB (Thailand)', status:'รับครบ', expected_date:isoIn(-20), amount:5100000 },
-    { id:nid(), project_id:1, po_no:'PO-2026-1002', supplier:'Schneider Electric', status:'รับครบ', expected_date:isoIn(-12), amount:756000 },
-    { id:nid(), project_id:2, po_no:'PO-2026-2001', supplier:'Siemens', status:'กำลังส่ง', expected_date:isoIn(8), amount:2880000 },
-    { id:nid(), project_id:2, po_no:'PO-2026-2002', supplier:'ลีดเดอร์ สวิตช์เกียร์', status:'รอออก', expected_date:isoIn(15), amount:380000 },
+    { id:nid(), project_id:1, po_no:'PO-2026-1001', supplier:'ABB (Thailand)',    status:'รับครบ', expected_date:isoIn(-20), amount:9300000, notified:true },
+    { id:nid(), project_id:1, po_no:'PO-2026-1002', supplier:'Schneider Electric', status:'รับครบ', expected_date:isoIn(-12), amount:1260000, notified:true },
   ];
-  projects.forEach(p => { p.phase_acked = true; });   // seed = รับงานแล้ว ไม่ต้องแจ้งเตือน
-  return { customers, projects, tasks, materials, bom, pos, handoffs:[], prs:[] };
+  // ---- ทีม Service + ตารางคิวงานรายเดือน ----
+  const team = [
+    { id:nid(), name:'อนุชา (หัวหน้าทีม)', role:'Site Supervisor', phone:'081-111-1111', active:true },
+    { id:nid(), name:'ธีรพงษ์',           role:'Technician',      phone:'081-222-2222', active:true },
+    { id:nid(), name:'กิตติ',             role:'Technician',      phone:'081-333-3333', active:true },
+    { id:nid(), name:'สุริยา',            role:'Electrician',     phone:'081-444-4444', active:true },
+  ];
+  const ym = curYM();
+  const schedule = [
+    { id:nid(), project_id:1, member_id:team[0].id, start_date:ym+'-05', end_date:ym+'-09', note:'ติดตั้งหลัก' },
+    { id:nid(), project_id:1, member_id:team[1].id, start_date:ym+'-05', end_date:ym+'-09', note:'' },
+    { id:nid(), project_id:1, member_id:team[3].id, start_date:ym+'-07', end_date:ym+'-12', note:'งานไฟฟ้า' },
+  ];
+  return { customers, srs, projects, tasks, bom, pos, team, schedule, handoffs:[] };
 }
 
 let demo = null;
 const db = {
   async loadAll(){
     if (!LIVE){ if(!demo) demo = seedDemo(); return JSON.parse(JSON.stringify(demo)); }
-    const [{data:customers},{data:projects},{data:tasks},{data:materials},{data:bom},{data:pos}] = await Promise.all([
-      sb.from('customers').select('*').order('id'),
-      sb.from('projects').select('*').order('id'),
-      sb.from('department_tasks').select('*').order('sort_order'),
-      sb.from('materials').select('*').order('code'),
-      sb.from('bom_items').select('*').order('id'),
-      sb.from('purchase_orders').select('*').order('po_no'),
+    const [customers,srs,projects,tasks,bom,pos,team,schedule] = await Promise.all([
+      sb.from('customers').select('*').order('id').then(ok),
+      sb.from('sales_requisitions').select('*').order('id').then(ok),
+      sb.from('projects').select('*').order('id').then(ok),
+      sb.from('department_tasks').select('*').order('sort_order').then(ok),
+      sb.from('bom_items').select('*').order('id').then(ok),
+      sb.from('purchase_orders').select('*').order('po_no').then(ok),
+      sb.from('service_team').select('*').order('id').then(ok),
+      sb.from('service_schedule').select('*').order('id').then(ok),
     ]);
-    return { customers:customers||[], projects:projects||[], tasks:tasks||[], materials:materials||[], bom:bom||[], pos:pos||[], handoffs:[], prs:[] };
+    return { customers:customers||[], srs:srs||[], projects:projects||[], tasks:tasks||[], bom:bom||[], pos:pos||[], team:team||[], schedule:schedule||[], handoffs:[] };
   },
-  async updateTask(id, patch){ if(!LIVE){ Object.assign(demo.tasks.find(x=>x.id===id),patch,{updated_at:new Date().toISOString()}); return; } await sb.from('department_tasks').update({...patch, updated_at:new Date().toISOString()}).eq('id',id); },
-  async addTask(row){ if(!LIVE){ const r={id:nid(),status:'Pending',updated_at:new Date().toISOString(),...row}; demo.tasks.push(r); return r; } const {data}=await sb.from('department_tasks').insert(row).select().single(); return data; },
-  async updateProject(id, patch){ if(!LIVE){ Object.assign(demo.projects.find(x=>x.id===id),patch,{updated_at:new Date().toISOString()}); return; } await sb.from('projects').update(patch).eq('id',id); },
-  async addMaterial(row){ if(!LIVE){ const r={id:nid(),...row}; demo.materials.push(r); return r; } const {data}=await sb.from('materials').insert(row).select().single(); return data; },
-  async addBom(row){ if(!LIVE){ const r={id:nid(),...row}; demo.bom.push(r); return r; } const {data}=await sb.from('bom_items').insert(row).select().single(); return data; },
-  async updateBom(id, patch){ if(!LIVE){ Object.assign(demo.bom.find(x=>x.id===id),patch); return; } await sb.from('bom_items').update(patch).eq('id',id); },
+
+  /* ---- งาน (tasks) ---- */
+  async updateTask(id, patch){ if(!LIVE){ Object.assign(demo.tasks.find(x=>x.id===id),patch,{updated_at:new Date().toISOString()}); return; } ok(await sb.from('department_tasks').update({...patch, updated_at:new Date().toISOString()}).eq('id',id)); },
+  async addTask(row){ if(!LIVE){ const r={id:nid(),status:'Pending',updated_at:new Date().toISOString(),...row}; demo.tasks.push(r); return r; } return ok(await sb.from('department_tasks').insert(row).select().single()); },
+
   /* ---- ลูกค้า (Sales) ---- */
   async addCustomer(row){
     if(!LIVE){
-      const r={ id:nid(), sale_status:'Interested', forwarded:false, est_price:0, note:'', ...row };
+      const r={ id:nid(), sr_id:null, note:'', ...row };
       demo.customers.push(r);
       TASK_TEMPLATE.sales.forEach(([title,detail],ti) =>
         demo.tasks.push({ id:nid(), customer_id:r.id, project_id:null, department:'sales', task_title:title, task_detail:detail, sort_order:ti, status:'Pending', updated_by:'system', updated_at:new Date().toISOString() }));
       return r;
     }
-    const {data}=await sb.from('customers').insert(row).select().single(); return data;
+    return ok(await sb.from('customers').insert(row).select().single());
   },
-  async updateCustomer(id, patch){ if(!LIVE){ Object.assign(demo.customers.find(x=>x.id===id),patch); return; } await sb.from('customers').update(patch).eq('id',id); },
-  async forwardCustomer(id){
+  async updateCustomer(id, patch){ if(!LIVE){ Object.assign(demo.customers.find(x=>x.id===id),patch); return; } ok(await sb.from('customers').update(patch).eq('id',id)); },
+
+  /* ---- รวบรวมลูกค้าเป็น Sales Requisition แล้วส่งฝ่ายโครงการ ---- */
+  async createSR(customerIds, srNo, note){
     if(!LIVE){
-      Object.assign(demo.customers.find(x=>x.id===id), { forwarded:true });
-      demo.handoffs.push({ id:nid(), customer_id:id, project_id:null, from_phase:'sales', to_phase:'project', action:'forward', by_dept:'sales', note:null, acked:false, created_at:new Date().toISOString() });
-      return;
-    }
-    await sb.rpc('forward_customer', { c_id:id });   // ตั้ง forwarded + log (SECURITY DEFINER)
-  },
-  /* ---- สร้าง Project Stock จากลูกค้า (Project) ---- */
-  async createStock(customer, stockNo, jobNo){
-    if(!LIVE){
-      const r={ id:nid(), customer_id:customer.id, project_stock_no:stockNo, job_no:jobNo, name:customer.scope||customer.name,
-        customer_name:customer.name, customer_type:customer.customer_type, work_type:customer.work_type,
-        current_phase:'project', total_budget:customer.est_price||0, margin:0, cash_flow_status:'ปกติ', delivery_date:customer.desired_date||null,
-        phase_acked:false, updated_at:new Date().toISOString() };
-      demo.projects.push(r);
-      PHASE_STEPS.forEach(dep => TASK_TEMPLATE[dep].forEach(([title,detail],ti) =>
-        demo.tasks.push({ id:nid(), customer_id:null, project_id:r.id, department:dep, task_title:title, task_detail:detail, sort_order:ti, status:'Pending', updated_by:'system', updated_at:new Date().toISOString() })));
-      demo.handoffs.push({ id:nid(), customer_id:customer.id, project_id:r.id, from_phase:'sales', to_phase:'project', action:'create', by_dept:'project', note:null, acked:true, created_at:new Date().toISOString() });
-      // ทำเครื่องหมายว่า handoff ของลูกค้ารายนี้ถูกรับแล้ว
-      demo.handoffs.filter(h=>h.customer_id===customer.id && !h.project_id).forEach(h=>h.acked=true);
+      const r={ id:nid(), sr_no:srNo, cust_po_no:'', contract_status:'รอ PO/สัญญา', note:note||'', stock_id:null, created_at:new Date().toISOString() };
+      demo.srs.push(r);
+      customerIds.forEach(cid=>{ const c=demo.customers.find(x=>x.id===cid); if(c) c.sr_id=r.id; });
+      // ปิดงานฝ่ายขายข้อ "รวบรวมส่ง" ให้ลูกค้าที่อยู่ใน SR
+      customerIds.forEach(cid=> demo.tasks.filter(t=>t.customer_id===cid && t.department==='sales' && t.sort_order<=1).forEach(t=>t.status='Completed'));
+      demo.handoffs.push({ id:nid(), sr_id:r.id, from_phase:'sales', to_phase:'project', action:'forward', by_dept:'sales', created_at:new Date().toISOString() });
       return r;
     }
-    const {data}=await sb.rpc('create_stock', { c_id:customer.id, p_stock_no:stockNo, p_job_no:jobNo }); return data ? { id:data } : null;  // RPC: insert + seed tasks + log
+    const sr = ok(await sb.from('sales_requisitions').insert({ sr_no:srNo, note:note||'' }).select().single());
+    ok(await sb.from('customers').update({ sr_id:sr.id }).in('id', customerIds));
+    return sr;
   },
-  async handoff(projectId, fromPhase, toPhase, byDept, note){
+  async updateSR(id, patch){ if(!LIVE){ Object.assign(demo.srs.find(x=>x.id===id),patch); return; } ok(await sb.from('sales_requisitions').update(patch).eq('id',id)); },
+
+  /* ---- สร้าง Project Stock จากหลาย SR (Project) ---- */
+  async createStock(srIds, stockNo, jobNo, bomNo, name){
     if(!LIVE){
-      Object.assign(demo.projects.find(p=>p.id===projectId), { current_phase:toPhase, phase_acked:false, updated_at:new Date().toISOString() });
-      demo.handoffs.push({ id:nid(), project_id:projectId, from_phase:fromPhase, to_phase:toPhase, action:'forward', by_dept:byDept, note:note||null, acked:false, created_at:new Date().toISOString() });
-      return;
+      const r={ id:nid(), project_stock_no:stockNo, job_no:jobNo, bom_no:bomNo, bom_status:'Draft', name, current_phase:'project', phase_acked:false, total_budget:0, margin:0, cash_flow_status:'ปกติ', delivery_date:null, do_signed:false, updated_at:new Date().toISOString() };
+      // วันส่งมอบ = วันที่ต้องการเร็วสุดของลูกค้าใน SR ที่รวมเข้ามา
+      const custs = demo.customers.filter(c=> srIds.includes(c.sr_id) && c.desired_date);
+      if(custs.length) r.delivery_date = custs.map(c=>c.desired_date).sort()[0];
+      demo.projects.push(r);
+      srIds.forEach(sid=>{ const s=demo.srs.find(x=>x.id===sid); if(s) s.stock_id=r.id; });
+      PHASE_STEPS.forEach(dep => TASK_TEMPLATE[dep].forEach(([title,detail],ti) =>
+        demo.tasks.push({ id:nid(), customer_id:null, project_id:r.id, department:dep, task_title:title, task_detail:detail, sort_order:ti, status:'Pending', updated_by:'system', updated_at:new Date().toISOString() })));
+      demo.handoffs.push({ id:nid(), project_id:r.id, from_phase:'sales', to_phase:'project', action:'create', by_dept:'project', created_at:new Date().toISOString() });
+      return r;
     }
-    await sb.rpc('handoff_project', { p_id:projectId, p_note:note||null });
+    const newId = ok(await sb.rpc('create_stock_multi', { sr_ids:srIds, p_stock_no:stockNo, p_job_no:jobNo, p_bom_no:bomNo, p_name:name }));
+    return { id:newId };
+  },
+  async updateProject(id, patch){ if(!LIVE){ Object.assign(demo.projects.find(x=>x.id===id),patch,{updated_at:new Date().toISOString()}); return; } ok(await sb.from('projects').update(patch).eq('id',id)); },
+
+  /* ---- BOM ---- */
+  async addBom(row){ if(!LIVE){ const r={id:nid(),po_status:'Awaiting PO',...row}; demo.bom.push(r); return r; } return ok(await sb.from('bom_items').insert(row).select().single()); },
+  async updateBom(id, patch){ if(!LIVE){ Object.assign(demo.bom.find(x=>x.id===id),patch); return; } ok(await sb.from('bom_items').update(patch).eq('id',id)); },
+  async deleteBom(id){ if(!LIVE){ demo.bom = demo.bom.filter(x=>x.id!==id); return; } ok(await sb.from('bom_items').delete().eq('id',id)); },
+  async sendBom(projectId){ if(!LIVE){ Object.assign(demo.projects.find(p=>p.id===projectId),{bom_status:'Sent to Purchasing'}); return; } ok(await sb.from('projects').update({bom_status:'Sent to Purchasing'}).eq('id',projectId)); },
+
+  /* ---- PO (Purchasing) ---- */
+  async addPO(row){ if(!LIVE){ const r={id:nid(),notified:false,...row}; demo.pos.push(r); return r; } return ok(await sb.from('purchase_orders').insert(row).select().single()); },
+  async updatePO(id, patch){ if(!LIVE){ Object.assign(demo.pos.find(x=>x.id===id),patch); return; } ok(await sb.from('purchase_orders').update(patch).eq('id',id)); },
+
+  /* ---- ทีม Service ---- */
+  async addMember(row){ if(!LIVE){ const r={id:nid(),active:true,...row}; demo.team.push(r); return r; } return ok(await sb.from('service_team').insert(row).select().single()); },
+  async removeMember(id){ if(!LIVE){ demo.team = demo.team.filter(x=>x.id!==id); demo.schedule = demo.schedule.filter(s=>s.member_id!==id); return; } ok(await sb.from('service_team').delete().eq('id',id)); },
+  async addSchedule(row){ if(!LIVE){ const r={id:nid(),...row}; demo.schedule.push(r); return r; } return ok(await sb.from('service_schedule').insert(row).select().single()); },
+  async removeSchedule(id){ if(!LIVE){ demo.schedule = demo.schedule.filter(x=>x.id!==id); return; } ok(await sb.from('service_schedule').delete().eq('id',id)); },
+  async signDO(projectId){ if(!LIVE){ Object.assign(demo.projects.find(p=>p.id===projectId),{do_signed:true}); return; } ok(await sb.from('projects').update({do_signed:true}).eq('id',projectId)); },
+
+  /* ---- Linkage (ส่งงาน/ตีกลับ/รับงาน) ---- */
+  async handoff(projectId, fromPhase, toPhase, byDept){
+    if(!LIVE){ Object.assign(demo.projects.find(p=>p.id===projectId), { current_phase:toPhase, phase_acked:false, updated_at:new Date().toISOString() });
+      demo.handoffs.push({ id:nid(), project_id:projectId, from_phase:fromPhase, to_phase:toPhase, action:'forward', by_dept:byDept, created_at:new Date().toISOString() }); return; }
+    ok(await sb.rpc('handoff_project', { p_id:projectId }));
   },
   async reject(projectId, fromPhase, toPhase, byDept, note){
-    if(!LIVE){
-      Object.assign(demo.projects.find(p=>p.id===projectId), { current_phase:toPhase, phase_acked:false, updated_at:new Date().toISOString() });
-      demo.handoffs.push({ id:nid(), project_id:projectId, from_phase:fromPhase, to_phase:toPhase, action:'reject', by_dept:byDept, note:note||null, acked:false, created_at:new Date().toISOString() });
-      return;
-    }
-    await sb.rpc('reject_project', { p_id:projectId, p_note:note });
+    if(!LIVE){ Object.assign(demo.projects.find(p=>p.id===projectId), { current_phase:toPhase, phase_acked:false, updated_at:new Date().toISOString() });
+      demo.handoffs.push({ id:nid(), project_id:projectId, from_phase:fromPhase, to_phase:toPhase, action:'reject', by_dept:byDept, note, created_at:new Date().toISOString() }); return; }
+    ok(await sb.rpc('reject_project', { p_id:projectId, p_note:note }));
   },
-  async ackPhase(projectId){
-    if(!LIVE){
-      Object.assign(demo.projects.find(p=>p.id===projectId), { phase_acked:true });
-      const h=demo.handoffs.filter(x=>x.project_id===projectId).slice(-1)[0]; if(h) h.acked=true;
-      return;
-    }
-    await sb.rpc('ack_phase', { p_id:projectId });   // ตั้ง phase_acked + mark log acked (SECURITY DEFINER)
-  },
-  async sendPR(projectId, prNo, byDept, note){
-    if(!LIVE){
-      const pr={ id:nid(), pr_no:prNo, project_id:projectId, status:'Sent to Purchasing', note:note||null, created_at:new Date().toISOString() };
-      demo.prs.push(pr);
-      demo.bom.filter(b=>b.project_id===projectId && b.pr_status==='PR Issued').forEach(b=>{ b.pr_status='Sent to Purchasing'; b.pr_id=pr.id; });
-      return pr;
-    }
-    const {data}=await sb.from('purchase_requests').insert({ pr_no:prNo, project_id:projectId, note:note||null }).select().single();
-    await sb.from('bom_items').update({ pr_status:'Sent to Purchasing', pr_id:data.id }).eq('project_id',projectId).eq('pr_status','PR Issued');
-    return data;
-  },
+  async ackPhase(projectId){ if(!LIVE){ Object.assign(demo.projects.find(p=>p.id===projectId), { phase_acked:true }); return; } ok(await sb.rpc('ack_phase', { p_id:projectId })); },
 };
 
 /* ============================ ICONS ============================ */
@@ -268,6 +292,9 @@ const Icon = {
   clock:<Ic d={<><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></>}/>,
   x:<Ic d={<><path d="M18 6 6 18M6 6l12 12"/></>}/>,
   doc:<Ic d={<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></>}/>,
+  users:<Ic d={<><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></>}/>,
+  cal:<Ic d={<><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></>}/>,
+  trash:<Ic d={<><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></>}/>,
 };
 
 /* ============================ UI ATOMS ============================ */
@@ -279,23 +306,33 @@ const Pill = ({children, color, soft=true}) => (
 );
 const taskColor = s => s==='Completed' ? '#10b981' : s==='In Progress' ? '#f59e0b' : '#64748b';
 const poColor   = s => ({'Delivered':'#10b981','PO Received':'#6366f1','Awaiting PO':'#64748b'})[s]||'#64748b';
-const prColor   = s => ({'Sent to Purchasing':'#10b981','PR Issued':'#f59e0b','Draft':'#64748b'})[s]||'#64748b';
-const poStatusColor = s => ({'รับครบ':'#10b981','กำลังส่ง':'#f59e0b','ออกแล้ว':'#6366f1','รอออก':'#64748b'})[s]||'#64748b';
+const bomStatusColor = s => s==='Sent to Purchasing' ? '#10b981' : '#64748b';
+const poDocColor = s => ({'รับครบ':'#10b981','กำลังส่ง':'#f59e0b','ออกแล้ว':'#6366f1','รอออก':'#64748b'})[s]||'#64748b';
+const ctypeColor = t => t==='ราชการ'?'#8b5cf6':t==='รัฐวิสาหกิจ'?'#f59e0b':'#6366f1';
 const Lbl = ({children}) => <label className="block text-[11px] text-slate-500 mb-1">{children}</label>;
-const Inp = ({value,onChange,type='text'}) => (
-  <input type={type} value={value} onChange={e=>onChange(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 px-2.5 py-1.5 focus:outline-none focus:border-amber-500/60"/>
+const Inp = ({value,onChange,type='text',placeholder}) => (
+  <input type={type} value={value} placeholder={placeholder} onChange={e=>onChange(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 px-2.5 py-1.5 focus:outline-none focus:border-amber-500/60"/>
+);
+const Sel = ({value,onChange,options,labels}) => (
+  <select value={value} onChange={e=>onChange(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 px-2 py-1.5 focus:outline-none focus:border-amber-500/60">
+    {options.map(o=><option key={o} value={o} className="bg-slate-800">{labels?labels[o]:o}</option>)}
+  </select>
 );
 const Empty = ({msg}) => (
   <div className="col-span-full grid place-items-center py-20 text-slate-500"><div className="text-center"><div className="text-3xl mb-2 opacity-40">📦</div>{msg}</div></div>
 );
 function projProgress(tasks, pid){ const t=tasks.filter(x=>x.project_id===pid); return t.length?Math.round(t.filter(x=>x.status==='Completed').length/t.length*100):0; }
 
-/* ===== Linkage: phase flow + gate (เงื่อนไขส่งงานต่อ) — เฟสของ Project Stock ===== */
-const PHASE_FLOW = ['project','purchasing','service','closed'];
-const nextPhase = p => { const i=PHASE_FLOW.indexOf(p); return (i>=0 && i<3) ? PHASE_FLOW[i+1] : null; };
-const prevPhase = p => { const i=PHASE_FLOW.indexOf(p); return (i>0 && i<=3) ? PHASE_FLOW[i-1] : null; };
+/* ===== Linkage: phase flow + gate ===== */
+const nextPhase = p => { const i=PHASES.indexOf(p); return (i>=0 && i<3) ? PHASES[i+1] : null; };
+const prevPhase = p => { const i=PHASES.indexOf(p); return (i>0 && i<=3) ? PHASES[i-1] : null; };
 const phaseDeptDone = (state, pid, dep) => { const t=state.tasks.filter(x=>x.project_id===pid && x.department===dep); return t.length>0 && t.every(x=>x.status==='Completed'); };
-function phaseGate(project, state){   // → { ok, reason } : ส่งงานต่อได้ไหม + เหตุผลถ้ายังไม่ได้
+// ลูกค้าทั้งหมดที่อยู่ใน Stock นี้ (ผ่าน SR) + จำนวน LBS ที่ต้องการรวม
+function stockCustomers(state, pid){ const srIds=state.srs.filter(s=>s.stock_id===pid).map(s=>s.id); return (state.customers||[]).filter(c=>srIds.includes(c.sr_id)); }
+function requestedLBS(state, pid){ return stockCustomers(state,pid).reduce((s,c)=>s+num(c.lbs_qty),0); }
+function bomLBS(state, pid){ return state.bom.filter(b=>b.project_id===pid && b.category==='LBS').reduce((s,b)=>s+num(b.quantity),0); }
+
+function phaseGate(project, state){
   const pid=project.id, ph=project.current_phase;
   if(ph==='closed') return { ok:false, reason:'โครงการปิดงานแล้ว' };
   if(!phaseDeptDone(state, pid, ph)) return { ok:false, reason:'งานในเฟสนี้ยังไม่ครบทุกข้อ' };
@@ -303,18 +340,27 @@ function phaseGate(project, state){   // → { ok, reason } : ส่งงาน
     if(!project.job_no) return { ok:false, reason:'ยังไม่มี Job No.' };
     const items=state.bom.filter(b=>b.project_id===pid);
     if(items.length===0) return { ok:false, reason:'ยังไม่มีรายการ BOM' };
-    if(!items.some(b=>b.pr_status==='Sent to Purchasing')) return { ok:false, reason:'ยังไม่ได้ส่ง PR ให้จัดซื้อ' };
+    if(project.bom_status!=='Sent to Purchasing') return { ok:false, reason:'ยังไม่ได้ส่ง BOM ให้จัดซื้อ' };
+    if(bomLBS(state,pid)!==requestedLBS(state,pid)) return { ok:false, reason:`จำนวน LBS ใน BOM (${bomLBS(state,pid)}) ไม่ตรงกับที่ลูกค้าต้องการ (${requestedLBS(state,pid)})` };
   }
   if(ph==='purchasing'){
-    const sent=state.bom.filter(b=>b.project_id===pid && b.pr_status==='Sent to Purchasing');
-    if(sent.length>0 && !sent.every(b=>b.po_status==='Delivered')) return { ok:false, reason:'ของยังเข้าไม่ครบ (ต้อง Delivered ทุกรายการ)' };
+    const items=state.bom.filter(b=>b.project_id===pid);
+    if(items.length>0 && !items.every(b=>b.po_status==='Delivered')) return { ok:false, reason:'ของยังเข้าไม่ครบ (ต้อง Delivered ทุกรายการ)' };
+  }
+  if(ph==='service'){
+    if(!project.do_signed) return { ok:false, reason:'ยังไม่ได้ลงนาม DO' };
   }
   return { ok:true, reason:'' };
 }
-// งานเข้าใหม่ของฝ่ายโครงการ = ลูกค้าที่ฝ่ายขายส่งมาแต่ยังไม่ได้สร้าง Stock + Stock ที่เพิ่งถูกส่งต่อมายังไม่รับ
+// งานเข้าใหม่ของแต่ละฝ่าย
 const stockIncoming = (state, dep) => state.projects.filter(p=>p.current_phase===dep && !p.phase_acked).length;
-const customerInbox = state => state.customers.filter(c=>c.forwarded && !state.projects.some(p=>p.customer_id===c.id)).length;
-const incomingCount = (state, dep) => stockIncoming(state, dep) + (dep==='project' ? customerInbox(state) : 0);
+const srInbox = state => state.srs.filter(s=>!s.stock_id).length;        // SR รอสร้าง Stock
+const custToGather = state => (state.customers||[]).filter(c=>!c.sr_id).length;  // ลูกค้ารอรวบรวม
+const incomingCount = (state, dep) => {
+  if(dep==='sales') return custToGather(state);
+  if(dep==='project') return stockIncoming(state,'project') + srInbox(state);
+  return stockIncoming(state, dep);
+};
 
 /* ============================ SIDEBAR ============================ */
 const NAV = [
@@ -337,7 +383,7 @@ function Sidebar({page, onNav, state}){
         {NAV.map(n => {
           const active = page===n.id || (n.id==='project' && page==='workflow');
           const ac = n.dep ? DEPT[n.dep].c : '#38bdf8';
-          const inbox = n.dep ? incomingCount(state, n.dep) : 0;   // งานเข้าใหม่รอรับ
+          const inbox = n.dep ? incomingCount(state, n.dep) : 0;
           return (
             <button key={n.id} onClick={()=>onNav(n.id)} className="group w-full flex items-center gap-3 px-5 py-2.5 text-sm transition relative" style={{ color: active?'#f1f5f9':'#94a3b8', background: active?ac+'14':'transparent' }}>
               <span className="absolute left-0 top-0 bottom-0 w-[3px] rounded-r" style={{background: active?ac:'transparent'}}/>
@@ -355,16 +401,15 @@ function Sidebar({page, onNav, state}){
 /* ============================ TOPBAR ============================ */
 function TopBar({projects, activeId, onProject, role, onRole, page, me, onSignOut}){
   const title = page==='workflow' ? 'Workflow Board' : (NAV.find(n=>n.id===page)||{}).label || '';
-  // LIVE + ไม่ใช่ developer → ล็อกบทบาทไว้ที่ฝ่ายจริงของผู้ใช้ (RLS เป็นตัวบังคับจริงฝั่ง server)
   const roleLocked = LIVE && me && !me.is_developer;
   return (
     <header className="h-14 shrink-0 border-b border-slate-800/80 bg-[#0b0f17]/90 backdrop-blur flex items-center gap-4 px-6">
       <div className="text-slate-200 font-medium">{title}</div>
       <div className="flex-1"/>
       <div className="flex items-center gap-2">
-        <span className="text-[11px] text-slate-500">โครงการ</span>
+        <span className="text-[11px] text-slate-500">Project Stock</span>
         <select value={activeId} onChange={e=>onProject(e.target.value==='all'?'all':Number(e.target.value))} className="bg-slate-800/80 border border-slate-700 rounded-lg text-sm text-slate-100 px-3 py-1.5 focus:outline-none focus:border-slate-500 max-w-[260px]">
-          <option value="all">— ทุกโครงการ —</option>
+          <option value="all">— ทุก Stock —</option>
           {projects.map(p => <option key={p.id} value={p.id}>{p.project_stock_no||'(ยังไม่ออก Stock No.)'} · {p.name}</option>)}
         </select>
       </div>
@@ -389,7 +434,7 @@ function TopBar({projects, activeId, onProject, role, onRole, page, me, onSignOu
   );
 }
 
-/* ============================ PO MODAL (drill-down) ============================ */
+/* ============================ PO MODAL ============================ */
 function PoModal({project, pos, onClose}){
   const list = pos.filter(o=>o.project_id===project.id);
   return (
@@ -397,7 +442,7 @@ function PoModal({project, pos, onClose}){
       <div className="w-full max-w-2xl rounded-xl border border-slate-700 bg-slate-900 fade-up" onClick={e=>e.stopPropagation()}>
         <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between">
           <div><div className="text-slate-100 font-semibold flex items-center gap-2">{Icon.doc} ใบสั่งซื้อ (PO) ในโครงการ</div>
-            <div className="text-[11px] text-slate-500 mono">{project.project_stock_no} · {project.name}</div></div>
+            <div className="text-[11px] text-slate-500 mono">{project.project_stock_no} · {project.bom_no}</div></div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-100">{Icon.x}</button>
         </div>
         <table className="w-full text-sm">
@@ -414,27 +459,26 @@ function PoModal({project, pos, onClose}){
                 <td className="px-3 py-3 text-slate-300">{o.supplier}</td>
                 <td className="px-3 py-3 mono text-slate-400">{o.expected_date}</td>
                 <td className="px-3 py-3 text-right mono text-slate-200">{baht(o.amount)}</td>
-                <td className="px-3 py-3"><Pill color={poStatusColor(o.status)}>{o.status}</Pill></td>
+                <td className="px-3 py-3"><Pill color={poDocColor(o.status)}>{o.status}</Pill></td>
               </tr>
             ))}
           </tbody>
         </table>
-        <div className="px-5 py-3 border-t border-slate-800 text-[11px] text-slate-500">รวม {list.length} PO · มูลค่า {baht(list.reduce((s,o)=>s+Number(o.amount||0),0))}</div>
+        <div className="px-5 py-3 border-t border-slate-800 text-[11px] text-slate-500">รวม {list.length} PO · มูลค่า {baht(list.reduce((s,o)=>s+num(o.amount),0))}</div>
       </div>
     </div>
   );
 }
 
-/* ============================ DASHBOARD (Executive) ============================ */
+/* ============================ DASHBOARD ============================ */
 function Dashboard({state, onNav, onSelectProject, onOpenPO}){
-  const { projects, tasks, bom, pos, customers } = state;
-  const ordered = (customers||[]).filter(c=>c.sale_status==='Ordered');
-  const totalSales = projects.reduce((s,p)=>s+Number(p.total_budget||0),0);
-  const totalProfit = projects.reduce((s,p)=>s+Number(p.total_budget||0)*Number(p.margin||0)/100,0);
+  const { projects, tasks, bom, pos, customers, srs } = state;
+  const totalSales = projects.reduce((s,p)=>s+num(p.total_budget),0);
+  const totalProfit = projects.reduce((s,p)=>s+num(p.total_budget)*num(p.margin)/100,0);
   const avgProgress = projects.length ? Math.round(projects.reduce((s,p)=>s+projProgress(tasks,p.id),0)/projects.length) : 0;
   const bottleneck = {}; PHASE_STEPS.forEach(ph => bottleneck[ph]=projects.filter(p=>p.current_phase===ph).length);
-  const awaitingPO = bom.filter(b=>b.po_status==='Awaiting PO' && b.pr_status!=='Draft').length;
-  const prIssued = bom.filter(b=>b.pr_status==='PR Issued').length;
+  const awaitingPO = bom.filter(b=>b.po_status==='Awaiting PO').length;
+  const srPending = srs.filter(s=>!s.stock_id).length;
   const alerts = projects.map(p=>({p,d:daysUntil(p.delivery_date)})).filter(x=>x.d!==null && x.d<=15 && x.p.current_phase!=='closed').sort((a,b)=>a.d-b.d);
 
   const KPI = ({label, value, sub, color, icon}) => (
@@ -442,19 +486,17 @@ function Dashboard({state, onNav, onSelectProject, onOpenPO}){
       <div className="flex items-start justify-between"><div><div className="text-slate-400 text-xs">{label}</div><div className="text-2xl font-bold text-slate-50 mt-1">{value}</div>{sub && <div className="text-[11px] text-slate-500 mt-1">{sub}</div>}</div><span style={{color}}>{icon}</span></div>
     </Card>
   );
-
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KPI label="ยอดขายรวม (Total Sales)" value={bahtShort(totalSales)} sub={baht(totalSales)} color="#6366f1" icon={Icon.pipeline}/>
-        <KPI label="กำไรรวมประมาณการ" value={bahtShort(totalProfit)} sub={"เฉลี่ย margin "+(projects.length?(projects.reduce((s,p)=>s+Number(p.margin||0),0)/projects.length).toFixed(1):0)+'%'} color="#10b981" icon={Icon.chart}/>
-        <KPI label="ความคืบหน้ารวม" value={avgProgress+'%'} sub={ordered.length+" ลูกค้าที่สั่งซื้อแล้ว"} color="#f59e0b" icon={Icon.layers}/>
+        <KPI label="งบประมาณรวม (Total)" value={bahtShort(totalSales)} sub={baht(totalSales)} color="#6366f1" icon={Icon.pipeline}/>
+        <KPI label="กำไรรวมประมาณการ" value={bahtShort(totalProfit)} sub={"เฉลี่ย margin "+(projects.length?(projects.reduce((s,p)=>s+num(p.margin),0)/projects.length).toFixed(1):0)+'%'} color="#10b981" icon={Icon.chart}/>
+        <KPI label="ความคืบหน้ารวม" value={avgProgress+'%'} sub={srPending+" SR รอสร้าง Stock"} color="#f59e0b" icon={Icon.layers}/>
         <KPI label="Project Stock ทั้งหมด" value={projects.length} sub={"ลูกค้า "+(customers?customers.length:0)+" ราย · ดำเนินการ "+projects.filter(p=>p.current_phase!=='closed').length} color="#8b5cf6" icon={Icon.box}/>
       </div>
-
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card className="p-5 lg:col-span-2 fade-up">
-          <div className="flex items-center justify-between mb-4"><h3 className="text-slate-200 font-semibold">คอขวดระหว่างฝ่าย (Cross-department Bottleneck)</h3><span className="text-[11px] text-slate-500">จำนวนโครงการที่ค้างในแต่ละเฟส</span></div>
+          <div className="flex items-center justify-between mb-4"><h3 className="text-slate-200 font-semibold">คอขวดระหว่างฝ่าย (Cross-department Bottleneck)</h3><span className="text-[11px] text-slate-500">จำนวน Stock ที่ค้างในแต่ละเฟส</span></div>
           <div className="space-y-3">
             {PHASE_STEPS.map(ph => { const n=bottleneck[ph]; const max=Math.max(1,...Object.values(bottleneck)); return (
               <div key={ph} className="flex items-center gap-3">
@@ -466,10 +508,9 @@ function Dashboard({state, onNav, onSelectProject, onOpenPO}){
           </div>
           <div className="grid grid-cols-2 gap-3 mt-5 pt-4 border-t border-slate-800">
             <div className="rounded-lg bg-slate-800/40 p-3"><div className="text-xs text-slate-400">รายการรอออก PO (Awaiting PO)</div><div className="text-xl font-bold mt-0.5" style={{color:'#f43f5e'}}>{awaitingPO} <span className="text-sm font-normal text-slate-500">รายการ</span></div></div>
-            <div className="rounded-lg bg-slate-800/40 p-3"><div className="text-xs text-slate-400">PR ที่ออกแล้วรอจัดซื้อรับ</div><div className="text-xl font-bold mt-0.5" style={{color:'#f59e0b'}}>{prIssued} <span className="text-sm font-normal text-slate-500">รายการ</span></div></div>
+            <div className="rounded-lg bg-slate-800/40 p-3"><div className="text-xs text-slate-400">SR รอฝ่ายโครงการสร้าง Stock</div><div className="text-xl font-bold mt-0.5" style={{color:'#f59e0b'}}>{srPending} <span className="text-sm font-normal text-slate-500">ใบ</span></div></div>
           </div>
         </Card>
-
         <Card className="p-5 fade-up" style={{borderColor: alerts.length?'#f43f5e44':undefined}}>
           <div className="flex items-center gap-2 mb-3"><span style={{color:'#f43f5e'}}>{Icon.bell}</span><h3 className="text-slate-200 font-semibold">เตือนส่งมอบ ≤ 15 วัน</h3></div>
           {alerts.length===0 ? <div className="text-sm text-slate-500 py-6 text-center">ไม่มีโครงการที่ใกล้ครบกำหนด</div> : (
@@ -480,16 +521,14 @@ function Dashboard({state, onNav, onSelectProject, onOpenPO}){
               </button>
             ))}</div>
           )}
-          {!LIVE && <p className="text-[10px] text-slate-600 mt-3 leading-relaxed">โหมด LIVE: ตั้ง pg_cron/Edge Function ยิง Line Notify ทุกเช้าเมื่อ ≤15 วัน</p>}
         </Card>
       </div>
-
       <Card className="fade-up overflow-hidden">
-        <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between"><h3 className="text-slate-200 font-semibold">ภาพรวมโครงการ</h3><button onClick={()=>onNav('project')} className="text-xs text-slate-400 hover:text-slate-200">ไป Project Department →</button></div>
+        <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between"><h3 className="text-slate-200 font-semibold">ภาพรวม Project Stock</h3><button onClick={()=>onNav('project')} className="text-xs text-slate-400 hover:text-slate-200">ไป Project Department →</button></div>
         <table className="w-full text-sm">
           <thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-800">
-            <th className="px-5 py-2.5 font-medium">Stock No.</th><th className="px-3 py-2.5 font-medium">โครงการ / ลูกค้า</th>
-            <th className="px-3 py-2.5 font-medium">ประเภทงาน</th><th className="px-3 py-2.5 font-medium">เฟสปัจจุบัน</th>
+            <th className="px-5 py-2.5 font-medium">Stock No.</th><th className="px-3 py-2.5 font-medium">โครงการ</th>
+            <th className="px-3 py-2.5 font-medium">BOM</th><th className="px-3 py-2.5 font-medium">เฟสปัจจุบัน</th>
             <th className="px-3 py-2.5 font-medium">PO</th><th className="px-3 py-2.5 font-medium w-40">ความคืบหน้า</th>
             <th className="px-3 py-2.5 font-medium text-right">งบประมาณ</th>
           </tr></thead>
@@ -497,8 +536,8 @@ function Dashboard({state, onNav, onSelectProject, onOpenPO}){
             {projects.map(p => { const pr=projProgress(tasks,p.id); const poCount=pos.filter(o=>o.project_id===p.id).length; return (
               <tr key={p.id} className="border-b border-slate-800/60 hover:bg-slate-800/30 cursor-pointer" onClick={()=>onSelectProject(p.id)}>
                 <td className="px-5 py-3 mono text-slate-300">{p.project_stock_no}</td>
-                <td className="px-3 py-3"><div className="text-slate-200">{p.name}</div><div className="text-[11px] text-slate-500">{p.customer_name}</div></td>
-                <td className="px-3 py-3"><Pill color={p.work_type==='Supply'?'#64748b':'#6366f1'}>{p.work_type||'—'}</Pill></td>
+                <td className="px-3 py-3"><div className="text-slate-200">{p.name}</div><div className="text-[11px] text-slate-500">{stockCustomers(state,p.id).length} ลูกค้า</div></td>
+                <td className="px-3 py-3"><Pill color={bomStatusColor(p.bom_status)}>{p.bom_no||'—'}</Pill></td>
                 <td className="px-3 py-3"><Pill color={DEPT[p.current_phase]?.c||'#64748b'}>{PHASE_LABEL[p.current_phase]}</Pill></td>
                 <td className="px-3 py-3" onClick={e=>{e.stopPropagation(); if(poCount) onOpenPO(p.id);}}>
                   {poCount>0 ? <button className="inline-flex items-center gap-1 text-xs font-medium rounded-md px-2 py-1 hover:brightness-125" style={{background:'#6366f122',color:'#818cf8'}}>{poCount} PO →</button> : <span className="text-slate-600 text-xs">—</span>}
@@ -515,12 +554,12 @@ function Dashboard({state, onNav, onSelectProject, onOpenPO}){
 }
 
 /* ============================ ADD-TASK inline ============================ */
-function AddTask({dep, color, onAdd}){
+function AddTask({color, onAdd}){
   const [open,setOpen]=useState(false); const [title,setTitle]=useState(''); const [detail,setDetail]=useState('');
   if(!open) return <button onClick={()=>setOpen(true)} className="w-full flex items-center justify-center gap-1.5 text-xs font-medium rounded-lg py-2 border border-dashed transition hover:bg-slate-800/40" style={{borderColor:color+'55',color}}>{Icon.plus} เพิ่มงาน</button>;
   return (
     <div className="rounded-lg border p-3 space-y-2" style={{borderColor:color+'55',background:color+'0e'}}>
-      <Inp value={title} onChange={setTitle}/><Inp value={detail} onChange={setDetail}/>
+      <Inp value={title} onChange={setTitle} placeholder="ชื่องาน"/><Inp value={detail} onChange={setDetail} placeholder="รายละเอียด"/>
       <div className="flex justify-end gap-2">
         <button onClick={()=>{setOpen(false);setTitle('');setDetail('');}} className="text-xs px-3 py-1 rounded-md border border-slate-700 text-slate-300">ยกเลิก</button>
         <button onClick={()=>{ if(!title.trim())return; onAdd(title.trim(),detail.trim()); setTitle('');setDetail('');setOpen(false); }} className="text-xs px-3 py-1 rounded-md font-medium" style={{background:color,color:'#0b0f17'}}>บันทึก</button>
@@ -531,13 +570,12 @@ function AddTask({dep, color, onAdd}){
 
 /* ============================ WORKFLOW BOARD ============================ */
 function WorkflowBoard({state, project, role, onTask, onAddTask, onHandoff, onReject, onAck}){
-  if (!project) return <Empty msg="เลือกโครงการจากแถบด้านบนเพื่อดูเวิร์กโฟลว์"/>;
-  const cols = PHASE_STEPS;   // project · purchasing · service (sales ทำที่ระดับลูกค้า)
+  if (!project) return <Empty msg="เลือก Project Stock จากแถบด้านบนเพื่อดูเวิร์กโฟลว์"/>;
   return (
     <div className="space-y-4">
-      <PhaseRibbon project={project} tasks={state.tasks} state={state} role={role} onHandoff={onHandoff} onReject={onReject} onAck={onAck}/>
+      <PhaseRibbon project={project} state={state} role={role} onHandoff={onHandoff} onReject={onReject} onAck={onAck}/>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {cols.map(dep => {
+        {PHASE_STEPS.map(dep => {
           const list = state.tasks.filter(t=>t.project_id===project.id && t.department===dep).sort((a,b)=>a.sort_order-b.sort_order);
           const done = list.filter(t=>t.status==='Completed').length;
           const editable = canDept(role, dep);
@@ -560,7 +598,7 @@ function WorkflowBoard({state, project, role, onTask, onAddTask, onHandoff, onRe
                     </div>
                   </div>
                 ))}
-                {editable && <AddTask dep={dep} color={DEPT[dep].c} onAdd={(title,detail)=>onAddTask(project.id, dep, title, detail)}/>}
+                {editable && <AddTask color={DEPT[dep].c} onAdd={(title,detail)=>onAddTask(project.id, dep, title, detail)}/>}
               </div>
             </div>
           );
@@ -570,10 +608,10 @@ function WorkflowBoard({state, project, role, onTask, onAddTask, onHandoff, onRe
     </div>
   );
 }
-function PhaseRibbon({project, tasks, state, role, onHandoff, onReject, onAck}){
-  const cur = phaseIndex(project.current_phase); const pr = projProgress(tasks, project.id);
+function PhaseRibbon({project, state, role, onHandoff, onReject, onAck}){
+  const cur = phaseIndex(project.current_phase); const pr = projProgress(state.tasks, project.id);
   const ph = project.current_phase;
-  const owner = canDept(role, ph) && ph!=='closed';   // role เป็นเจ้าของเฟสปัจจุบัน
+  const owner = canDept(role, ph) && ph!=='closed';
   const gate = phaseGate(project, state);
   const nxt = nextPhase(ph), prev = prevPhase(ph);
   const nxtLabel = nxt==='closed' ? 'ปิดงาน' : (DEPT[nxt]?DEPT[nxt].label:'');
@@ -581,15 +619,13 @@ function PhaseRibbon({project, tasks, state, role, onHandoff, onReject, onAck}){
   const [rejOpen,setRejOpen]=useState(false); const [reason,setReason]=useState('');
   return (
     <Card className="p-4">
-      <div className="flex items-center justify-between mb-3"><div><div className="text-slate-100 font-semibold">{project.name}</div><div className="text-[11px] text-slate-500 mono">{project.project_stock_no||'(ยังไม่ออก Stock No.)'}{project.job_no?' · '+project.job_no:''} · {project.customer_name}</div></div><div className="text-right"><div className="text-2xl font-bold text-slate-50">{pr}%</div><div className="text-[11px] text-slate-500">ความคืบหน้า</div></div></div>
-
+      <div className="flex items-center justify-between mb-3"><div><div className="text-slate-100 font-semibold">{project.name}</div><div className="text-[11px] text-slate-500 mono">{project.project_stock_no||'(ยังไม่ออก Stock No.)'}{project.job_no?' · '+project.job_no:''} · {project.bom_no}</div></div><div className="text-right"><div className="text-2xl font-bold text-slate-50">{pr}%</div><div className="text-[11px] text-slate-500">ความคืบหน้า</div></div></div>
       {needAck && (
         <div className="mb-3 flex items-center justify-between gap-3 rounded-lg p-3 border" style={{background:DEPT[ph].c+'14', borderColor:DEPT[ph].c+'55'}}>
           <div className="text-[13px]" style={{color:DEPT[ph].c}}>📥 งานเข้าใหม่ — ส่งต่อมายัง <b>{DEPT[ph].label}</b></div>
           <button onClick={()=>onAck(project.id)} className="text-xs font-medium rounded-md px-3 py-1.5" style={{background:DEPT[ph].c,color:'#0b0f17'}}>รับงาน</button>
         </div>
       )}
-
       <div className="flex items-center">
         {PHASE_STEPS.map((ph2,i)=>(
           <React.Fragment key={ph2}>
@@ -598,7 +634,6 @@ function PhaseRibbon({project, tasks, state, role, onHandoff, onReject, onAck}){
           </React.Fragment>
         ))}
       </div>
-
       {owner && nxt && (
         <div className="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between gap-2">
           <div>{prev && <button onClick={()=>setRejOpen(o=>!o)} className="text-xs font-medium rounded-md px-3 py-1.5 border border-slate-700 text-slate-300 hover:bg-slate-800/60">← ตีกลับ</button>}</div>
@@ -612,7 +647,6 @@ function PhaseRibbon({project, tasks, state, role, onHandoff, onReject, onAck}){
           </div>
         </div>
       )}
-
       {rejOpen && (
         <div className="mt-3 rounded-lg border border-slate-700 p-3 space-y-2">
           <Lbl>เหตุผลที่ตีกลับ (ส่งกลับไป {DEPT[prev]?DEPT[prev].label:''})</Lbl>
@@ -627,240 +661,66 @@ function PhaseRibbon({project, tasks, state, role, onHandoff, onReject, onAck}){
   );
 }
 
-/* ============================ PROJECT DEPARTMENT (Material Master + BOM) ============================ */
-const Field = ({label, value, color, mono}) => (
-  <div><div className="text-[11px] text-slate-500">{label}</div><div className={"text-lg font-semibold mt-0.5 "+(mono?'mono ':'')} style={color?{color}:{color:'#e2e8f0'}}>{value}</div></div>
-);
-function ProjectDept({state, project, role, onAddMaterial, onAddBom, onIssuePR, onSendPR, onAssignStockNo, onCreateStock}){
-  const canEdit = role==='developer' || role==='project';
-  const fwd = (state.customers||[]).filter(c=>c.forwarded);                              // ลูกค้าที่ฝ่ายขายส่งมาทั้งหมด (สร้าง Stock ได้)
-  const inbox = fwd.filter(c=>!state.projects.some(p=>p.customer_id===c.id));            // ยังไม่มี Stock = งานเข้าใหม่
-  const stockCount = cid => state.projects.filter(p=>p.customer_id===cid).length;
-  const [mkOpen,setMkOpen]=useState(false); const [pick,setPick]=useState('');
-  return (
-    <div className="space-y-4">
-      {canEdit && (
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="text-[11px] text-slate-500">สร้าง Project Stock จากลูกค้าที่ฝ่ายขายส่งมา — 1 ลูกค้าสร้างได้หลาย Stock</div>
-          {!mkOpen
-            ? <button onClick={()=>setMkOpen(true)} disabled={fwd.length===0} title={fwd.length?'':'ยังไม่มีลูกค้าที่ฝ่ายขายส่งมา'} className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-1.5" style={fwd.length?{background:DEPT.project.c,color:'#0b0f17'}:{background:'#1e293b',color:'#475569',cursor:'not-allowed'}}>{Icon.plus} สร้าง Stock</button>
-            : <div className="flex items-center gap-2">
-                <select value={pick} onChange={e=>setPick(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 px-2.5 py-1.5 max-w-[280px]">
-                  <option value="">— เลือกลูกค้า —</option>
-                  {fwd.map(c=>{ const n=stockCount(c.id); return <option key={c.id} value={c.id}>{c.name}{n>0?` (มีแล้ว ${n} Stock)`:''}</option>; })}
-                </select>
-                <button onClick={()=>{ if(!pick)return; onCreateStock(Number(pick)); setPick(''); setMkOpen(false); }} disabled={!pick} className="text-xs font-semibold rounded-lg px-3 py-1.5" style={pick?{background:DEPT.project.c,color:'#0b0f17'}:{background:'#1e293b',color:'#475569',cursor:'not-allowed'}}>สร้าง Stock</button>
-                <button onClick={()=>{setMkOpen(false);setPick('');}} className="text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300">ยกเลิก</button>
-              </div>}
-        </div>
-      )}
-      {inbox.length>0 && (
-        <Card className="overflow-hidden" style={{borderColor:DEPT.project.c+'55'}}>
-          <div className="px-5 py-3 border-b border-slate-800 flex items-center gap-2" style={{background:DEPT.project.c+'12'}}>
-            <span style={{color:DEPT.project.c}}>📥</span><h3 className="text-slate-200 font-semibold">ลูกค้าที่ฝ่ายขายส่งมา — สร้าง Project Stock</h3>
-            <span className="text-[11px] text-slate-500">({inbox.length} ราย)</span>
-          </div>
-          <div className="p-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {inbox.map(c => (
-              <div key={c.id} className="rounded-lg bg-slate-800/50 border border-slate-700/50 p-3 space-y-2">
-                <div className="text-[13px] text-slate-200 font-medium">{c.name}</div>
-                <div className="flex flex-wrap gap-1"><Pill color={c.customer_type==='ราชการ'?'#8b5cf6':c.customer_type==='รัฐวิสาหกิจ'?'#f59e0b':'#6366f1'}>{c.customer_type}</Pill><Pill color={c.work_type==='Supply'?'#64748b':'#10b981'}>{c.work_type}</Pill></div>
-                <div className="text-[11px] text-slate-500">{c.scope||'—'} · {c.location||'—'} {c.est_price>0?'· '+bahtShort(c.est_price):''}</div>
-                {canEdit && <button onClick={()=>onCreateStock(c.id)} className="w-full inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-md px-3 py-1.5" style={{background:DEPT.project.c,color:'#0b0f17'}}>{Icon.plus} สร้าง Project Stock No.</button>}
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
-      <MaterialMaster materials={state.materials} bom={state.bom} canEdit={canEdit} onAdd={onAddMaterial}/>
-      {!project ? <Card className="p-8 text-center text-slate-500">เลือก Project Stock จากแถบด้านบน หรือสร้างใหม่จากลูกค้าที่ส่งมา เพื่อจัดการ Budget &amp; BOM</Card>
-        : <ProjectBom state={state} project={project} canEdit={canEdit} onAddBom={onAddBom} onIssuePR={onIssuePR} onSendPR={onSendPR} onAssignStockNo={onAssignStockNo}/>}
-    </div>
-  );
-}
-function MaterialMaster({materials, bom, canEdit, onAdd}){
-  const [open,setOpen]=useState(false);
-  const [f,setF]=useState({code:'',name:'',category:'LBS',unit:'ชุด',default_cost:0});
-  const totalQty = mid => bom.filter(b=>b.material_id===mid).reduce((s,b)=>s+Number(b.quantity),0); // รวมข้ามโครงการ
-  return (
-    <Card className="overflow-hidden">
-      <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between">
-        <h3 className="text-slate-200 font-semibold flex items-center gap-2">{Icon.box} Material List (รายการวัสดุกลาง)</h3>
-        {canEdit && <button onClick={()=>setOpen(o=>!o)} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:'#f59e0b22',color:'#f59e0b'}}>{Icon.plus} เพิ่มวัสดุ</button>}
-      </div>
-      {open && canEdit && (
-        <div className="px-5 py-4 bg-slate-800/30 border-b border-slate-800 grid grid-cols-2 md:grid-cols-6 gap-3 items-end">
-          <div><Lbl>รหัส</Lbl><Inp value={f.code} onChange={v=>setF({...f,code:v})}/></div>
-          <div className="col-span-2"><Lbl>ชื่อวัสดุ</Lbl><Inp value={f.name} onChange={v=>setF({...f,name:v})}/></div>
-          <div><Lbl>ประเภท</Lbl><select value={f.category} onChange={e=>setF({...f,category:e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 px-2 py-1.5"><option>LBS</option><option>Accessory</option></select></div>
-          <div><Lbl>หน่วย</Lbl><Inp value={f.unit} onChange={v=>setF({...f,unit:v})}/></div>
-          <div><Lbl>ราคา/หน่วย</Lbl><Inp type="number" value={f.default_cost} onChange={v=>setF({...f,default_cost:Number(v)})}/></div>
-          <div className="col-span-2 md:col-span-6 flex justify-end gap-2">
-            <button onClick={()=>setOpen(false)} className="text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300">ยกเลิก</button>
-            <button onClick={()=>{ if(!f.code||!f.name)return; onAdd({...f}); setF({code:'',name:'',category:'LBS',unit:'ชุด',default_cost:0}); setOpen(false); }} className="text-xs px-3 py-1.5 rounded-lg font-medium" style={{background:'#f59e0b',color:'#0b0f17'}}>บันทึก</button>
-          </div>
-        </div>
-      )}
-      <table className="w-full text-sm">
-        <thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-800">
-          <th className="px-5 py-2.5 font-medium">รหัส</th><th className="px-3 py-2.5 font-medium">ชื่อวัสดุ</th><th className="px-3 py-2.5 font-medium">ประเภท</th>
-          <th className="px-3 py-2.5 font-medium text-right">ราคา/หน่วย</th><th className="px-3 py-2.5 font-medium text-right">ยอดใช้รวมทุกโครงการ</th>
-        </tr></thead>
-        <tbody>
-          {materials.map(m => (
-            <tr key={m.id} className="border-b border-slate-800/60">
-              <td className="px-5 py-3 mono text-slate-300">{m.code}</td><td className="px-3 py-3 text-slate-200">{m.name}</td>
-              <td className="px-3 py-3"><Pill color={m.category==='LBS'?'#f59e0b':'#64748b'}>{m.category}</Pill></td>
-              <td className="px-3 py-3 text-right mono text-slate-400">{baht(m.default_cost)}</td>
-              <td className="px-3 py-3 text-right mono font-semibold" style={{color:'#f59e0b'}}>{totalQty(m.id)} {m.unit}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </Card>
-  );
-}
-function ProjectBom({state, project, canEdit, onAddBom, onIssuePR, onSendPR, onAssignStockNo}){
-  const items = state.bom.filter(b=>b.project_id===project.id);
-  const matValue = items.reduce((s,b)=>s+Number(b.quantity)*Number(b.unit_cost||0),0);
-  const lbsQty = items.filter(b=>b.category==='LBS').reduce((s,b)=>s+Number(b.quantity),0);
-  const prIssuedCount = items.filter(b=>b.pr_status==='PR Issued').length;   // รอ "ส่งจัดซื้อ"
-  const [form, setForm] = useState({ material_id:'', item_name:'', category:'LBS', quantity:1, unit:'ชุด', unit_cost:0 });
-  const [open, setOpen] = useState(false);
-  const pickMaterial = id => { const m=state.materials.find(x=>x.id===Number(id)); if(m) setForm(f=>({...f, material_id:m.id, item_name:m.name, category:m.category, unit:m.unit, unit_cost:m.default_cost})); else setForm(f=>({...f,material_id:''})); };
-
-  return (
-    <div className="space-y-4">
-      {canEdit && (!project.project_stock_no || !project.job_no) && (
-        <div className="flex items-center justify-between gap-3 rounded-lg p-3 border" style={{background:'#f59e0b14',borderColor:'#f59e0b55'}}>
-          <div className="text-[13px]" style={{color:'#f59e0b'}}>📐 โครงการนี้ยังไม่มี <b>{!project.project_stock_no?'Project Stock No.':'Job No.'}</b> — ออกเลขเพื่อเริ่มงานฝ่ายโครงการ</div>
-          <button onClick={()=>onAssignStockNo(project.id)} className="text-xs font-medium rounded-md px-3 py-1.5 shrink-0" style={{background:'#f59e0b',color:'#0b0f17'}}>ออก {!project.project_stock_no?'Stock No. + Job No.':'Job No.'}</button>
-        </div>
-      )}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Card className="p-5 lg:col-span-2">
-          <h3 className="text-slate-200 font-semibold mb-4 flex items-center gap-2">{Icon.layers} Project Budget &amp; Flow</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <Field label="งบประมาณรวม" value={baht(project.total_budget)} color="#6366f1"/><Field label="กำไร (Margin)" value={project.margin+'%'} color="#10b981"/>
-            <Field label="กำไรเป็นเงิน" value={baht(project.total_budget*project.margin/100)} color="#8b5cf6"/><Field label="กระแสเงินสด" value={project.cash_flow_status} color={project.cash_flow_status==='ปกติ'?'#10b981':'#f59e0b'}/>
-          </div>
-          <div className="mt-4 pt-4 border-t border-slate-800 grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <Field label="Project Stock No." value={project.project_stock_no} mono/><Field label="Job No." value={project.job_no||'— ยังไม่ออก —'} mono/>
-            <Field label="กำหนดส่งมอบ" value={project.delivery_date||'—'} mono/><Field label="มูลค่าวัสดุ BOM" value={baht(matValue)} color="#f59e0b"/>
-          </div>
-        </Card>
-        <Card className="p-5">
-          <h3 className="text-slate-200 font-semibold mb-3">สรุปปริมาณ LBS</h3>
-          <div className="text-center py-3"><div className="text-5xl font-bold" style={{color:'#f59e0b'}}>{lbsQty}</div><div className="text-xs text-slate-500 mt-1">ชุด LBS ในโครงการนี้</div></div>
-          <div className="text-[11px] text-slate-500 mt-2 leading-relaxed border-t border-slate-800 pt-3">ยอดรวมข้ามโครงการต่อรุ่นดูได้ที่ตาราง <span className="text-slate-300">Material List</span> ด้านบน</div>
-        </Card>
-      </div>
-
-      <Card className="overflow-hidden">
-        <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between">
-          <h3 className="text-slate-200 font-semibold">BOM — LBS &amp; Accessory · {project.project_stock_no||'(ยังไม่ออก Stock No.)'}</h3>
-          <div className="flex items-center gap-2">
-            {canEdit && prIssuedCount>0 && <button onClick={()=>onSendPR(project.id)} className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-1.5" style={{background:'#10b981',color:'#0b0f17'}}>{Icon.send} ส่ง PR ให้จัดซื้อ ({prIssuedCount})</button>}
-            {canEdit && <button onClick={()=>setOpen(o=>!o)} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:'#f59e0b22',color:'#f59e0b'}}>{Icon.plus} เพิ่มรายการ</button>}
-          </div>
-        </div>
-        {open && canEdit && (
-          <div className="px-5 py-4 bg-slate-800/30 border-b border-slate-800 grid grid-cols-2 md:grid-cols-6 gap-3 items-end">
-            <div className="col-span-2"><Lbl>เลือกจาก Material List</Lbl>
-              <select value={form.material_id} onChange={e=>pickMaterial(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 px-2 py-1.5">
-                <option value="">— กำหนดเอง —</option>{state.materials.map(m=><option key={m.id} value={m.id}>{m.code} · {m.name}</option>)}
-              </select></div>
-            <div><Lbl>ชื่อรายการ</Lbl><Inp value={form.item_name} onChange={v=>setForm({...form,item_name:v})}/></div>
-            <div><Lbl>จำนวน</Lbl><Inp type="number" value={form.quantity} onChange={v=>setForm({...form,quantity:Number(v)})}/></div>
-            <div><Lbl>หน่วย</Lbl><Inp value={form.unit} onChange={v=>setForm({...form,unit:v})}/></div>
-            <div><Lbl>ราคา/หน่วย</Lbl><Inp type="number" value={form.unit_cost} onChange={v=>setForm({...form,unit_cost:Number(v)})}/></div>
-            <div className="col-span-2 md:col-span-6 flex justify-end gap-2">
-              <button onClick={()=>setOpen(false)} className="text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300">ยกเลิก</button>
-              <button onClick={()=>{ if(!form.item_name)return; onAddBom({project_id:project.id, material_id:form.material_id||null, item_name:form.item_name, category:form.category, quantity:form.quantity, unit:form.unit, unit_cost:form.unit_cost, pr_status:'Draft', po_status:'Awaiting PO'}); setForm({material_id:'',item_name:'',category:'LBS',quantity:1,unit:'ชุด',unit_cost:0}); setOpen(false); }} className="text-xs px-3 py-1.5 rounded-lg font-medium" style={{background:'#f59e0b',color:'#0b0f17'}}>บันทึก</button>
-            </div>
-          </div>
-        )}
-        <table className="w-full text-sm">
-          <thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-800">
-            <th className="px-5 py-2.5 font-medium">รายการ</th><th className="px-3 py-2.5 font-medium">ประเภท</th><th className="px-3 py-2.5 font-medium text-right">จำนวน</th>
-            <th className="px-3 py-2.5 font-medium text-right">ราคา/หน่วย</th><th className="px-3 py-2.5 font-medium text-right">รวม</th>
-            <th className="px-3 py-2.5 font-medium">PR</th><th className="px-3 py-2.5 font-medium">PO</th><th className="px-3 py-2.5 font-medium text-right">จัดการ</th>
-          </tr></thead>
-          <tbody>
-            {items.length===0 && <tr><td colSpan="8" className="px-5 py-8 text-center text-slate-500">ยังไม่มีรายการ BOM</td></tr>}
-            {items.map(b => (
-              <tr key={b.id} className="border-b border-slate-800/60">
-                <td className="px-5 py-3 text-slate-200">{b.item_name}</td><td className="px-3 py-3"><Pill color={b.category==='LBS'?'#f59e0b':'#64748b'}>{b.category}</Pill></td>
-                <td className="px-3 py-3 text-right text-slate-300 mono">{b.quantity} {b.unit}</td><td className="px-3 py-3 text-right text-slate-400 mono">{baht(b.unit_cost)}</td>
-                <td className="px-3 py-3 text-right text-slate-200 mono">{baht(b.quantity*b.unit_cost)}</td>
-                <td className="px-3 py-3"><Pill color={prColor(b.pr_status)}>{b.pr_status}</Pill></td><td className="px-3 py-3"><Pill color={poColor(b.po_status)}>{b.po_status}</Pill></td>
-                <td className="px-3 py-3 text-right">{canEdit && b.pr_status==='Draft' ? <button onClick={()=>onIssuePR(b.id)} className="inline-flex items-center gap-1 text-xs font-medium rounded-md px-2.5 py-1" style={{background:'#f59e0b22',color:'#f59e0b'}}>{Icon.send} ออก PR</button> : <span className="text-[11px] text-slate-500">{b.pr_status!=='Draft'?'ส่งแล้ว':''}</span>}</td>
-              </tr>
-            ))}
-          </tbody>
-          {items.length>0 && <tfoot><tr className="border-t border-slate-700"><td colSpan="4" className="px-5 py-3 text-right text-slate-400 text-xs">มูลค่าวัสดุรวม</td><td className="px-3 py-3 text-right font-bold text-slate-100 mono">{baht(matValue)}</td><td colSpan="3"/></tr></tfoot>}
-        </table>
-      </Card>
-      {!canEdit && <p className="text-[11px] text-slate-500">ดูอย่างเดียว — การจัดการ BOM/วัสดุ/ออก PR สงวนให้ฝ่ายโครงการ และ Developer</p>}
-    </div>
-  );
-}
-
-/* ============================ SALES DEPARTMENT (จัดการลูกค้า) ============================ */
-const SALES_BLANK = { name:'', customer_type:'ราชการ', work_type:'Supply', contact:'', location:'', scope:'', desired_date:'', est_price:0 };
-function SalesPipeline({state, role, onAddCustomer, onUpdateCustomer, onForwardCustomer, onTask}){
-  const cols = ['Interested','Reserved','Ordered'];
+/* ============================ SALES DEPARTMENT ============================ */
+const SALES_BLANK = { name:'', customer_type:'ราชการ', work_type:'Supply', contact:'', lbs_qty:1, desired_date:'', location:'', scope:'' };
+function SalesPipeline({state, role, onAddCustomer, onUpdateCustomer, onCreateSR, onUpdateSR, onTask}){
   const canEdit = role==='developer' || role==='sales';
   const [open,setOpen]=useState(false); const [f,setF]=useState(SALES_BLANK);
-  const hasStock = cid => state.projects.some(p=>p.customer_id===cid);
-  const salesTasks = cid => state.tasks.filter(t=>t.customer_id===cid && t.department==='sales').sort((a,b)=>a.sort_order-b.sort_order);
+  const [sel,setSel]=useState([]);                 // ลูกค้าที่เลือกเพื่อรวบรวม
+  const srOf = id => state.srs.find(s=>s.id===id);
+  const toggle = id => setSel(s => s.includes(id) ? s.filter(x=>x!==id) : [...s,id]);
+  const submitSR = () => { if(!sel.length) return; onCreateSR(sel); setSel([]); };
   return (
     <div className="space-y-4">
-      {canEdit && (open ? (
+      {/* แถบรวบรวม SR */}
+      {canEdit && (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="text-[11px] text-slate-500">เลือกลูกค้า (ติ๊ก) แล้วรวบรวมเป็น Sales Requisition เพื่อส่งฝ่ายโครงการ — 1 SR รวมได้หลายลูกค้า</div>
+          <div className="flex items-center gap-2">
+            {sel.length>0 && <span className="text-[11px] text-slate-400">เลือกแล้ว {sel.length} ราย</span>}
+            <button onClick={submitSR} disabled={!sel.length} className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-1.5" style={sel.length?{background:DEPT.sales.c,color:'#0b0f17'}:{background:'#1e293b',color:'#475569',cursor:'not-allowed'}}>{Icon.send} รวบรวมส่งฝ่ายโครงการ</button>
+            <button onClick={()=>setOpen(o=>!o)} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:DEPT.sales.c+'22',color:DEPT.sales.c}}>{Icon.plus} เพิ่มลูกค้า</button>
+          </div>
+        </div>
+      )}
+      {canEdit && open && (
         <Card className="p-4">
           <h3 className="text-slate-200 font-semibold mb-3 flex items-center gap-2">{Icon.plus} เพิ่มลูกค้าใหม่</h3>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <div className="md:col-span-2"><Lbl>ชื่อลูกค้า</Lbl><Inp value={f.name} onChange={v=>setF({...f,name:v})}/></div>
-            <div><Lbl>ประเภทลูกค้า</Lbl><select value={f.customer_type} onChange={e=>setF({...f,customer_type:e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 px-2 py-1.5">{CUSTOMER_TYPE.map(t=><option key={t}>{t}</option>)}</select></div>
-            <div><Lbl>ประเภทงาน</Lbl><select value={f.work_type} onChange={e=>setF({...f,work_type:e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 px-2 py-1.5">{WORK_TYPE.map(t=><option key={t}>{t}</option>)}</select></div>
+            <div><Lbl>ประเภทลูกค้า</Lbl><Sel value={f.customer_type} onChange={v=>setF({...f,customer_type:v})} options={CUSTOMER_TYPE}/></div>
+            <div><Lbl>ประเภทงาน</Lbl><Sel value={f.work_type} onChange={v=>setF({...f,work_type:v})} options={WORK_TYPE}/></div>
             <div className="md:col-span-2"><Lbl>ผู้ติดต่อ</Lbl><Inp value={f.contact} onChange={v=>setF({...f,contact:v})}/></div>
-            <div className="md:col-span-2"><Lbl>สถานที่</Lbl><Inp value={f.location} onChange={v=>setF({...f,location:v})}/></div>
-            <div className="md:col-span-2"><Lbl>ขอบเขตงาน (Scope)</Lbl><Inp value={f.scope} onChange={v=>setF({...f,scope:v})}/></div>
-            <div><Lbl>วันที่ต้องการ</Lbl><Inp type="date" value={f.desired_date} onChange={v=>setF({...f,desired_date:v})}/></div>
-            <div><Lbl>ราคาประเมิน</Lbl><Inp type="number" value={f.est_price} onChange={v=>setF({...f,est_price:Number(v)})}/></div>
+            <div><Lbl>จำนวน LBS ที่ต้องการ</Lbl><Inp type="number" value={f.lbs_qty} onChange={v=>setF({...f,lbs_qty:num(v)})}/></div>
+            <div><Lbl>วันที่ต้องการสินค้า</Lbl><Inp type="date" value={f.desired_date} onChange={v=>setF({...f,desired_date:v})}/></div>
+            <div className="md:col-span-2"><Lbl>สถานที่ติดตั้ง</Lbl><Inp value={f.location} onChange={v=>setF({...f,location:v})}/></div>
+            <div className="md:col-span-2"><Lbl>หมายเหตุ / ขอบเขตงาน (Scope)</Lbl><Inp value={f.scope} onChange={v=>setF({...f,scope:v})}/></div>
           </div>
           <div className="flex justify-end gap-2 mt-3">
             <button onClick={()=>{setOpen(false);setF(SALES_BLANK);}} className="text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300">ยกเลิก</button>
             <button onClick={()=>{ if(!f.name.trim())return; onAddCustomer({...f, name:f.name.trim(), desired_date:f.desired_date||null}); setF(SALES_BLANK); setOpen(false); }} className="text-xs px-3 py-1.5 rounded-lg font-medium" style={{background:DEPT.sales.c,color:'#0b0f17'}}>บันทึกลูกค้า</button>
           </div>
         </Card>
-      ) : <div className="flex justify-end"><button onClick={()=>setOpen(true)} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:DEPT.sales.c+'22',color:DEPT.sales.c}}>{Icon.plus} เพิ่มลูกค้า</button></div>)}
+      )}
 
+      {/* ลูกค้า แยกตามประเภท */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {cols.map(st => { const list=(state.customers||[]).filter(c=>c.sale_status===st); return (
-          <div key={st} className="rounded-xl border border-slate-800 bg-slate-900/50">
-            <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between" style={{borderTop:'3px solid '+DEPT.sales.c, borderTopLeftRadius:12,borderTopRightRadius:12}}><span className="text-sm font-semibold text-slate-200">{SALE_STATUS[st]}</span><span className="text-[11px] text-slate-500">{list.length}</span></div>
+        {CUSTOMER_TYPE.map(ct => { const list=(state.customers||[]).filter(c=>c.customer_type===ct); return (
+          <div key={ct} className="rounded-xl border border-slate-800 bg-slate-900/50">
+            <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between" style={{borderTop:'3px solid '+ctypeColor(ct), borderTopLeftRadius:12,borderTopRightRadius:12}}><span className="text-sm font-semibold text-slate-200">{ct}</span><span className="text-[11px] text-slate-500">{list.length}</span></div>
             <div className="p-3 space-y-2.5 min-h-[120px]">
-              {list.map(c => { const ts=salesTasks(c.id); const done=ts.filter(t=>t.status==='Completed').length; const allDone=ts.length>0&&done===ts.length; const canFwd=canEdit&&!c.forwarded&&c.sale_status!=='Interested'&&allDone; return (
-                <div key={c.id} className="rounded-lg bg-slate-800/50 border border-slate-700/50 p-3 space-y-2">
-                  <div className="text-[13px] text-slate-200 font-medium">{c.name}</div>
-                  <div className="flex flex-wrap gap-1"><Pill color={c.customer_type==='ราชการ'?'#8b5cf6':c.customer_type==='รัฐวิสาหกิจ'?'#f59e0b':'#6366f1'}>{c.customer_type}</Pill><Pill color={c.work_type==='Supply'?'#64748b':'#10b981'}>{c.work_type}</Pill></div>
-                  <div className="text-[11px] text-slate-500 leading-relaxed">{c.location||'—'} · {c.contact||'—'}<br/>{c.scope||''} {c.est_price>0?'· '+bahtShort(c.est_price):''}</div>
-                  <div className="border-t border-slate-700/50 pt-2">
-                    <div className="text-[10px] text-slate-500 mb-1">งานฝ่ายขาย {done}/{ts.length}</div>
-                    <div className="space-y-1">{ts.map(t=>(
-                      <div key={t.id} className="flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{background:taskColor(t.status)}}/>
-                        <span className="flex-1 text-[11px] text-slate-300 truncate">{t.task_title}</span>
-                        {canEdit ? <select value={t.status} onChange={e=>onTask(t.id,e.target.value)} className="text-[10px] rounded px-1 py-0.5 border bg-slate-900" style={{borderColor:taskColor(t.status)+'66',color:taskColor(t.status)}}>{TASK_STATUS.map(s=><option key={s} value={s} className="bg-slate-800 text-slate-100">{TASK_TH[s]}</option>)}</select> : <span className="text-[10px]" style={{color:taskColor(t.status)}}>{TASK_TH[t.status]}</span>}
-                      </div>
-                    ))}</div>
+              {list.map(c => { const sr=srOf(c.sr_id); const selected=sel.includes(c.id); return (
+                <div key={c.id} className="rounded-lg border p-3 space-y-2" style={selected?{borderColor:DEPT.sales.c,background:DEPT.sales.c+'12'}:{borderColor:'#33415580',background:'#1e293b80'}}>
+                  <div className="flex items-start gap-2">
+                    {canEdit && !c.sr_id && <input type="checkbox" checked={selected} onChange={()=>toggle(c.id)} className="mt-1 accent-indigo-500"/>}
+                    <div className="flex-1"><div className="text-[13px] text-slate-200 font-medium">{c.name}</div>
+                      <div className="flex flex-wrap gap-1 mt-1"><Pill color={c.work_type==='Supply'?'#64748b':'#10b981'}>{c.work_type}</Pill><Pill color="#f59e0b">LBS {c.lbs_qty}</Pill></div>
+                    </div>
                   </div>
-                  <div className="flex items-center justify-between pt-1">
-                    {canEdit ? <select value={c.sale_status} onChange={e=>onUpdateCustomer(c.id,{sale_status:e.target.value})} className="text-[11px] rounded-md px-2 py-1 border bg-slate-900 text-slate-200 border-slate-700">{cols.map(s=><option key={s} value={s} className="bg-slate-800">{SALE_STATUS[s]}</option>)}</select> : <Pill color={DEPT.sales.c}>{SALE_STATUS[c.sale_status]}</Pill>}
-                    {c.forwarded
-                      ? <span className="text-[10px] font-medium" style={{color:hasStock(c.id)?'#10b981':'#f59e0b'}}>{hasStock(c.id)?'✓ มี Stock แล้ว':'✓ ส่งแล้ว · รอสร้าง Stock'}</span>
-                      : <button onClick={()=>onForwardCustomer(c.id)} disabled={!canFwd} title={canFwd?'':'ต้องทำงานฝ่ายขายครบ + สถานะ ≥ สั่งจอง'} className="inline-flex items-center gap-1 text-[11px] font-semibold rounded-md px-2.5 py-1" style={canFwd?{background:DEPT.project.c,color:'#0b0f17'}:{background:'#1e293b',color:'#475569',cursor:'not-allowed'}}>{Icon.send} ส่งฝ่ายโครงการ</button>}
+                  <div className="text-[11px] text-slate-500 leading-relaxed">{c.location||'—'} · {c.contact||'—'}<br/>{c.scope||''} {c.desired_date?'· ต้องการ '+c.desired_date:''}</div>
+                  <div className="pt-1 border-t border-slate-700/50">
+                    {sr ? <span className="text-[10px] font-medium" style={{color:sr.stock_id?'#10b981':'#f59e0b'}}>{sr.stock_id?'✓ สร้าง Stock แล้ว · ':'✓ ส่งแล้ว · รอสร้าง Stock · '}{sr.sr_no}</span>
+                      : <span className="text-[10px] text-slate-500">ยังไม่ได้รวบรวมส่งฝ่ายโครงการ</span>}
                   </div>
                 </div>
               );})}
@@ -869,68 +729,367 @@ function SalesPipeline({state, role, onAddCustomer, onUpdateCustomer, onForwardC
           </div>
         );})}
       </div>
-    </div>
-  );
-}
 
-/* ============================ PURCHASING DEPARTMENT ============================ */
-function Procurement({state, role, onUpdateBom, onOpenPO}){
-  const rows = state.bom.filter(b=>b.pr_status!=='Draft');
-  const pmap = Object.fromEntries(state.projects.map(p=>[p.id,p]));
-  const canEdit = role==='developer' || role==='purchasing';
-  const poByProject = {}; state.pos.forEach(o=>{ poByProject[o.project_id]=(poByProject[o.project_id]||0)+1; });
-  return (
-    <div className="space-y-4">
+      {/* Sales Requisition + ติดตาม PO/สัญญา */}
       <Card className="overflow-hidden">
-        <div className="px-5 py-3.5 border-b border-slate-800"><h3 className="text-slate-200 font-semibold">ติดตาม PR / PO (ฝ่ายจัดซื้อ)</h3></div>
+        <div className="px-5 py-3.5 border-b border-slate-800 flex items-center gap-2"><span style={{color:DEPT.sales.c}}>{Icon.doc}</span><h3 className="text-slate-200 font-semibold">Sales Requisition — ติดตาม PO & สัญญาซื้อขาย</h3></div>
         <table className="w-full text-sm">
           <thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-800">
-            <th className="px-5 py-2.5 font-medium">โครงการ</th><th className="px-3 py-2.5 font-medium">รายการ</th><th className="px-3 py-2.5 font-medium text-right">จำนวน</th>
-            <th className="px-3 py-2.5 font-medium">PR</th><th className="px-3 py-2.5 font-medium">สถานะ PO</th><th className="px-3 py-2.5 font-medium">PO ในโครงการ</th>
+            <th className="px-5 py-2.5 font-medium">SR No.</th><th className="px-3 py-2.5 font-medium">ลูกค้าในใบ</th><th className="px-3 py-2.5 font-medium text-right">LBS รวม</th>
+            <th className="px-3 py-2.5 font-medium">เลขที่ PO ลูกค้า</th><th className="px-3 py-2.5 font-medium">สถานะสัญญา</th><th className="px-3 py-2.5 font-medium">Stock</th>
           </tr></thead>
           <tbody>
-            {rows.length===0 && <tr><td colSpan="6" className="px-5 py-8 text-center text-slate-500">ยังไม่มี PR ส่งเข้ามา</td></tr>}
-            {rows.map(b => (
-              <tr key={b.id} className="border-b border-slate-800/60">
-                <td className="px-5 py-3"><div className="text-slate-200">{pmap[b.project_id]?.name}</div><div className="text-[11px] text-slate-500 mono">{pmap[b.project_id]?.project_stock_no}</div></td>
-                <td className="px-3 py-3 text-slate-300">{b.item_name} <span className="text-slate-500 text-xs">· {b.category}</span></td>
-                <td className="px-3 py-3 text-right text-slate-300 mono">{b.quantity} {b.unit}</td>
-                <td className="px-3 py-3"><Pill color={prColor(b.pr_status)}>{b.pr_status}</Pill></td>
-                <td className="px-3 py-3">{canEdit ? <select value={b.po_status} onChange={e=>onUpdateBom(b.id,{po_status:e.target.value})} className="text-xs rounded-md px-2 py-1.5 border bg-slate-900" style={{borderColor:poColor(b.po_status)+'66',color:poColor(b.po_status)}}><option className="bg-slate-800 text-slate-100">Awaiting PO</option><option className="bg-slate-800 text-slate-100">PO Received</option><option className="bg-slate-800 text-slate-100">Delivered</option></select> : <Pill color={poColor(b.po_status)}>{b.po_status}</Pill>}</td>
-                <td className="px-3 py-3">{poByProject[b.project_id] ? <button onClick={()=>onOpenPO(b.project_id)} className="inline-flex items-center gap-1 text-xs font-medium rounded-md px-2 py-1" style={{background:'#6366f122',color:'#818cf8'}}>{poByProject[b.project_id]} PO →</button> : <span className="text-slate-600 text-xs">—</span>}</td>
+            {state.srs.length===0 && <tr><td colSpan="6" className="px-5 py-8 text-center text-slate-500">ยังไม่มี Sales Requisition</td></tr>}
+            {state.srs.map(sr => { const custs=(state.customers||[]).filter(c=>c.sr_id===sr.id); const lbs=custs.reduce((s,c)=>s+num(c.lbs_qty),0); return (
+              <tr key={sr.id} className="border-b border-slate-800/60 align-top">
+                <td className="px-5 py-3 mono text-slate-200">{sr.sr_no}<div className="text-[10px] text-slate-500">{sr.note}</div></td>
+                <td className="px-3 py-3 text-slate-300 text-[12px]">{custs.map(c=>c.name).join(', ')||'—'}</td>
+                <td className="px-3 py-3 text-right mono font-semibold" style={{color:'#f59e0b'}}>{lbs}</td>
+                <td className="px-3 py-3 w-40">{canEdit ? <Inp value={sr.cust_po_no||''} onChange={v=>onUpdateSR(sr.id,{cust_po_no:v})} placeholder="—"/> : <span className="text-slate-300">{sr.cust_po_no||'—'}</span>}</td>
+                <td className="px-3 py-3 w-44">{canEdit ? <Sel value={sr.contract_status} onChange={v=>onUpdateSR(sr.id,{contract_status:v})} options={CONTRACT_STATUS}/> : <Pill color={sr.contract_status==='ทำสัญญาแล้ว'?'#10b981':'#f59e0b'}>{sr.contract_status}</Pill>}</td>
+                <td className="px-3 py-3">{sr.stock_id ? <Pill color="#10b981">{state.projects.find(p=>p.id===sr.stock_id)?.project_stock_no||'มีแล้ว'}</Pill> : <Pill color="#64748b">รอสร้าง</Pill>}</td>
               </tr>
-            ))}
+            );})}
           </tbody>
         </table>
-        {!canEdit && <div className="px-5 py-3 text-[11px] text-slate-500 border-t border-slate-800">อัปเดตสถานะ PO ได้เฉพาะฝ่ายจัดซื้อ และ Developer (จำลองสิทธิ์ RLS)</div>}
       </Card>
     </div>
   );
 }
 
-/* ============================ SERVICE DEPARTMENT ============================ */
-function FieldService({state, role, onTask, onAddTask}){
-  const ready = state.projects.filter(p => (p.current_phase==='service' || p.current_phase==='closed') && p.delivery_date);
-  const canEdit = role==='developer' || role==='service';
+/* ============================ PROJECT DEPARTMENT ============================ */
+const Field = ({label, value, color, mono}) => (
+  <div><div className="text-[11px] text-slate-500">{label}</div><div className={"text-lg font-semibold mt-0.5 "+(mono?'mono ':'')} style={color?{color}:{color:'#e2e8f0'}}>{value}</div></div>
+);
+function ProjectDept({state, project, role, onCreateStock, onAddBom, onUpdateBom, onDeleteBom, onSendBom, onUpdateProject}){
+  const canEdit = role==='developer' || role==='project';
+  const inbox = state.srs.filter(s=>!s.stock_id);              // SR รอสร้าง Stock
+  const [sel,setSel]=useState([]);
+  const toggle = id => setSel(s => s.includes(id) ? s.filter(x=>x!==id) : [...s,id]);
+  const create = () => { if(!sel.length) return; onCreateStock(sel); setSel([]); };
+  const srCusts = sr => (state.customers||[]).filter(c=>c.sr_id===sr.id);
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-      {ready.length===0 && <Empty msg="ยังไม่มีโครงการพร้อมส่งมอบ"/>}
-      {ready.map(p => {
-        const tasks = state.tasks.filter(t=>t.project_id===p.id && t.department==='service').sort((a,b)=>a.sort_order-b.sort_order);
-        const d = daysUntil(p.delivery_date);
+    <div className="space-y-4">
+      {/* Inbox: SR รอสร้าง Stock */}
+      {inbox.length>0 && (
+        <Card className="overflow-hidden" style={{borderColor:DEPT.project.c+'55'}}>
+          <div className="px-5 py-3 border-b border-slate-800 flex items-center justify-between flex-wrap gap-2" style={{background:DEPT.project.c+'12'}}>
+            <div className="flex items-center gap-2"><span style={{color:DEPT.project.c}}>📥</span><h3 className="text-slate-200 font-semibold">Sales Requisition ที่ฝ่ายขายส่งมา — เลือกหลายใบเพื่อสร้าง 1 Project Stock</h3><span className="text-[11px] text-slate-500">({inbox.length} ใบ)</span></div>
+            {canEdit && <button onClick={create} disabled={!sel.length} className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-1.5" style={sel.length?{background:DEPT.project.c,color:'#0b0f17'}:{background:'#1e293b',color:'#475569',cursor:'not-allowed'}}>{Icon.plus} สร้าง Project Stock ({sel.length})</button>}
+          </div>
+          <div className="p-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {inbox.map(sr => { const custs=srCusts(sr); const lbs=custs.reduce((s,c)=>s+num(c.lbs_qty),0); const selected=sel.includes(sr.id); const dd=custs.map(c=>c.desired_date).filter(Boolean).sort()[0]; return (
+              <div key={sr.id} className="rounded-lg border p-3 space-y-2" style={selected?{borderColor:DEPT.project.c,background:DEPT.project.c+'12'}:{borderColor:'#33415580',background:'#1e293b80'}}>
+                <div className="flex items-start gap-2">
+                  {canEdit && <input type="checkbox" checked={selected} onChange={()=>toggle(sr.id)} className="mt-1 accent-amber-500"/>}
+                  <div className="flex-1"><div className="text-[13px] text-slate-200 font-medium mono">{sr.sr_no}</div><div className="text-[11px] text-slate-500">{custs.length} ลูกค้า · {sr.contract_status}</div></div>
+                  <Pill color="#f59e0b">LBS {lbs}</Pill>
+                </div>
+                <div className="text-[11px] text-slate-400 leading-relaxed">{custs.map(c=>`${c.name} (${c.work_type}, ${c.location||'—'})`).join(' · ')}</div>
+                {dd && <div className="text-[10px] text-slate-500">เร็วสุดต้องการ {dd}</div>}
+              </div>
+            );})}
+          </div>
+        </Card>
+      )}
+      {!project ? <Card className="p-8 text-center text-slate-500">เลือก Project Stock จากแถบด้านบน หรือสร้างใหม่จาก SR ด้านบน เพื่อจัดการ Budget & BOM</Card>
+        : <ProjectBom state={state} project={project} canEdit={canEdit} onAddBom={onAddBom} onUpdateBom={onUpdateBom} onDeleteBom={onDeleteBom} onSendBom={onSendBom} onUpdateProject={onUpdateProject}/>}
+    </div>
+  );
+}
+const BOM_BLANK = { epicor_code:'', description:'', category:'LBS', due_date:'', ium:'EA', quantity:1, currency:'THB', unit_cost:0, fx_rate:36.5, project_phase:'Phase 1' };
+function ProjectBom({state, project, canEdit, onAddBom, onUpdateBom, onDeleteBom, onSendBom, onUpdateProject}){
+  const items = state.bom.filter(b=>b.project_id===project.id);
+  const matValue = items.reduce((s,b)=>s+lineTHB(b),0);
+  const reqLBS = requestedLBS(state, project.id);
+  const curLBS = bomLBS(state, project.id);
+  const lbsOK = curLBS===reqLBS;
+  const sent = project.bom_status==='Sent to Purchasing';
+  const [form, setForm] = useState(BOM_BLANK);
+  const [open, setOpen] = useState(false);
+  const custs = stockCustomers(state, project.id);
+  return (
+    <div className="space-y-4">
+      {/* Budget & Flow */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <Card className="p-5 lg:col-span-2">
+          <h3 className="text-slate-200 font-semibold mb-4 flex items-center gap-2">{Icon.layers} Project Budget & Flow</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div><Lbl>งบประมาณรวม (฿)</Lbl>{canEdit ? <Inp type="number" value={project.total_budget} onChange={v=>onUpdateProject(project.id,{total_budget:num(v)})}/> : <div className="text-lg font-semibold" style={{color:'#6366f1'}}>{baht(project.total_budget)}</div>}</div>
+            <div><Lbl>กำไร Margin (%)</Lbl>{canEdit ? <Inp type="number" value={project.margin} onChange={v=>onUpdateProject(project.id,{margin:num(v)})}/> : <div className="text-lg font-semibold" style={{color:'#10b981'}}>{project.margin}%</div>}</div>
+            <Field label="กำไรเป็นเงิน" value={baht(project.total_budget*project.margin/100)} color="#8b5cf6"/>
+            <div><Lbl>กระแสเงินสด</Lbl>{canEdit ? <Sel value={project.cash_flow_status} onChange={v=>onUpdateProject(project.id,{cash_flow_status:v})} options={['ปกติ','เฝ้าระวัง','วิกฤติ']}/> : <div className="text-lg font-semibold" style={{color:project.cash_flow_status==='ปกติ'?'#10b981':'#f59e0b'}}>{project.cash_flow_status}</div>}</div>
+          </div>
+          <div className="mt-4 pt-4 border-t border-slate-800 grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <Field label="Project Stock No." value={project.project_stock_no} mono/><Field label="Job No." value={project.job_no||'—'} mono/>
+            <Field label="BOM No." value={project.bom_no} mono/><Field label="มูลค่าวัสดุ BOM (฿)" value={baht(matValue)} color="#f59e0b"/>
+          </div>
+        </Card>
+        {/* LBS reconcile */}
+        <Card className="p-5" style={{borderColor:lbsOK?'#10b98155':'#f43f5e55'}}>
+          <h3 className="text-slate-200 font-semibold mb-3">ตรวจสอบจำนวน LBS</h3>
+          <div className="grid grid-cols-2 gap-3 text-center">
+            <div><div className="text-[11px] text-slate-500">ลูกค้าต้องการ</div><div className="text-3xl font-bold" style={{color:'#6366f1'}}>{reqLBS}</div></div>
+            <div><div className="text-[11px] text-slate-500">ใน BOM</div><div className="text-3xl font-bold" style={{color:'#f59e0b'}}>{curLBS}</div></div>
+          </div>
+          <div className="mt-3 text-center text-sm font-medium rounded-lg py-2" style={lbsOK?{background:'#10b98118',color:'#10b981'}:{background:'#f43f5e18',color:'#f43f5e'}}>
+            {lbsOK ? '✓ จำนวนตรงกัน' : (curLBS<reqLBS ? `⚠ ขาดอีก ${reqLBS-curLBS} ชุด` : `⚠ เกิน ${curLBS-reqLBS} ชุด`)}
+          </div>
+          <div className="text-[10px] text-slate-500 mt-2 leading-relaxed border-t border-slate-800 pt-2">ลูกค้าใน Stock: {custs.map(c=>c.name).join(', ')||'—'}</div>
+        </Card>
+      </div>
+
+      {/* BOM table */}
+      <Card className="overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between flex-wrap gap-2">
+          <h3 className="text-slate-200 font-semibold flex items-center gap-2">{Icon.box} Material List (BOM) · {project.bom_no} <Pill color={bomStatusColor(project.bom_status)}>{project.bom_status==='Sent to Purchasing'?'ส่งจัดซื้อแล้ว':'ร่าง'}</Pill></h3>
+          <div className="flex items-center gap-2">
+            {canEdit && !sent && items.length>0 && <button onClick={()=>onSendBom(project.id)} className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-1.5" style={{background:'#10b981',color:'#0b0f17'}}>{Icon.send} ส่ง BOM ให้จัดซื้อ</button>}
+            {canEdit && !sent && <button onClick={()=>setOpen(o=>!o)} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:'#f59e0b22',color:'#f59e0b'}}>{Icon.plus} เพิ่มรายการ</button>}
+          </div>
+        </div>
+        {open && canEdit && !sent && (
+          <div className="px-5 py-4 bg-slate-800/30 border-b border-slate-800 grid grid-cols-2 md:grid-cols-6 gap-3 items-end">
+            <div><Lbl>Epicor Code</Lbl><Inp value={form.epicor_code} onChange={v=>setForm({...form,epicor_code:v})}/></div>
+            <div className="col-span-2"><Lbl>Description</Lbl><Inp value={form.description} onChange={v=>setForm({...form,description:v})}/></div>
+            <div><Lbl>Category</Lbl><Sel value={form.category} onChange={v=>setForm({...form,category:v})} options={BOM_CAT}/></div>
+            <div><Lbl>Due Date</Lbl><Inp type="date" value={form.due_date} onChange={v=>setForm({...form,due_date:v})}/></div>
+            <div><Lbl>IUM</Lbl><Inp value={form.ium} onChange={v=>setForm({...form,ium:v})}/></div>
+            <div><Lbl>Qty</Lbl><Inp type="number" value={form.quantity} onChange={v=>setForm({...form,quantity:num(v)})}/></div>
+            <div><Lbl>Currency</Lbl><Sel value={form.currency} onChange={v=>setForm({...form,currency:v})} options={CURRENCY}/></div>
+            <div><Lbl>Cost/unit</Lbl><Inp type="number" value={form.unit_cost} onChange={v=>setForm({...form,unit_cost:num(v)})}/></div>
+            {form.currency==='USD' && <div><Lbl>FX (฿/USD)</Lbl><Inp type="number" value={form.fx_rate} onChange={v=>setForm({...form,fx_rate:num(v)})}/></div>}
+            <div><Lbl>Project Phase</Lbl><Sel value={form.project_phase} onChange={v=>setForm({...form,project_phase:v})} options={PROJECT_PHASES}/></div>
+            <div className="col-span-2 md:col-span-6 flex justify-end gap-2">
+              <button onClick={()=>setOpen(false)} className="text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300">ยกเลิก</button>
+              <button onClick={()=>{ if(!form.description)return; onAddBom({project_id:project.id, ...form, fx_rate:form.currency==='USD'?(num(form.fx_rate)||1):1, po_status:'Awaiting PO'}); setForm(BOM_BLANK); setOpen(false); }} className="text-xs px-3 py-1.5 rounded-lg font-medium" style={{background:'#f59e0b',color:'#0b0f17'}}>บันทึก</button>
+            </div>
+          </div>
+        )}
+        <div className="overflow-x-auto">
+        <table className="w-full text-sm whitespace-nowrap">
+          <thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-800">
+            <th className="px-4 py-2.5 font-medium">Epicor Code</th><th className="px-3 py-2.5 font-medium">Description</th><th className="px-3 py-2.5 font-medium">Cat</th>
+            <th className="px-3 py-2.5 font-medium">Due Date</th><th className="px-3 py-2.5 font-medium">IUM</th><th className="px-3 py-2.5 font-medium text-right">Qty</th>
+            <th className="px-3 py-2.5 font-medium text-right">Cost/unit</th><th className="px-3 py-2.5 font-medium text-right">Total (฿)</th>
+            <th className="px-3 py-2.5 font-medium">Phase</th><th className="px-3 py-2.5 font-medium">PO</th>{canEdit && !sent && <th className="px-3 py-2.5"/>}
+          </tr></thead>
+          <tbody>
+            {items.length===0 && <tr><td colSpan="11" className="px-5 py-8 text-center text-slate-500">ยังไม่มีรายการ BOM</td></tr>}
+            {items.map(b => (
+              <tr key={b.id} className="border-b border-slate-800/60">
+                <td className="px-4 py-3 mono text-slate-300">{b.epicor_code||'—'}</td>
+                <td className="px-3 py-3 text-slate-200">{b.description}</td>
+                <td className="px-3 py-3"><Pill color={b.category==='LBS'?'#f59e0b':'#64748b'}>{b.category}</Pill></td>
+                <td className="px-3 py-3 mono text-slate-400">{b.due_date||'—'}</td>
+                <td className="px-3 py-3 text-slate-400">{b.ium}</td>
+                <td className="px-3 py-3 text-right mono text-slate-300">{b.quantity}</td>
+                <td className="px-3 py-3 text-right mono text-slate-400">{b.currency==='USD'?'$':'฿'}{num(b.unit_cost).toLocaleString()}{b.currency==='USD'?<span className="text-[10px] text-slate-600"> @{b.fx_rate}</span>:''}</td>
+                <td className="px-3 py-3 text-right mono text-slate-200">{baht(lineTHB(b))}</td>
+                <td className="px-3 py-3 text-slate-400 text-[12px]">{b.project_phase}</td>
+                <td className="px-3 py-3"><Pill color={poColor(b.po_status)}>{b.po_status}</Pill></td>
+                {canEdit && !sent && <td className="px-3 py-3 text-right"><button onClick={()=>onDeleteBom(b.id)} className="text-slate-500 hover:text-rose-400">{Icon.trash}</button></td>}
+              </tr>
+            ))}
+          </tbody>
+          {items.length>0 && <tfoot><tr className="border-t border-slate-700"><td colSpan="7" className="px-4 py-3 text-right text-slate-400 text-xs">มูลค่าวัสดุรวม (฿)</td><td className="px-3 py-3 text-right font-bold text-slate-100 mono">{baht(matValue)}</td><td colSpan="3"/></tr></tfoot>}
+        </table>
+        </div>
+        {!canEdit && <p className="px-5 py-3 text-[11px] text-slate-500 border-t border-slate-800">ดูอย่างเดียว — การจัดการ BOM/ส่งจัดซื้อ สงวนให้ฝ่ายโครงการ และ Developer</p>}
+        {sent && canEdit && <p className="px-5 py-3 text-[11px] text-emerald-400/80 border-t border-slate-800">BOM นี้ส่งให้จัดซื้อแล้ว — แก้ไขรายการไม่ได้ (ฝ่ายจัดซื้อจะอัปเดตสถานะ PO กลับมา)</p>}
+      </Card>
+    </div>
+  );
+}
+
+/* ============================ PURCHASING DEPARTMENT ============================ */
+const PO_BLANK = { supplier:'', amount:0, expected_date:'', status:'ออกแล้ว' };
+function Procurement({state, role, onUpdateBom, onAddPO, onOpenPO}){
+  const canEdit = role==='developer' || role==='purchasing';
+  // เฉพาะ Stock ที่ฝ่ายโครงการส่ง BOM มาแล้ว
+  const sentProjects = state.projects.filter(p=>p.bom_status==='Sent to Purchasing');
+  const [poForm,setPoForm]=useState(PO_BLANK); const [poOpen,setPoOpen]=useState(null);
+  const poCount = pid => state.pos.filter(o=>o.project_id===pid).length;
+  return (
+    <div className="space-y-4">
+      {sentProjects.length===0 && <Empty msg="ยังไม่มี BOM ที่ฝ่ายโครงการส่งเข้ามา"/>}
+      {sentProjects.map(p => {
+        const items = state.bom.filter(b=>b.project_id===p.id);
+        const delivered = items.filter(b=>b.po_status==='Delivered').length;
         return (
-          <Card key={p.id} className="p-5">
-            <div className="flex items-start justify-between"><div><div className="text-slate-100 font-semibold">{p.name}</div><div className="text-[11px] text-slate-500 mono">{p.project_stock_no} · {p.job_no}</div></div>{d!==null && <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{background:d<=15?'#f43f5e':'#10b981',color:'#0b0f17'}}>ส่งใน {d} วัน</span>}</div>
-            <div className="mt-4 space-y-2">
-              {tasks.map(t => (
-                <div key={t.id} className="flex items-center gap-3 rounded-lg bg-slate-800/40 p-2.5"><span style={{color:taskColor(t.status)}}>{t.status==='Completed'?Icon.check:Icon.clock}</span><span className="flex-1 text-[13px] text-slate-200">{t.task_title}</span>{canEdit ? <select value={t.status} onChange={e=>onTask(t.id,e.target.value)} className="text-xs rounded-md px-2 py-1 border bg-slate-900" style={{borderColor:taskColor(t.status)+'66',color:taskColor(t.status)}}>{TASK_STATUS.map(s=><option key={s} value={s} className="bg-slate-800 text-slate-100">{TASK_TH[s]}</option>)}</select> : <Pill color={taskColor(t.status)}>{TASK_TH[t.status]}</Pill>}</div>
-              ))}
-              {canEdit && <AddTask dep="service" color={DEPT.service.c} onAdd={(title,detail)=>onAddTask(p.id,'service',title,detail)}/>}
+          <Card key={p.id} className="overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between flex-wrap gap-2">
+              <div><h3 className="text-slate-200 font-semibold flex items-center gap-2">{Icon.cart} {p.bom_no} <span className="text-[11px] text-slate-500 mono">{p.project_stock_no} · {p.name}</span></h3>
+                <div className="text-[11px] text-slate-500 mt-0.5">ของเข้าแล้ว {delivered}/{items.length} รายการ · กำหนดส่ง {p.delivery_date||'—'}</div></div>
+              <div className="flex items-center gap-2">
+                {poCount(p.id)>0 && <button onClick={()=>onOpenPO(p.id)} className="inline-flex items-center gap-1 text-xs font-medium rounded-md px-2.5 py-1.5" style={{background:'#6366f122',color:'#818cf8'}}>{poCount(p.id)} PO →</button>}
+                {canEdit && <button onClick={()=>{setPoOpen(poOpen===p.id?null:p.id);setPoForm(PO_BLANK);}} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:'#f43f5e22',color:'#f43f5e'}}>{Icon.plus} ออก PO</button>}
+              </div>
+            </div>
+            {poOpen===p.id && canEdit && (
+              <div className="px-5 py-4 bg-slate-800/30 border-b border-slate-800 grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
+                <div className="col-span-2"><Lbl>ผู้ขาย (Supplier)</Lbl><Inp value={poForm.supplier} onChange={v=>setPoForm({...poForm,supplier:v})}/></div>
+                <div><Lbl>มูลค่า (฿)</Lbl><Inp type="number" value={poForm.amount} onChange={v=>setPoForm({...poForm,amount:num(v)})}/></div>
+                <div><Lbl>กำหนดรับ</Lbl><Inp type="date" value={poForm.expected_date} onChange={v=>setPoForm({...poForm,expected_date:v})}/></div>
+                <div><Lbl>สถานะ</Lbl><Sel value={poForm.status} onChange={v=>setPoForm({...poForm,status:v})} options={['รอออก','ออกแล้ว','กำลังส่ง','รับครบ']}/></div>
+                <div className="col-span-2 md:col-span-5 flex justify-end gap-2">
+                  <button onClick={()=>setPoOpen(null)} className="text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300">ยกเลิก</button>
+                  <button onClick={()=>{ if(!poForm.supplier)return; onAddPO({project_id:p.id, ...poForm, expected_date:poForm.expected_date||null}); setPoForm(PO_BLANK); setPoOpen(null); }} className="text-xs px-3 py-1.5 rounded-lg font-medium" style={{background:'#f43f5e',color:'#0b0f17'}}>บันทึก PO</button>
+                </div>
+              </div>
+            )}
+            <div className="overflow-x-auto">
+            <table className="w-full text-sm whitespace-nowrap">
+              <thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-800">
+                <th className="px-5 py-2.5 font-medium">Epicor Code</th><th className="px-3 py-2.5 font-medium">Description</th><th className="px-3 py-2.5 font-medium text-right">Qty</th>
+                <th className="px-3 py-2.5 font-medium">Due Date</th><th className="px-3 py-2.5 font-medium">สถานะ PO (แจ้งกลับ Project)</th>
+              </tr></thead>
+              <tbody>
+                {items.map(b => (
+                  <tr key={b.id} className="border-b border-slate-800/60">
+                    <td className="px-5 py-3 mono text-slate-300">{b.epicor_code||'—'}</td>
+                    <td className="px-3 py-3 text-slate-200">{b.description} <span className="text-slate-500 text-xs">· {b.category}</span></td>
+                    <td className="px-3 py-3 text-right mono text-slate-300">{b.quantity} {b.ium}</td>
+                    <td className="px-3 py-3 mono text-slate-400">{b.due_date||'—'}</td>
+                    <td className="px-3 py-3">{canEdit ? <select value={b.po_status} onChange={e=>onUpdateBom(b.id,{po_status:e.target.value})} className="text-xs rounded-md px-2 py-1.5 border bg-slate-900" style={{borderColor:poColor(b.po_status)+'66',color:poColor(b.po_status)}}><option className="bg-slate-800 text-slate-100">Awaiting PO</option><option className="bg-slate-800 text-slate-100">PO Received</option><option className="bg-slate-800 text-slate-100">Delivered</option></select> : <Pill color={poColor(b.po_status)}>{b.po_status}</Pill>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
             </div>
           </Card>
         );
       })}
+      {!canEdit && sentProjects.length>0 && <p className="text-[11px] text-slate-500">อัปเดตสถานะ PO / ออก PO ได้เฉพาะฝ่ายจัดซื้อ และ Developer (จำลองสิทธิ์ RLS)</p>}
     </div>
+  );
+}
+
+/* ============================ SERVICE DEPARTMENT ============================ */
+function FieldService({state, role, onTask, onAddTask, onAddMember, onRemoveMember, onAddSchedule, onRemoveSchedule, onSignDO}){
+  const canEdit = role==='developer' || role==='service';
+  const ready = state.projects.filter(p => (p.current_phase==='service' || p.current_phase==='closed') && p.delivery_date);
+  return (
+    <div className="space-y-5">
+      {/* แผนส่งมอบ + งาน + ลงนาม DO */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {ready.length===0 && <Card className="lg:col-span-2 p-8 text-center text-slate-500">ยังไม่มีโครงการพร้อมส่งมอบ (รอฝ่ายโครงการแจ้งแผน)</Card>}
+        {ready.map(p => {
+          const tasks = state.tasks.filter(t=>t.project_id===p.id && t.department==='service').sort((a,b)=>a.sort_order-b.sort_order);
+          const d = daysUntil(p.delivery_date);
+          return (
+            <Card key={p.id} className="p-5">
+              <div className="flex items-start justify-between"><div><div className="text-slate-100 font-semibold">{p.name}</div><div className="text-[11px] text-slate-500 mono">{p.project_stock_no} · {p.job_no}</div></div>{d!==null && p.current_phase!=='closed' && <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{background:d<=15?'#f43f5e':'#10b981',color:'#0b0f17'}}>ส่งใน {d} วัน</span>}{p.current_phase==='closed' && <Pill color="#10b981">ปิดงานแล้ว</Pill>}</div>
+              <div className="mt-4 space-y-2">
+                {tasks.map(t => (
+                  <div key={t.id} className="flex items-center gap-3 rounded-lg bg-slate-800/40 p-2.5"><span style={{color:taskColor(t.status)}}>{t.status==='Completed'?Icon.check:Icon.clock}</span><span className="flex-1 text-[13px] text-slate-200">{t.task_title}</span>{canEdit ? <select value={t.status} onChange={e=>onTask(t.id,e.target.value)} className="text-xs rounded-md px-2 py-1 border bg-slate-900" style={{borderColor:taskColor(t.status)+'66',color:taskColor(t.status)}}>{TASK_STATUS.map(s=><option key={s} value={s} className="bg-slate-800 text-slate-100">{TASK_TH[s]}</option>)}</select> : <Pill color={taskColor(t.status)}>{TASK_TH[t.status]}</Pill>}</div>
+                ))}
+                {canEdit && <AddTask color={DEPT.service.c} onAdd={(title,detail)=>onAddTask(p.id,'service',title,detail)}/>}
+              </div>
+              {canEdit && (
+                <div className="mt-3 pt-3 border-t border-slate-800 flex items-center justify-between">
+                  <span className="text-[11px] text-slate-500">{p.do_signed?'✓ ลงนาม DO แล้ว':'ส่งมอบ/ติดตั้งเสร็จแล้วกดลงนาม DO'}</span>
+                  <button onClick={()=>onSignDO(p.id)} disabled={p.do_signed} className="text-xs font-semibold rounded-md px-3 py-1.5 inline-flex items-center gap-1.5" style={p.do_signed?{background:'#1e293b',color:'#475569'}:{background:DEPT.service.c,color:'#0b0f17'}}>{Icon.doc} ลงนาม DO</button>
+                </div>
+              )}
+            </Card>
+          );
+        })}
+      </div>
+      <ServiceTeam state={state} canEdit={canEdit} onAddMember={onAddMember} onRemoveMember={onRemoveMember} onAddSchedule={onAddSchedule} onRemoveSchedule={onRemoveSchedule}/>
+    </div>
+  );
+}
+const MEMBER_BLANK = { name:'', role:'Technician', phone:'' };
+function ServiceTeam({state, canEdit, onAddMember, onRemoveMember, onAddSchedule, onRemoveSchedule}){
+  const [ym,setYm]=useState(curYM());
+  const [mf,setMf]=useState(MEMBER_BLANK); const [mOpen,setMOpen]=useState(false);
+  const [sf,setSf]=useState({ member_id:'', project_id:'', start_date:'', end_date:'', note:'' }); const [sOpen,setSOpen]=useState(false);
+  const [y,m] = ym.split('-').map(Number);
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const days = Array.from({length:daysInMonth},(_,i)=>i+1);
+  const shiftMonth = delta => { const d=new Date(y, m-1+delta, 1); setYm(d.toISOString().slice(0,7)); };
+  const projColor = pid => { const idx=state.projects.findIndex(p=>p.id===pid); return ['#f59e0b','#6366f1','#10b981','#f43f5e','#8b5cf6','#38bdf8'][idx%6]; };
+  const projOf = pid => state.projects.find(p=>p.id===pid);
+  const cellOf = (memberId, day) => { const dayStr = `${ym}-${pad2(day)}`; return state.schedule.find(s => s.member_id===memberId && s.start_date<=dayStr && (s.end_date||s.start_date)>=dayStr); };
+  const monthSchedules = state.schedule.filter(s => (s.start_date||'').slice(0,7)===ym || (s.end_date||'').slice(0,7)===ym);
+  return (
+    <Card className="overflow-hidden">
+      <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between flex-wrap gap-2">
+        <h3 className="text-slate-200 font-semibold flex items-center gap-2">{Icon.users} ทีมงาน Service & ตารางคิวงานรายเดือน</h3>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
+            <button onClick={()=>shiftMonth(-1)} className="w-7 h-7 grid place-items-center rounded-md border border-slate-700 text-slate-300 hover:bg-slate-800">‹</button>
+            <span className="text-sm text-slate-200 font-medium w-28 text-center">{MONTHS_TH[m-1]} {y+543}</span>
+            <button onClick={()=>shiftMonth(1)} className="w-7 h-7 grid place-items-center rounded-md border border-slate-700 text-slate-300 hover:bg-slate-800">›</button>
+          </div>
+          {canEdit && <button onClick={()=>setSOpen(o=>!o)} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:DEPT.service.c+'22',color:DEPT.service.c}}>{Icon.cal} มอบหมายงาน</button>}
+          {canEdit && <button onClick={()=>setMOpen(o=>!o)} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:'#38bdf822',color:'#38bdf8'}}>{Icon.plus} เพิ่มสมาชิก</button>}
+        </div>
+      </div>
+      {mOpen && canEdit && (
+        <div className="px-5 py-4 bg-slate-800/30 border-b border-slate-800 grid grid-cols-2 md:grid-cols-4 gap-3 items-end">
+          <div className="col-span-2"><Lbl>ชื่อ-นามสกุล</Lbl><Inp value={mf.name} onChange={v=>setMf({...mf,name:v})}/></div>
+          <div><Lbl>ตำแหน่ง</Lbl><Sel value={mf.role} onChange={v=>setMf({...mf,role:v})} options={['Site Supervisor','Technician','Electrician','Helper']}/></div>
+          <div><Lbl>โทร</Lbl><Inp value={mf.phone} onChange={v=>setMf({...mf,phone:v})}/></div>
+          <div className="col-span-2 md:col-span-4 flex justify-end gap-2">
+            <button onClick={()=>setMOpen(false)} className="text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300">ยกเลิก</button>
+            <button onClick={()=>{ if(!mf.name.trim())return; onAddMember({...mf,name:mf.name.trim()}); setMf(MEMBER_BLANK); setMOpen(false); }} className="text-xs px-3 py-1.5 rounded-lg font-medium" style={{background:'#38bdf8',color:'#0b0f17'}}>บันทึก</button>
+          </div>
+        </div>
+      )}
+      {sOpen && canEdit && (
+        <div className="px-5 py-4 bg-slate-800/30 border-b border-slate-800 grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
+          <div><Lbl>สมาชิก</Lbl><select value={sf.member_id} onChange={e=>setSf({...sf,member_id:e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 px-2 py-1.5"><option value="">— เลือก —</option>{state.team.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></div>
+          <div><Lbl>โครงการ</Lbl><select value={sf.project_id} onChange={e=>setSf({...sf,project_id:e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 px-2 py-1.5"><option value="">— เลือก —</option>{state.projects.map(p=><option key={p.id} value={p.id}>{p.project_stock_no}</option>)}</select></div>
+          <div><Lbl>เริ่ม</Lbl><Inp type="date" value={sf.start_date} onChange={v=>setSf({...sf,start_date:v})}/></div>
+          <div><Lbl>ถึง</Lbl><Inp type="date" value={sf.end_date} onChange={v=>setSf({...sf,end_date:v})}/></div>
+          <div><Lbl>หมายเหตุ</Lbl><Inp value={sf.note} onChange={v=>setSf({...sf,note:v})}/></div>
+          <div className="col-span-2 md:col-span-5 flex justify-end gap-2">
+            <button onClick={()=>setSOpen(false)} className="text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300">ยกเลิก</button>
+            <button onClick={()=>{ if(!sf.member_id||!sf.project_id||!sf.start_date)return; onAddSchedule({member_id:Number(sf.member_id), project_id:Number(sf.project_id), start_date:sf.start_date, end_date:sf.end_date||sf.start_date, note:sf.note}); setSf({member_id:'',project_id:'',start_date:'',end_date:'',note:''}); setSOpen(false); }} className="text-xs px-3 py-1.5 rounded-lg font-medium" style={{background:DEPT.service.c,color:'#0b0f17'}}>มอบหมาย</button>
+          </div>
+        </div>
+      )}
+      {/* ปฏิทินคิวงาน: แถว = สมาชิก, คอลัมน์ = วันในเดือน */}
+      <div className="overflow-x-auto">
+        <table className="text-sm border-collapse">
+          <thead><tr className="text-[10px] text-slate-500 border-b border-slate-800">
+            <th className="px-3 py-2 font-medium text-left sticky left-0 bg-slate-900 z-10 min-w-[150px]">สมาชิก ({state.team.length})</th>
+            {days.map(d=><th key={d} className="w-7 font-normal text-center border-l border-slate-800/40">{d}</th>)}
+          </tr></thead>
+          <tbody>
+            {state.team.length===0 && <tr><td colSpan={days.length+1} className="px-5 py-8 text-center text-slate-500">ยังไม่มีสมาชิกทีม</td></tr>}
+            {state.team.map(mem => (
+              <tr key={mem.id} className="border-b border-slate-800/40">
+                <td className="px-3 py-2 sticky left-0 bg-slate-900 z-10">
+                  <div className="flex items-center justify-between gap-2">
+                    <div><div className="text-[12px] text-slate-200 leading-tight">{mem.name}</div><div className="text-[10px] text-slate-500">{mem.role}</div></div>
+                    {canEdit && <button onClick={()=>onRemoveMember(mem.id)} className="text-slate-600 hover:text-rose-400 shrink-0">{Icon.trash}</button>}
+                  </div>
+                </td>
+                {days.map(d=>{ const a=cellOf(mem.id,d); const dayStr=`${ym}-${pad2(d)}`; const first=a&&a.start_date===dayStr; const p=a&&projOf(a.project_id); return (
+                  <td key={d} className="border-l border-slate-800/40 h-9 p-0.5" title={a?`${p?.project_stock_no||''} ${a.note||''}`:''}>
+                    {a && <div className="h-full rounded-sm grid place-items-center overflow-hidden" style={{background:projColor(a.project_id)+'cc'}}>{first && <span className="text-[8px] font-bold text-slate-900 px-0.5 truncate">{(p?.project_stock_no||'').replace('STK-2026-','')}</span>}</div>}
+                  </td>
+                );})}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {/* รายการมอบหมายเดือนนี้ */}
+      {monthSchedules.length>0 && (
+        <div className="px-5 py-3 border-t border-slate-800 flex flex-wrap gap-2">
+          {monthSchedules.map(s=>{ const mem=state.team.find(t=>t.id===s.member_id); const p=projOf(s.project_id); return (
+            <span key={s.id} className="inline-flex items-center gap-1.5 text-[11px] rounded-full px-2.5 py-1" style={{background:projColor(s.project_id)+'22',color:projColor(s.project_id)}}>
+              <b>{mem?.name||'?'}</b> · {p?.project_stock_no} · {s.start_date.slice(8)}–{(s.end_date||s.start_date).slice(8)} {s.note&&'· '+s.note}
+              {canEdit && <button onClick={()=>onRemoveSchedule(s.id)} className="hover:text-rose-300">✕</button>}
+            </span>
+          );})}
+        </div>
+      )}
+    </Card>
   );
 }
 
@@ -969,15 +1128,15 @@ function Login(){
 
 /* ============================ APP ============================ */
 function App(){
-  const [state, setState] = useState({ customers:[], projects:[], tasks:[], materials:[], bom:[], pos:[], handoffs:[], prs:[], loading:true });
+  const [state, setState] = useState({ customers:[], srs:[], projects:[], tasks:[], bom:[], pos:[], team:[], schedule:[], handoffs:[], loading:true });
   const [page, setPage] = useState('dashboard');
   const [role, setRole] = useState('developer');
   const [activeId, setActiveId] = useState('all');
   const [poProject, setPoProject] = useState(null);
-  const [session, setSession] = useState(LIVE ? undefined : null);   // undefined=กำลังเช็ค · null=ยังไม่ล็อกอิน · obj=ล็อกอินแล้ว
+  const [err, setErr] = useState('');
+  const [session, setSession] = useState(LIVE ? undefined : null);
   const [me, setMe] = useState(null);
 
-  // ติดตามสถานะ auth (เฉพาะ LIVE)
   useEffect(()=>{
     if(!LIVE) return;
     sb.auth.getSession().then(({data})=>setSession(data.session));
@@ -985,57 +1144,79 @@ function App(){
     return ()=>sub.subscription.unsubscribe();
   },[]);
 
-  // โหลดข้อมูล: DEMO โหลดทันที · LIVE โหลดเมื่อมี session + อ่าน role จาก user_roles
   useEffect(()=>{
     if(!LIVE){ (async()=>{ const d=await db.loadAll(); setState(s=>({...s, ...d, loading:false})); })(); return; }
     if(session===undefined) return;
     if(!session){ setState(s=>({...s, loading:false})); return; }
     (async()=>{
-      const { data:roleRow } = await sb.from('user_roles').select('*').eq('user_id', session.user.id).maybeSingle();
-      const dep = roleRow ? (roleRow.is_developer ? 'developer' : roleRow.department) : 'sales';
-      setRole(dep);
-      setMe({ email:session.user.email, department: roleRow?roleRow.department:null, is_developer: roleRow?!!roleRow.is_developer:false, hasRole: !!roleRow });
-      const d = await db.loadAll(); setState(s=>({...s, ...d, loading:false}));
+      try{
+        const { data:roleRow } = await sb.from('user_roles').select('*').eq('user_id', session.user.id).maybeSingle();
+        const dep = roleRow ? (roleRow.is_developer ? 'developer' : roleRow.department) : 'sales';
+        setRole(dep);
+        setMe({ email:session.user.email, department: roleRow?roleRow.department:null, is_developer: roleRow?!!roleRow.is_developer:false, hasRole: !!roleRow });
+        const d = await db.loadAll(); setState(s=>({...s, ...d, loading:false}));
+      } catch(e){ setErr(e.message||String(e)); setState(s=>({...s, loading:false})); }
     })();
   },[session]);
 
-  const reload = async () => { const d=await db.loadAll(); setState(s=>({...s, ...d})); };
+  const reload = async () => { try { const d=await db.loadAll(); setState(s=>({...s, ...d})); } catch(e){ setErr(e.message||String(e)); } };
+  // ครอบ action ทุกตัว: เรียก db → reload → จับ error แสดงผู้ใช้ (แก้ปัญหา fail เงียบในรีวิว)
+  const run = (fn) => async (...args) => { try { setErr(''); const r=await fn(...args); await reload(); return r; } catch(e){ setErr(e.message||String(e)); } };
+
   const handleSignOut = async () => { if(LIVE) await sb.auth.signOut(); };
   const activeProject = useMemo(()=> activeId==='all'?null:state.projects.find(p=>p.id===activeId), [activeId, state.projects]);
 
-  // อัปเดตสถานะงานเท่านั้น — การเลื่อนเฟสแยกไปที่ปุ่ม "ส่งงานต่อ" (handleHandoff)
-  const handleTask = async (taskId, status) => {
-    const t=state.tasks.find(x=>x.id===taskId); if(!t) return;
-    await db.updateTask(taskId,{status, updated_by:DEPT[role].en});
-    reload();
-  };
-  const handleAddTask = async (projectId, dep, title, detail) => {
+  /* ===== number generators (จากเลขมากสุด ไม่ใช่จำนวน) ===== */
+  const year = new Date().getFullYear();
+  const genSrNo    = () => `SR-${year}-${pad3(nextSeq(state.srs,'sr_no')+1)}`;
+  const genStockNo = () => `STK-${year}-${pad3(nextSeq(state.projects,'project_stock_no')+1)}`;
+  const genJobNo   = () => `JOB-${pad3(nextSeq(state.projects,'job_no')+1)}`;
+  const genBomNo   = () => `BOM-${year}-${pad3(nextSeq(state.projects,'bom_no')+1)}`;
+  const genPoNo    = () => `PO-${year}-${pad4(Math.max(1000, nextSeq(state.pos,'po_no'))+1)}`;
+
+  const handleTask = run(async (taskId, status) => { await db.updateTask(taskId,{status, updated_by:DEPT[role].en}); });
+  const handleAddTask = run(async (projectId, dep, title, detail) => {
     const sib=state.tasks.filter(x=>x.project_id===projectId && x.department===dep);
     const sort=sib.length?Math.max(...sib.map(x=>x.sort_order))+1:0;
-    await db.addTask({ project_id:projectId, department:dep, task_title:title, task_detail:detail, sort_order:sort, status:'Pending', updated_by:DEPT[role].en }); reload();
-  };
-  const handleAddMaterial = async (row) => { await db.addMaterial(row); reload(); };
-  const handleAddBom = async (row) => { await db.addBom(row); reload(); };
-  const handleIssuePR = async (id) => { await db.updateBom(id,{pr_status:'PR Issued'}); reload(); };
-  const handleUpdateBom = async (id, patch) => { await db.updateBom(id, patch); reload(); };
+    await db.addTask({ project_id:projectId, department:dep, task_title:title, task_detail:detail, sort_order:sort, status:'Pending', updated_by:DEPT[role].en });
+  });
+
+  /* Sales */
+  const handleAddCustomer = run(async (row) => { await db.addCustomer(row); });
+  const handleUpdateCustomer = run(async (id, patch) => { await db.updateCustomer(id, patch); });
+  const handleCreateSR = run(async (customerIds) => { await db.createSR(customerIds, genSrNo()); });
+  const handleUpdateSR = run(async (id, patch) => { await db.updateSR(id, patch); });
+
+  /* Project */
+  const handleCreateStock = run(async (srIds) => {
+    const custs=(state.customers||[]).filter(c=>srIds.includes(c.sr_id));
+    const name = custs[0] ? (custs[0].location || custs[0].name) : 'Project Stock';
+    const r=await db.createStock(srIds, genStockNo(), genJobNo(), genBomNo(), name);
+    await reload();
+    if(r) { setActiveId(r.id); setPage('project'); }
+  });
+  const handleAddBom = run(async (row) => { await db.addBom(row); });
+  const handleUpdateBom = run(async (id, patch) => { await db.updateBom(id, patch); });
+  const handleDeleteBom = run(async (id) => { await db.deleteBom(id); });
+  const handleSendBom = run(async (projectId) => { await db.sendBom(projectId); });
+  const handleUpdateProject = run(async (id, patch) => { await db.updateProject(id, patch); });
+
+  /* Purchasing */
+  const handleAddPO = run(async (row) => { await db.addPO({...row, po_no:genPoNo()}); });
+  const handleUpdatePO = run(async (id, patch) => { await db.updatePO(id, patch); });
+
+  /* Service */
+  const handleAddMember = run(async (row) => { await db.addMember(row); });
+  const handleRemoveMember = run(async (id) => { await db.removeMember(id); });
+  const handleAddSchedule = run(async (row) => { await db.addSchedule(row); });
+  const handleRemoveSchedule = run(async (id) => { await db.removeSchedule(id); });
+  const handleSignDO = run(async (projectId) => { await db.signDO(projectId); });
+
+  /* Linkage */
+  const handleHandoff = run(async (project) => { const g=phaseGate(project,state); if(!g.ok) return; const nxt=nextPhase(project.current_phase); if(!nxt) return; await db.handoff(project.id, project.current_phase, nxt, role); });
+  const handleReject = run(async (project, note) => { const prev=prevPhase(project.current_phase); if(!prev) return; await db.reject(project.id, project.current_phase, prev, role, note); });
+  const handleAck = run(async (projectId) => { await db.ackPhase(projectId); });
   const goProject = (id) => { setActiveId(id); setPage('workflow'); };
-
-  /* ===== Linkage handlers (เฟส 1) ===== */
-  const year = new Date().getFullYear();
-  const pad3 = n => String(n).padStart(3,'0');
-  const genStockNo = () => `STK-${year}-${pad3(state.projects.filter(p=>p.project_stock_no).length+1)}`;
-  const genJobNo   = () => `JOB-${pad3(state.projects.filter(p=>p.job_no).length+1)}`;
-  const genPrNo    = () => `PR-${year}-${pad3((state.prs?state.prs.length:0)+1)}`;
-
-  const handleAddCustomer = async (row) => { await db.addCustomer(row); reload(); };
-  const handleUpdateCustomer = async (id, patch) => { await db.updateCustomer(id, patch); reload(); };
-  const handleForwardCustomer = async (id) => { await db.forwardCustomer(id); reload(); };
-  const handleCreateStock = async (customerId) => { const c=state.customers.find(x=>x.id===customerId); if(!c) return; const r=await db.createStock(c, genStockNo(), genJobNo()); reload(); if(r) goProject(r.id); };
-  const handleAssignStockNo = async (projectId) => { const p=state.projects.find(x=>x.id===projectId); if(!p) return; const patch={}; if(!p.project_stock_no) patch.project_stock_no=genStockNo(); if(!p.job_no) patch.job_no=genJobNo(); if(Object.keys(patch).length) await db.updateProject(projectId, patch); reload(); };
-  const handleSendPR = async (projectId) => { if(!state.bom.some(b=>b.project_id===projectId && b.pr_status==='PR Issued')) return; await db.sendPR(projectId, genPrNo(), DEPT[role].en); reload(); };
-  const handleHandoff = async (project) => { const g=phaseGate(project,state); if(!g.ok) return; const nxt=nextPhase(project.current_phase); if(!nxt) return; await db.handoff(project.id, project.current_phase, nxt, role, null); reload(); };
-  const handleReject = async (project, note) => { const prev=prevPhase(project.current_phase); if(!prev) return; await db.reject(project.id, project.current_phase, prev, role, note); reload(); };
-  const handleAck = async (projectId) => { await db.ackPhase(projectId); reload(); };
 
   if (LIVE && session===undefined) return <div className="h-screen grid place-items-center text-slate-500">กำลังตรวจสอบสิทธิ์…</div>;
   if (LIVE && !session) return <Login/>;
@@ -1047,12 +1228,13 @@ function App(){
       <Sidebar page={page} onNav={p=>setPage(p)} state={state}/>
       <div className="flex-1 flex flex-col min-w-0">
         <TopBar projects={state.projects} activeId={activeId} onProject={setActiveId} role={role} onRole={setRole} page={page} me={me} onSignOut={handleSignOut}/>
+        {err && <div className="px-6 py-2 bg-rose-500/15 border-b border-rose-500/30 text-rose-300 text-xs flex items-center justify-between"><span>⚠ {err}</span><button onClick={()=>setErr('')} className="text-rose-400 hover:text-rose-200">✕</button></div>}
         <main className="flex-1 overflow-y-auto p-6">
           {page==='dashboard'  && <Dashboard state={state} onNav={setPage} onSelectProject={goProject} onOpenPO={setPoProject}/>}
-          {page==='sales'      && <SalesPipeline state={state} role={role} onAddCustomer={handleAddCustomer} onUpdateCustomer={handleUpdateCustomer} onForwardCustomer={handleForwardCustomer} onTask={handleTask}/>}
-          {page==='project'    && <ProjectDept state={state} project={activeProject} role={role} onAddMaterial={handleAddMaterial} onAddBom={handleAddBom} onIssuePR={handleIssuePR} onSendPR={handleSendPR} onAssignStockNo={handleAssignStockNo} onCreateStock={handleCreateStock}/>}
-          {page==='purchasing' && <Procurement state={state} role={role} onUpdateBom={handleUpdateBom} onOpenPO={setPoProject}/>}
-          {page==='service'    && <FieldService state={state} role={role} onTask={handleTask} onAddTask={handleAddTask}/>}
+          {page==='sales'      && <SalesPipeline state={state} role={role} onAddCustomer={handleAddCustomer} onUpdateCustomer={handleUpdateCustomer} onCreateSR={handleCreateSR} onUpdateSR={handleUpdateSR} onTask={handleTask}/>}
+          {page==='project'    && <ProjectDept state={state} project={activeProject} role={role} onCreateStock={handleCreateStock} onAddBom={handleAddBom} onUpdateBom={handleUpdateBom} onDeleteBom={handleDeleteBom} onSendBom={handleSendBom} onUpdateProject={handleUpdateProject}/>}
+          {page==='purchasing' && <Procurement state={state} role={role} onUpdateBom={handleUpdateBom} onAddPO={handleAddPO} onOpenPO={setPoProject}/>}
+          {page==='service'    && <FieldService state={state} role={role} onTask={handleTask} onAddTask={handleAddTask} onAddMember={handleAddMember} onRemoveMember={handleRemoveMember} onAddSchedule={handleAddSchedule} onRemoveSchedule={handleRemoveSchedule} onSignDO={handleSignDO}/>}
           {page==='workflow'   && <WorkflowBoard state={state} project={activeProject} role={role} onTask={handleTask} onAddTask={handleAddTask} onHandoff={handleHandoff} onReject={handleReject} onAck={handleAck}/>}
         </main>
       </div>
