@@ -163,9 +163,9 @@ function seedDemo(){
     // STK-002 (LBS รวม 3) — project: ยังร่าง BOM
     { id:nid(), project_id:2, epicor_code:'LBS-115-MOT', description:'LBS 115kV 3-Pole Motorized', category:'LBS',       due_date:isoIn(40),  ium:'EA', quantity:3,  currency:'USD', unit_cost:24500, fx_rate:36.5, project_phase:'Phase 1', po_status:'Awaiting PO' },
     { id:nid(), project_id:2, epicor_code:'ACC-CC-01',   description:'Control Cabinet',             category:'Accessory', due_date:isoIn(40),  ium:'EA', quantity:3,  currency:'THB', unit_cost:95000, fx_rate:1,    project_phase:'Phase 1', po_status:'Awaiting PO' },
-    // STK-003 (LBS รวม 8) — purchasing: ของเข้าบางส่วน (ยัง handoff ไม่ได้ — ทดสอบ gate)
-    { id:nid(), project_id:3, epicor_code:'LBS-115-MOT', description:'LBS 115kV 3-Pole Motorized', category:'LBS',       due_date:isoIn(15),  ium:'EA', quantity:8,  currency:'USD', unit_cost:24500, fx_rate:36.2, project_phase:'Phase 1', po_status:'PO Received' },
-    { id:nid(), project_id:3, epicor_code:'ACC-SA-115',  description:'Surge Arrester 115kV',        category:'Accessory', due_date:isoIn(12),  ium:'EA', quantity:24, currency:'THB', unit_cost:42000, fx_rate:1,    project_phase:'Phase 1', po_status:'Delivered' },
+    // STK-003 (LBS รวม 8) — purchasing: รับ BOM แล้ว ยังไม่ออก PO (พร้อมทดสอบ "ออก PO" ดึงรายการ)
+    { id:nid(), project_id:3, epicor_code:'LBS-115-MOT', description:'LBS 115kV 3-Pole Motorized', category:'LBS',       due_date:isoIn(15),  ium:'EA', quantity:8,  currency:'USD', unit_cost:24500, fx_rate:36.2, project_phase:'Phase 1', po_status:'Awaiting PO' },
+    { id:nid(), project_id:3, epicor_code:'ACC-SA-115',  description:'Surge Arrester 115kV',        category:'Accessory', due_date:isoIn(12),  ium:'EA', quantity:24, currency:'THB', unit_cost:42000, fx_rate:1,    project_phase:'Phase 1', po_status:'Awaiting PO' },
     // STK-004 (LBS รวม 4) — closed: ของเข้าครบ
     { id:nid(), project_id:4, epicor_code:'LBS-115-MAN', description:'LBS 115kV 3-Pole Manual',    category:'LBS',       due_date:isoIn(-30), ium:'EA', quantity:4,  currency:'USD', unit_cost:20000, fx_rate:35.8, project_phase:'Phase 1', po_status:'Delivered' },
     { id:nid(), project_id:4, epicor_code:'ACC-CC-01',   description:'Control Cabinet',             category:'Accessory', due_date:isoIn(-28), ium:'EA', quantity:4,  currency:'THB', unit_cost:95000, fx_rate:1,    project_phase:'Phase 1', po_status:'Delivered' },
@@ -173,10 +173,15 @@ function seedDemo(){
   const pos = [
     { id:nid(), project_id:1, po_no:'PO-2026-1001', supplier:'ABB (Thailand)',     status:'รับครบ', expected_date:isoIn(-20), amount:9300000, notified:true },
     { id:nid(), project_id:1, po_no:'PO-2026-1002', supplier:'Schneider Electric',  status:'รับครบ', expected_date:isoIn(-12), amount:1260000, notified:true },
-    { id:nid(), project_id:3, po_no:'PO-2026-1003', supplier:'Siemens',            status:'กำลังส่ง', expected_date:isoIn(10), amount:7100000, notified:true },
-    { id:nid(), project_id:3, po_no:'PO-2026-1004', supplier:'ลีดเดอร์ สวิตช์เกียร์', status:'ออกแล้ว', expected_date:isoIn(14), amount:1010000, notified:false },
     { id:nid(), project_id:4, po_no:'PO-2026-1005', supplier:'ABB (Thailand)',     status:'รับครบ', expected_date:isoIn(-35), amount:3260000, notified:true },
   ];
+  // เดโม: ผูกรายการ BOM เข้ากับ PO แรกของแต่ละ Stock (รายการที่ออก PO แล้ว) — ตั้ง po_id / bom_ids
+  pos.forEach(o=>{ o.bom_ids=[]; o.pdf_name=null; o.pdf_url=null; });
+  bom.forEach(b=>{
+    if(b.po_status==='Awaiting PO'){ b.po_id=null; return; }       // ยังไม่ลงใบ PO → เลือกเข้าใบได้
+    const o = pos.find(p=>p.project_id===b.project_id);
+    if(o){ b.po_id=o.id; o.bom_ids.push(b.id); } else b.po_id=null;
+  });
   // ---- ทีม Service + ตารางคิวงานรายเดือน ----
   const team = [
     { id:nid(), name:'อนุชา (หัวหน้าทีม)', role:'Site Supervisor', phone:'081-111-1111', active:true },
@@ -276,8 +281,18 @@ const db = {
   async deleteBom(id){ if(!LIVE){ demo.bom = demo.bom.filter(x=>x.id!==id); return; } ok(await sb.from('bom_items').delete().eq('id',id)); },
   async sendBom(projectId){ if(!LIVE){ Object.assign(demo.projects.find(p=>p.id===projectId),{bom_status:'Sent to Purchasing'}); return; } ok(await sb.from('projects').update({bom_status:'Sent to Purchasing'}).eq('id',projectId)); },
 
-  /* ---- PO (Purchasing) ---- */
-  async addPO(row){ if(!LIVE){ const r={id:nid(),notified:false,...row}; demo.pos.push(r); return r; } return ok(await sb.from('purchase_orders').insert(row).select().single()); },
+  /* ---- PO (Purchasing) — ดึงรายการ BOM เข้าใบ PO + ลดรายการอัตโนมัติ ---- */
+  async createPO(projectId, row, bomIds){
+    if(!LIVE){
+      const r={ id:nid(), project_id:projectId, notified:true, bom_ids:[...bomIds], ...row };
+      demo.pos.push(r);
+      bomIds.forEach(id=>{ const b=demo.bom.find(x=>x.id===id); if(b){ b.po_id=r.id; b.po_status='PO Received'; } });   // ผูกรายการ + ลดออกจากรายการที่เลือกได้
+      return r;
+    }
+    const po = ok(await sb.from('purchase_orders').insert({ project_id:projectId, bom_ids:bomIds, ...row }).select().single());
+    ok(await sb.from('bom_items').update({ po_id:po.id, po_status:'PO Received' }).in('id', bomIds));
+    return po;
+  },
   async updatePO(id, patch){ if(!LIVE){ Object.assign(demo.pos.find(x=>x.id===id),patch); return; } ok(await sb.from('purchase_orders').update(patch).eq('id',id)); },
 
   /* ---- ทีม Service ---- */
@@ -485,17 +500,18 @@ function PoModal({project, pos, onClose}){
           <thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-800">
             <th className="px-5 py-2.5 font-medium">เลขที่ PO</th><th className="px-3 py-2.5 font-medium">ผู้ขาย</th>
             <th className="px-3 py-2.5 font-medium">กำหนดรับ</th><th className="px-3 py-2.5 font-medium text-right">มูลค่า</th>
-            <th className="px-3 py-2.5 font-medium">สถานะ</th>
+            <th className="px-3 py-2.5 font-medium">สถานะ</th><th className="px-3 py-2.5 font-medium">ไฟล์แนบ</th>
           </tr></thead>
           <tbody>
-            {list.length===0 && <tr><td colSpan="5" className="px-5 py-8 text-center text-slate-500">ยังไม่มี PO</td></tr>}
+            {list.length===0 && <tr><td colSpan="6" className="px-5 py-8 text-center text-slate-500">ยังไม่มี PO</td></tr>}
             {list.map(o => (
               <tr key={o.id} className="border-b border-slate-800/60">
-                <td className="px-5 py-3 mono text-slate-200">{o.po_no}</td>
+                <td className="px-5 py-3 mono text-slate-200">{o.po_no}<div className="text-[10px] text-slate-500">{(o.bom_ids||[]).length} รายการ</div></td>
                 <td className="px-3 py-3 text-slate-300">{o.supplier}</td>
-                <td className="px-3 py-3 mono text-slate-400">{o.expected_date}</td>
+                <td className="px-3 py-3 mono text-slate-400">{o.expected_date||'—'}</td>
                 <td className="px-3 py-3 text-right mono text-slate-200">{baht(o.amount)}</td>
                 <td className="px-3 py-3"><Pill color={poDocColor(o.status)}>{o.status}</Pill></td>
+                <td className="px-3 py-3">{o.pdf_url ? <button onClick={()=>window.open(o.pdf_url,'_blank')} className="text-xs text-sky-400 hover:underline">📎 {o.pdf_name||'เปิดไฟล์'}</button> : <span className="text-slate-600 text-xs">—</span>}</td>
               </tr>
             ))}
           </tbody>
@@ -699,10 +715,47 @@ function PhaseRibbon({project, state, role, onHandoff, onReject, onAck}){
 
 /* ============================ SALES DEPARTMENT ============================ */
 const SALES_BLANK = { name:'', customer_type:'ราชการ', work_type:'Supply', contact:'', lbs_qty:1, desired_date:'', location:'', scope:'' };
+// ตาราง SR + รายละเอียดลูกค้า + ติดตาม PO/สัญญา (ใช้ซ้ำได้ทั้งกล่อง "รอสร้าง Stock" และ "สร้าง Stock แล้ว")
+function SrTrackTable({list, state, canEdit, onUpdateSR, emptyMsg}){
+  return (
+    <table className="w-full text-sm">
+      <thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-800">
+        <th className="px-5 py-2.5 font-medium">SR No.</th><th className="px-3 py-2.5 font-medium">ลูกค้าในใบ</th><th className="px-3 py-2.5 font-medium text-right">LBS รวม</th>
+        <th className="px-3 py-2.5 font-medium">เลขที่ PO ลูกค้า</th><th className="px-3 py-2.5 font-medium">สถานะสัญญา</th><th className="px-3 py-2.5 font-medium">Stock</th>
+      </tr></thead>
+      <tbody>
+        {list.length===0 && <tr><td colSpan="6" className="px-5 py-6 text-center text-slate-500">{emptyMsg||'—'}</td></tr>}
+        {list.map(sr => { const custs=(state.customers||[]).filter(c=>c.sr_id===sr.id); const lbs=custs.reduce((s,c)=>s+num(c.lbs_qty),0); return (
+          <tr key={sr.id} className="border-b border-slate-800/60 align-top">
+            <td className="px-5 py-3 mono text-slate-200">{sr.sr_no}<div className="text-[10px] text-slate-500">{sr.note}</div></td>
+            <td className="px-3 py-3 text-[12px]">
+              <div className="space-y-1.5">
+                {custs.map(c=>(
+                  <div key={c.id} className="leading-tight">
+                    <div className="flex items-center gap-1.5 flex-wrap"><span className="text-slate-200 font-medium">{c.name}</span><Pill color={ctypeColor(c.customer_type)}>{c.customer_type}</Pill><Pill color={c.work_type==='Supply'?'#64748b':'#10b981'}>{c.work_type}</Pill><Pill color="#f59e0b">LBS {c.lbs_qty}</Pill></div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">📍 {c.location||'—'} · ☎ {c.contact||'—'}{c.desired_date?' · 📅 ต้องการ '+c.desired_date:''}{c.scope?' · '+c.scope:''}</div>
+                  </div>
+                ))}
+                {custs.length===0 && '—'}
+              </div>
+            </td>
+            <td className="px-3 py-3 text-right mono font-semibold" style={{color:'#f59e0b'}}>{lbs}</td>
+            <td className="px-3 py-3 w-40">{canEdit ? <EditText value={sr.cust_po_no||''} onCommit={v=>onUpdateSR(sr.id,{cust_po_no:v})} placeholder="—"/> : <span className="text-slate-300">{sr.cust_po_no||'—'}</span>}</td>
+            <td className="px-3 py-3 w-44">{canEdit ? <Sel value={sr.contract_status} onChange={v=>onUpdateSR(sr.id,{contract_status:v})} options={CONTRACT_STATUS}/> : <Pill color={sr.contract_status==='ทำสัญญาแล้ว'?'#10b981':'#f59e0b'}>{sr.contract_status}</Pill>}</td>
+            <td className="px-3 py-3">{sr.stock_id ? <Pill color="#10b981">{state.projects.find(p=>p.id===sr.stock_id)?.project_stock_no||'มีแล้ว'}</Pill> : <Pill color="#64748b">รอสร้าง</Pill>}</td>
+          </tr>
+        );})}
+      </tbody>
+    </table>
+  );
+}
 function SalesPipeline({state, role, onAddCustomer, onUpdateCustomer, onCreateSR, onUpdateSR, onTask}){
   const canEdit = role==='developer' || role==='sales';
   const [open,setOpen]=useState(false); const [f,setF]=useState(SALES_BLANK);
   const [sel,setSel]=useState([]);                 // ลูกค้าที่เลือกเพื่อรวบรวม
+  const [srOpen,setSrOpen]=useState(false);        // Tab "Sales Requisition & ติดตาม PO" — เริ่มต้นซ่อน
+  const pendingSrs = state.srs.filter(s=>!s.stock_id);
+  const stockedSrs = state.srs.filter(s=>s.stock_id);
   const srOf = id => state.srs.find(s=>s.id===id);
   const toggle = id => setSel(s => s.includes(id) ? s.filter(x=>x!==id) : [...s,id]);
   const submitSR = () => { if(!sel.length) return; onCreateSR(sel); setSel([]); };
@@ -766,38 +819,23 @@ function SalesPipeline({state, role, onAddCustomer, onUpdateCustomer, onCreateSR
         );})}
       </div>
 
-      {/* Sales Requisition + ติดตาม PO/สัญญา */}
+      {/* Tab: Sales Requisition & ติดตาม PO & สัญญาซื้อขาย — พับเก็บได้ (เริ่มต้นซ่อน) */}
       <Card className="overflow-hidden">
-        <div className="px-5 py-3.5 border-b border-slate-800 flex items-center gap-2"><span style={{color:DEPT.sales.c}}>{Icon.doc}</span><h3 className="text-slate-200 font-semibold">Sales Requisition — ติดตาม PO & สัญญาซื้อขาย</h3></div>
-        <table className="w-full text-sm">
-          <thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-800">
-            <th className="px-5 py-2.5 font-medium">SR No.</th><th className="px-3 py-2.5 font-medium">ลูกค้าในใบ</th><th className="px-3 py-2.5 font-medium text-right">LBS รวม</th>
-            <th className="px-3 py-2.5 font-medium">เลขที่ PO ลูกค้า</th><th className="px-3 py-2.5 font-medium">สถานะสัญญา</th><th className="px-3 py-2.5 font-medium">Stock</th>
-          </tr></thead>
-          <tbody>
-            {state.srs.length===0 && <tr><td colSpan="6" className="px-5 py-8 text-center text-slate-500">ยังไม่มี Sales Requisition</td></tr>}
-            {state.srs.map(sr => { const custs=(state.customers||[]).filter(c=>c.sr_id===sr.id); const lbs=custs.reduce((s,c)=>s+num(c.lbs_qty),0); return (
-              <tr key={sr.id} className="border-b border-slate-800/60 align-top">
-                <td className="px-5 py-3 mono text-slate-200">{sr.sr_no}<div className="text-[10px] text-slate-500">{sr.note}</div></td>
-                <td className="px-3 py-3 text-[12px]">
-                  <div className="space-y-1.5">
-                    {custs.map(c=>(
-                      <div key={c.id} className="leading-tight">
-                        <div className="flex items-center gap-1.5 flex-wrap"><span className="text-slate-200 font-medium">{c.name}</span><Pill color={ctypeColor(c.customer_type)}>{c.customer_type}</Pill><Pill color={c.work_type==='Supply'?'#64748b':'#10b981'}>{c.work_type}</Pill><Pill color="#f59e0b">LBS {c.lbs_qty}</Pill></div>
-                        <div className="text-[10px] text-slate-500 mt-0.5">📍 {c.location||'—'} · ☎ {c.contact||'—'}{c.desired_date?' · 📅 ต้องการ '+c.desired_date:''}{c.scope?' · '+c.scope:''}</div>
-                      </div>
-                    ))}
-                    {custs.length===0 && '—'}
-                  </div>
-                </td>
-                <td className="px-3 py-3 text-right mono font-semibold" style={{color:'#f59e0b'}}>{lbs}</td>
-                <td className="px-3 py-3 w-40">{canEdit ? <Inp value={sr.cust_po_no||''} onChange={v=>onUpdateSR(sr.id,{cust_po_no:v})} placeholder="—"/> : <span className="text-slate-300">{sr.cust_po_no||'—'}</span>}</td>
-                <td className="px-3 py-3 w-44">{canEdit ? <Sel value={sr.contract_status} onChange={v=>onUpdateSR(sr.id,{contract_status:v})} options={CONTRACT_STATUS}/> : <Pill color={sr.contract_status==='ทำสัญญาแล้ว'?'#10b981':'#f59e0b'}>{sr.contract_status}</Pill>}</td>
-                <td className="px-3 py-3">{sr.stock_id ? <Pill color="#10b981">{state.projects.find(p=>p.id===sr.stock_id)?.project_stock_no||'มีแล้ว'}</Pill> : <Pill color="#64748b">รอสร้าง</Pill>}</td>
-              </tr>
-            );})}
-          </tbody>
-        </table>
+        <button onClick={()=>setSrOpen(o=>!o)} className="w-full px-5 py-3.5 border-b border-slate-800 flex items-center justify-between hover:bg-slate-800/30 transition">
+          <div className="flex items-center gap-2"><span style={{color:DEPT.sales.c}}>{Icon.doc}</span><h3 className="text-slate-200 font-semibold">Sales Requisition & ติดตาม PO & สัญญาซื้อขาย</h3>
+            <span className="text-[11px] text-slate-500">(รอสร้าง Stock {pendingSrs.length} · สร้างแล้ว {stockedSrs.length})</span></div>
+          <span className="text-xs text-slate-400">{srOpen?'▲ ซ่อน':'▼ แสดง'}</span>
+        </button>
+        {srOpen && (
+          <div>
+            {/* กล่อง 1: ยังไม่สร้าง Stock */}
+            <div className="px-5 py-2 bg-amber-500/10 border-b border-slate-800 text-[12px] font-medium text-amber-300 flex items-center gap-2">⏳ รอฝ่ายโครงการสร้าง Stock <span className="text-slate-500">({pendingSrs.length})</span></div>
+            <SrTrackTable list={pendingSrs} state={state} canEdit={canEdit} onUpdateSR={onUpdateSR} emptyMsg="ไม่มี SR ที่รอสร้าง Stock"/>
+            {/* กล่อง 2: สร้าง Project Stock แล้ว (แยกกล่องบันทึกต่างหาก) */}
+            <div className="px-5 py-2 bg-emerald-500/10 border-y border-slate-800 text-[12px] font-medium text-emerald-300 flex items-center gap-2">✓ สร้าง Project Stock แล้ว <span className="text-slate-500">({stockedSrs.length})</span></div>
+            <SrTrackTable list={stockedSrs} state={state} canEdit={canEdit} onUpdateSR={onUpdateSR} emptyMsg="ยังไม่มี SR ที่สร้าง Stock"/>
+          </div>
+        )}
       </Card>
     </div>
   );
@@ -983,60 +1021,94 @@ function ProjectBom({state, project, canEdit, onAddBom, onUpdateBom, onDeleteBom
 }
 
 /* ============================ PURCHASING DEPARTMENT ============================ */
-const PO_BLANK = { supplier:'', amount:0, expected_date:'', status:'ออกแล้ว' };
-function Procurement({state, role, onUpdateBom, onAddPO, onOpenPO}){
+const PO_FORM_BLANK = { po_no:'', supplier:'', expected_date:'', status:'ออกแล้ว', pdf_name:null, pdf_url:null, sel:[] };
+function Procurement({state, role, onUpdateBom, onCreatePO, onOpenPO, genPoNo}){
   const canEdit = role==='developer' || role==='purchasing';
-  // เฉพาะ Stock ที่ฝ่ายโครงการส่ง BOM มาแล้ว
-  const sentProjects = state.projects.filter(p=>p.bom_status==='Sent to Purchasing');
-  const [poForm,setPoForm]=useState(PO_BLANK); const [poOpen,setPoOpen]=useState(null);
+  const sentProjects = state.projects.filter(p=>p.bom_status==='Sent to Purchasing');   // เฉพาะ Stock ที่ส่ง BOM มาแล้ว
+  const [expanded,setExpanded]=useState({});            // การ์ดที่กางอยู่ (เริ่มต้นซ่อนทั้งหมด)
+  const [poForm,setPoForm]=useState(PO_FORM_BLANK); const [poOpen,setPoOpen]=useState(null);
   const poCount = pid => state.pos.filter(o=>o.project_id===pid).length;
+  const toggleCard = id => setExpanded(e=>({...e,[id]:!e[id]}));
+  const startPO = (pid) => { setExpanded(e=>({...e,[pid]:true})); setPoForm({...PO_FORM_BLANK, po_no:genPoNo()}); setPoOpen(pid); };
+  const onPdf = (file) => { if(!file) return; const reader=new FileReader(); reader.onload=()=>setPoForm(f=>({...f, pdf_name:file.name, pdf_url:reader.result})); reader.readAsDataURL(file); };
+  const toggleSel = id => setPoForm(f=>({...f, sel: f.sel.includes(id)? f.sel.filter(x=>x!==id):[...f.sel,id]}));
   return (
     <div className="space-y-4">
       {sentProjects.length===0 && <Empty msg="ยังไม่มี BOM ที่ฝ่ายโครงการส่งเข้ามา"/>}
       {sentProjects.map(p => {
         const items = state.bom.filter(b=>b.project_id===p.id);
         const delivered = items.filter(b=>b.po_status==='Delivered').length;
+        const available = items.filter(b=>!b.po_id);          // รายการที่ยังไม่ลงใบ PO (เลือกเข้าใบได้)
+        const isExp = !!expanded[p.id];
+        const formOpen = poOpen===p.id && canEdit;
+        const selTHB = formOpen ? poForm.sel.reduce((s,id)=>{ const b=items.find(x=>x.id===id); return s+(b?lineTHB(b):0); },0) : 0;
         return (
           <Card key={p.id} className="overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between flex-wrap gap-2">
-              <div><h3 className="text-slate-200 font-semibold flex items-center gap-2">{Icon.cart} {p.bom_no} <span className="text-[11px] text-slate-500 mono">{p.project_stock_no} · {p.name}</span></h3>
-                <div className="text-[11px] text-slate-500 mt-0.5">ของเข้าแล้ว {delivered}/{items.length} รายการ · กำหนดส่ง {p.delivery_date||'—'}</div></div>
-              <div className="flex items-center gap-2">
+            {/* หัวการ์ด — คลิกเพื่อกาง/ยุบ */}
+            <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between flex-wrap gap-2 cursor-pointer hover:bg-slate-800/20" onClick={()=>toggleCard(p.id)}>
+              <div><h3 className="text-slate-200 font-semibold flex items-center gap-2"><span className="text-slate-500">{isExp?'▼':'▶'}</span>{Icon.cart} {p.bom_no} <span className="text-[11px] text-slate-500 mono">{p.project_stock_no} · {p.name}</span></h3>
+                <div className="text-[11px] text-slate-500 mt-0.5 ml-5">ของเข้าแล้ว {delivered}/{items.length} · ลงใบ PO แล้ว {items.length-available.length}/{items.length} · {poCount(p.id)} PO · กำหนดส่ง {p.delivery_date||'—'}</div></div>
+              <div className="flex items-center gap-2" onClick={e=>e.stopPropagation()}>
                 {poCount(p.id)>0 && <button onClick={()=>onOpenPO(p.id)} className="inline-flex items-center gap-1 text-xs font-medium rounded-md px-2.5 py-1.5" style={{background:'#6366f122',color:'#818cf8'}}>{poCount(p.id)} PO →</button>}
-                {canEdit && <button onClick={()=>{setPoOpen(poOpen===p.id?null:p.id);setPoForm(PO_BLANK);}} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:'#f43f5e22',color:'#f43f5e'}}>{Icon.plus} ออก PO</button>}
+                {canEdit && <button onClick={()=>startPO(p.id)} disabled={available.length===0} title={available.length?'':'ทุกรายการลงใบ PO ครบแล้ว'} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={available.length?{background:'#f43f5e22',color:'#f43f5e'}:{background:'#1e293b',color:'#475569',cursor:'not-allowed'}}>{Icon.plus} ออก PO</button>}
               </div>
             </div>
-            {poOpen===p.id && canEdit && (
-              <div className="px-5 py-4 bg-slate-800/30 border-b border-slate-800 grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
-                <div className="col-span-2"><Lbl>ผู้ขาย (Supplier)</Lbl><Inp value={poForm.supplier} onChange={v=>setPoForm({...poForm,supplier:v})}/></div>
-                <div><Lbl>มูลค่า (฿)</Lbl><Inp type="number" value={poForm.amount} onChange={v=>setPoForm({...poForm,amount:num(v)})}/></div>
-                <div><Lbl>กำหนดรับ</Lbl><Inp type="date" value={poForm.expected_date} onChange={v=>setPoForm({...poForm,expected_date:v})}/></div>
-                <div><Lbl>สถานะ</Lbl><Sel value={poForm.status} onChange={v=>setPoForm({...poForm,status:v})} options={['รอออก','ออกแล้ว','กำลังส่ง','รับครบ']}/></div>
-                <div className="col-span-2 md:col-span-5 flex justify-end gap-2">
-                  <button onClick={()=>setPoOpen(null)} className="text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300">ยกเลิก</button>
-                  <button onClick={()=>{ if(!poForm.supplier)return; onAddPO({project_id:p.id, ...poForm, expected_date:poForm.expected_date||null}); setPoForm(PO_BLANK); setPoOpen(null); }} className="text-xs px-3 py-1.5 rounded-lg font-medium" style={{background:'#f43f5e',color:'#0b0f17'}}>บันทึก PO</button>
+
+            {isExp && (<>
+              {/* ฟอร์มออก PO — ดึงรายการ BOM เข้าใบ */}
+              {formOpen && (
+                <div className="px-5 py-4 bg-slate-800/30 border-b border-slate-800 space-y-3">
+                  <div className="text-[12px] text-slate-300 font-medium">เลือกรายการ BOM เข้าใบสั่งซื้อ <span className="text-slate-500">(เหลือเลือกได้ {available.length} รายการ — ที่ลงใบแล้วจะถูกตัดออกอัตโนมัติ)</span></div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5">
+                    {available.length===0 && <div className="text-[12px] text-slate-500">— ทุกรายการลงใบ PO ครบแล้ว —</div>}
+                    {available.map(b=>{ const on=poForm.sel.includes(b.id); return (
+                      <label key={b.id} className="flex items-center gap-2 rounded-lg border p-2 cursor-pointer" style={on?{borderColor:'#f43f5e',background:'#f43f5e12'}:{borderColor:'#33415580'}}>
+                        <input type="checkbox" checked={on} onChange={()=>toggleSel(b.id)} className="accent-rose-500"/>
+                        <span className="flex-1 text-[12px] text-slate-200">{b.epicor_code} · {b.description} <span className="text-slate-500">×{b.quantity}</span></span>
+                        <span className="mono text-[11px] text-slate-400">{baht(lineTHB(b))}</span>
+                      </label>
+                    );})}
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3 items-end pt-1">
+                    <div><Lbl>เลขที่ PO</Lbl><Inp value={poForm.po_no} onChange={v=>setPoForm({...poForm,po_no:v})}/></div>
+                    <div className="col-span-2"><Lbl>ผู้ขาย (Supplier)</Lbl><Inp value={poForm.supplier} onChange={v=>setPoForm({...poForm,supplier:v})}/></div>
+                    <div><Lbl>กำหนดรับ</Lbl><Inp type="date" value={poForm.expected_date} onChange={v=>setPoForm({...poForm,expected_date:v})}/></div>
+                    <div><Lbl>สถานะ</Lbl><Sel value={poForm.status} onChange={v=>setPoForm({...poForm,status:v})} options={['รอออก','ออกแล้ว','กำลังส่ง','รับครบ']}/></div>
+                    <div className="col-span-2"><Lbl>แนบไฟล์ PDF</Lbl><input type="file" accept="application/pdf" onChange={e=>onPdf(e.target.files[0])} className="w-full text-[11px] text-slate-400 file:mr-2 file:rounded file:border-0 file:bg-slate-700 file:text-slate-200 file:px-2 file:py-1"/>{poForm.pdf_name && <span className="text-[10px] text-emerald-400">✓ {poForm.pdf_name}</span>}</div>
+                    <div><Lbl>มูลค่ารวม (฿)</Lbl><div className="text-sm font-bold mono py-1.5" style={{color:'#f59e0b'}}>{baht(selTHB)}</div></div>
+                    <div className="col-span-2 flex items-end justify-end gap-2">
+                      <button onClick={()=>setPoOpen(null)} className="text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300">ยกเลิก</button>
+                      <button onClick={()=>{ if(!poForm.sel.length||!poForm.po_no.trim())return; onCreatePO(p.id, { po_no:poForm.po_no.trim(), supplier:poForm.supplier, expected_date:poForm.expected_date||null, status:poForm.status, amount:selTHB, pdf_name:poForm.pdf_name, pdf_url:poForm.pdf_url }, poForm.sel); setPoOpen(null); }} disabled={!poForm.sel.length||!poForm.po_no.trim()} className="text-xs px-3 py-1.5 rounded-lg font-medium" style={(poForm.sel.length&&poForm.po_no.trim())?{background:'#f43f5e',color:'#0b0f17'}:{background:'#1e293b',color:'#475569'}}>บันทึก PO ({poForm.sel.length})</button>
+                    </div>
+                  </div>
                 </div>
+              )}
+              {/* ตารางรายการ + สถานะ PO (แจ้งกลับ Project) */}
+              <div className="overflow-x-auto">
+              <table className="w-full text-sm whitespace-nowrap">
+                <thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-800">
+                  <th className="px-5 py-2.5 font-medium">Epicor Code</th><th className="px-3 py-2.5 font-medium">Description</th><th className="px-3 py-2.5 font-medium text-right">Qty</th>
+                  <th className="px-3 py-2.5 font-medium">Due Date</th><th className="px-3 py-2.5 font-medium">สถานะ PO (แจ้งกลับ Project)</th>
+                </tr></thead>
+                <tbody>
+                  {items.map(b => { const po=b.po_id?state.pos.find(o=>o.id===b.po_id):null; return (
+                    <tr key={b.id} className="border-b border-slate-800/60">
+                      <td className="px-5 py-3 mono text-slate-300">{b.epicor_code||'—'}</td>
+                      <td className="px-3 py-3 text-slate-200">{b.description} <span className="text-slate-500 text-xs">· {b.category}</span></td>
+                      <td className="px-3 py-3 text-right mono text-slate-300">{b.quantity} {b.ium}</td>
+                      <td className="px-3 py-3 mono text-slate-400">{b.due_date||'—'}</td>
+                      <td className="px-3 py-3">
+                        <div className="flex flex-col gap-1 items-start">
+                          {canEdit ? <select value={b.po_status} onChange={e=>onUpdateBom(b.id,{po_status:e.target.value})} className="text-xs rounded-md px-2 py-1.5 border bg-slate-900" style={{borderColor:poColor(b.po_status)+'66',color:poColor(b.po_status)}}><option className="bg-slate-800 text-slate-100">Awaiting PO</option><option className="bg-slate-800 text-slate-100">PO Received</option><option className="bg-slate-800 text-slate-100">Delivered</option></select> : <Pill color={poColor(b.po_status)}>{b.po_status}</Pill>}
+                          {po ? <span className="text-[10px] text-indigo-300 flex items-center gap-1.5 mono">{po.po_no}{po.pdf_url && <button onClick={()=>window.open(po.pdf_url,'_blank')} className="text-sky-400 hover:underline">📎 PDF</button>}</span> : <span className="text-[10px] text-slate-600">ยังไม่ลงใบ PO</span>}
+                        </div>
+                      </td>
+                    </tr>
+                  );})}
+                </tbody>
+              </table>
               </div>
-            )}
-            <div className="overflow-x-auto">
-            <table className="w-full text-sm whitespace-nowrap">
-              <thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-800">
-                <th className="px-5 py-2.5 font-medium">Epicor Code</th><th className="px-3 py-2.5 font-medium">Description</th><th className="px-3 py-2.5 font-medium text-right">Qty</th>
-                <th className="px-3 py-2.5 font-medium">Due Date</th><th className="px-3 py-2.5 font-medium">สถานะ PO (แจ้งกลับ Project)</th>
-              </tr></thead>
-              <tbody>
-                {items.map(b => (
-                  <tr key={b.id} className="border-b border-slate-800/60">
-                    <td className="px-5 py-3 mono text-slate-300">{b.epicor_code||'—'}</td>
-                    <td className="px-3 py-3 text-slate-200">{b.description} <span className="text-slate-500 text-xs">· {b.category}</span></td>
-                    <td className="px-3 py-3 text-right mono text-slate-300">{b.quantity} {b.ium}</td>
-                    <td className="px-3 py-3 mono text-slate-400">{b.due_date||'—'}</td>
-                    <td className="px-3 py-3">{canEdit ? <select value={b.po_status} onChange={e=>onUpdateBom(b.id,{po_status:e.target.value})} className="text-xs rounded-md px-2 py-1.5 border bg-slate-900" style={{borderColor:poColor(b.po_status)+'66',color:poColor(b.po_status)}}><option className="bg-slate-800 text-slate-100">Awaiting PO</option><option className="bg-slate-800 text-slate-100">PO Received</option><option className="bg-slate-800 text-slate-100">Delivered</option></select> : <Pill color={poColor(b.po_status)}>{b.po_status}</Pill>}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            </div>
+            </>)}
           </Card>
         );
       })}
@@ -1358,7 +1430,10 @@ function App(){
   const handleUpdateProject = run(async (id, patch) => { await db.updateProject(id, patch); });
 
   /* Purchasing */
-  const handleAddPO = run(async (row) => { await db.addPO({...row, po_no:genPoNo()}); });
+  const handleCreatePO = run(async (projectId, row, bomIds) => {
+    if(state.pos.some(o=>o.po_no===row.po_no)) throw new Error(`เลขที่ PO "${row.po_no}" มีอยู่แล้ว — กรุณาใช้เลขอื่น`);
+    await db.createPO(projectId, row, bomIds);
+  });
   const handleUpdatePO = run(async (id, patch) => { await db.updatePO(id, patch); });
 
   /* Service */
@@ -1389,7 +1464,7 @@ function App(){
           {page==='dashboard'  && <Dashboard state={state} onNav={setPage} onSelectProject={goProject} onOpenPO={setPoProject}/>}
           {page==='sales'      && <SalesPipeline state={state} role={role} onAddCustomer={handleAddCustomer} onUpdateCustomer={handleUpdateCustomer} onCreateSR={handleCreateSR} onUpdateSR={handleUpdateSR} onTask={handleTask}/>}
           {page==='project'    && <ProjectDept state={state} project={activeProject} role={role} onCreateStock={handleCreateStock} onAddBom={handleAddBom} onUpdateBom={handleUpdateBom} onDeleteBom={handleDeleteBom} onSendBom={handleSendBom} onUpdateProject={handleUpdateProject} genDefaults={genDefaults}/>}
-          {page==='purchasing' && <Procurement state={state} role={role} onUpdateBom={handleUpdateBom} onAddPO={handleAddPO} onOpenPO={setPoProject}/>}
+          {page==='purchasing' && <Procurement state={state} role={role} onUpdateBom={handleUpdateBom} onCreatePO={handleCreatePO} onOpenPO={setPoProject} genPoNo={genPoNo}/>}
           {page==='service'    && <FieldService state={state} role={role} onTask={handleTask} onAddTask={handleAddTask} onAddMember={handleAddMember} onRemoveMember={handleRemoveMember} onAddSchedule={handleAddSchedule} onRemoveSchedule={handleRemoveSchedule} onSignDO={handleSignDO}/>}
           {page==='workflow'   && <WorkflowBoard state={state} project={activeProject} role={role} onTask={handleTask} onAddTask={handleAddTask} onHandoff={handleHandoff} onReject={handleReject} onAck={handleAck}/>}
         </main>
