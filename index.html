@@ -41,8 +41,8 @@
 const { useState, useEffect, useMemo } = React;
 
 /* ============================ CONFIG ============================ */
-const SUPABASE_URL  = ""; // เช่น https://xxxxx.supabase.co
-const SUPABASE_ANON = ""; // anon public key  → ใส่ครบ = LIVE
+const SUPABASE_URL  = "https://ptdoaxhjryypjsxeifak.supabase.co"; // เช่น https://xxxxx.supabase.co
+const SUPABASE_ANON = "sb_publishable_FKF357m9Egvt1X3gO8eyLQ_oTp92QtD"; // anon public key  → ใส่ครบ = LIVE
 const LIVE = !!(SUPABASE_URL && SUPABASE_ANON);
 const sb = LIVE ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON) : null;
 const ok = ({data,error}) => { if(error) throw error; return data; };   // โยน error ให้ UI จับ (แก้ปัญหา fail เงียบ)
