@@ -109,27 +109,33 @@ function isoIn(days){ const d=new Date(); d.setDate(d.getDate()+days); return d.
 function curYM(){ return new Date().toISOString().slice(0,7); }
 
 function seedDemo(){
-  // ---- ลูกค้า (Sales) — มีจำนวน LBS ที่ต้องการ, ผูกกับ SR ผ่าน sr_id ----
+  // ===== ชุดข้อมูลทดสอบครบทุกเฟส: Sales → Project → Purchasing → Service → Closed =====
+  // ---- ลูกค้า (Sales) — ผูกกับ SR ผ่าน sr_id ----
   const customers = [
-    { id:1, name:'การไฟฟ้าส่วนภูมิภาค', customer_type:'ราชการ',     work_type:'Supply & Construction', contact:'คุณสมชาย 081-xxx', lbs_qty:6, desired_date:isoIn(9),  location:'บางปะกง ฉะเชิงเทรา', scope:'ปรับปรุงสถานีไฟฟ้า', note:'', sr_id:1 },
-    { id:2, name:'บ.อมตะ คอร์ปอเรชัน',  customer_type:'เอกชน',      work_type:'Supply & Construction', contact:'คุณวิภา 089-xxx',  lbs_qty:4, desired_date:isoIn(22), location:'นิคมอมตะนคร ชลบุรี', scope:'ติดตั้ง LBS',        note:'', sr_id:1 },
-    { id:3, name:'บ.ปิโตรเคมีไทย',     customer_type:'เอกชน',      work_type:'Supply',                contact:'คุณเอก 086-xxx',   lbs_qty:3, desired_date:isoIn(45), location:'มาบตาพุด ระยอง',    scope:'ขยายเขตจ่ายไฟ',      note:'', sr_id:2 },
-    { id:4, name:'เทศบาลนครนนทบุรี',   customer_type:'ราชการ',     work_type:'Supply',                contact:'กองช่าง 02-xxx',   lbs_qty:2, desired_date:null,      location:'นนทบุรี',           scope:'สำรวจงาน LBS',       note:'', sr_id:null },
-    // ▼ ลูกค้าที่อยู่ใน SR-2026-003 (ฝ่ายขายรวบรวมส่งมาแล้ว แต่ฝ่ายโครงการยังไม่สร้าง Stock — ใช้ทดสอบ flow ดึงสร้าง Project Stock)
-    { id:5, name:'บ.สหวิริยาสตีลอินดัสตรี', customer_type:'เอกชน',  work_type:'Supply & Construction', contact:'คุณมานพ 088-xxx', lbs_qty:5, desired_date:isoIn(35), location:'บางสะพาน ประจวบฯ', scope:'ติดตั้ง LBS โรงเหล็ก', note:'', sr_id:3 },
-    { id:6, name:'เทศบาลเมืองมาบตาพุด',  customer_type:'ราชการ',     work_type:'Supply',                contact:'กองช่าง 038-xxx',  lbs_qty:2, desired_date:isoIn(50), location:'มาบตาพุด ระยอง',   scope:'ขยายเขตจ่ายไฟ',       note:'', sr_id:3 },
+    { id:1, name:'การไฟฟ้าส่วนภูมิภาค (PEA)', customer_type:'ราชการ',  work_type:'Supply & Construction', contact:'คุณสมชาย 081-111-2222', lbs_qty:6, desired_date:isoIn(7),  location:'บางปะกง ฉะเชิงเทรา', scope:'ปรับปรุงสถานีไฟฟ้า 115kV', note:'', sr_id:1 },
+    { id:2, name:'บ.อมตะ คอร์ปอเรชัน',  customer_type:'เอกชน',      work_type:'Supply & Construction', contact:'คุณวิภา 089-333-4444',  lbs_qty:4, desired_date:isoIn(13), location:'นิคมอมตะนคร ชลบุรี', scope:'ติดตั้ง LBS ในนิคม',  note:'', sr_id:1 },
+    { id:3, name:'บ.ปิโตรเคมีไทย',     customer_type:'เอกชน',      work_type:'Supply',                contact:'คุณเอก 086-555-6666',  lbs_qty:3, desired_date:isoIn(45), location:'มาบตาพุด ระยอง',    scope:'ขยายเขตจ่ายไฟโรงงาน',  note:'', sr_id:2 },
+    { id:4, name:'เทศบาลนครนนทบุรี',   customer_type:'ราชการ',     work_type:'Supply',                contact:'กองช่าง 02-777-8888',  lbs_qty:2, desired_date:null,      location:'เมือง นนทบุรี',      scope:'สำรวจความต้องการ LBS', note:'ยังไม่รวบรวมส่ง — ทดสอบสร้าง SR', sr_id:null },
+    { id:5, name:'บ.สหวิริยาสตีลอินดัสตรี', customer_type:'เอกชน',  work_type:'Supply & Construction', contact:'คุณมานพ 088-999-0000', lbs_qty:5, desired_date:isoIn(35), location:'บางสะพาน ประจวบฯ', scope:'ติดตั้ง LBS โรงเหล็ก', note:'', sr_id:3 },
+    { id:6, name:'เทศบาลเมืองมาบตาพุด',  customer_type:'ราชการ',     work_type:'Supply',                contact:'กองช่าง 038-222-3333',lbs_qty:2, desired_date:isoIn(50), location:'มาบตาพุด ระยอง',   scope:'ขยายเขตจ่ายไฟชุมชน',   note:'', sr_id:3 },
+    { id:7, name:'บ.กัลฟ์ เอ็นเนอร์จี',  customer_type:'เอกชน',      work_type:'Supply & Construction', contact:'คุณปกรณ์ 081-444-5555',lbs_qty:8, desired_date:isoIn(20), location:'หนองแซง สระบุรี',   scope:'โรงไฟฟ้า SPP LBS 115kV', note:'', sr_id:4 },
+    { id:8, name:'บ.โกลบอล เพาเวอร์ ซินเนอร์ยี่', customer_type:'เอกชน', work_type:'Supply',           contact:'คุณนภา 089-666-7777',  lbs_qty:4, desired_date:isoIn(-3), location:'ศรีราชา ชลบุรี',    scope:'เปลี่ยน LBS เดิม',     note:'ส่งมอบเสร็จแล้ว', sr_id:5 },
   ];
-  // ---- Sales Requisition (Sales รวบรวมลูกค้า → ส่งฝ่ายโครงการ) — ผูก Stock ผ่าน stock_id ----
+  // ---- Sales Requisition ----
   const srs = [
-    { id:1, sr_no:'SR-2026-001', cust_po_no:'CPO-115/2569', contract_status:'ทำสัญญาแล้ว', note:'งานภาคตะวันออก 2 ราย', stock_id:1, created_at:new Date().toISOString() },
-    { id:2, sr_no:'SR-2026-002', cust_po_no:'',             contract_status:'ได้รับ PO แล้ว', note:'', stock_id:2, created_at:new Date().toISOString() },
-    // ▼ SR ที่รอฝ่ายโครงการสร้าง Stock (stock_id:null = โผล่ใน Inbox ของ Project Department)
-    { id:3, sr_no:'SR-2026-003', cust_po_no:'PO-SVI-2569/077', contract_status:'ได้รับ PO แล้ว', note:'งานภาคใต้ + ระยอง — รอฝ่ายโครงการสร้าง Stock', stock_id:null, created_at:new Date().toISOString() },
+    { id:1, sr_no:'SR-2026-001', cust_po_no:'CPO-PEA-115/2569', contract_status:'ทำสัญญาแล้ว', note:'งานภาคตะวันออก 2 ราย', stock_id:1, created_at:new Date().toISOString() },
+    { id:2, sr_no:'SR-2026-002', cust_po_no:'CPO-PTC-008',     contract_status:'ได้รับ PO แล้ว', note:'งานปิโตรเคมี ระยอง', stock_id:2, created_at:new Date().toISOString() },
+    // ▼ SR รอฝ่ายโครงการสร้าง Stock (โผล่ใน Inbox — ทดสอบดึงสร้าง Project Stock)
+    { id:3, sr_no:'SR-2026-003', cust_po_no:'PO-SVI-2569/077',  contract_status:'ได้รับ PO แล้ว', note:'งานภาคใต้ + ระยอง — รอฝ่ายโครงการสร้าง Stock', stock_id:null, created_at:new Date().toISOString() },
+    { id:4, sr_no:'SR-2026-004', cust_po_no:'CPO-GULF-441',     contract_status:'ทำสัญญาแล้ว', note:'โรงไฟฟ้า SPP สระบุรี', stock_id:3, created_at:new Date().toISOString() },
+    { id:5, sr_no:'SR-2026-005', cust_po_no:'CPO-GPSC-220',     contract_status:'ทำสัญญาแล้ว', note:'งานเปลี่ยน LBS ศรีราชา (ปิดงานแล้ว)', stock_id:4, created_at:new Date().toISOString() },
   ];
-  // ---- Project Stock (Project รวมหลาย SR) — มี BOM No. + bom_status ----
+  // ---- Project Stock — ครบทุกเฟส: service / project / purchasing / closed ----
   const projects = [
-    { id:1, project_stock_no:'STK-2026-001', job_no:'JOB-001', bom_no:'BOM-2026-001', bom_status:'Sent to Purchasing', name:'งานตะวันออก รอบ 1', current_phase:'service',    phase_acked:true, total_budget:14700000, margin:18.0, cash_flow_status:'ปกติ',     delivery_date:isoIn(9),  do_signed:false },
-    { id:2, project_stock_no:'STK-2026-002', job_no:'JOB-002', bom_no:'BOM-2026-002', bom_status:'Draft',              name:'ขยายเขตจ่ายไฟระยอง', current_phase:'project',    phase_acked:true, total_budget:4100000,  margin:20.0, cash_flow_status:'เฝ้าระวัง', delivery_date:isoIn(45), do_signed:false },
+    { id:1, project_stock_no:'STK-2026-001', job_no:'JOB-2026-001', bom_no:'BOM-2026-001', bom_status:'Sent to Purchasing', name:'ปรับปรุงสถานี+นิคม (ภาคตะวันออก)', current_phase:'service',    phase_acked:true,  total_budget:14700000, margin:18.0, cash_flow_status:'ปกติ',     delivery_date:isoIn(7),  do_signed:false },
+    { id:2, project_stock_no:'STK-2026-002', job_no:'JOB-2026-002', bom_no:'BOM-2026-002', bom_status:'Draft',              name:'ขยายเขตจ่ายไฟ ปิโตรเคมีระยอง',  current_phase:'project',    phase_acked:true,  total_budget:4100000,  margin:20.0, cash_flow_status:'เฝ้าระวัง', delivery_date:isoIn(45), do_signed:false },
+    { id:3, project_stock_no:'STK-2026-003', job_no:'JOB-2026-003', bom_no:'BOM-2026-003', bom_status:'Sent to Purchasing', name:'โรงไฟฟ้า SPP กัลฟ์ สระบุรี',     current_phase:'purchasing', phase_acked:true,  total_budget:9800000,  margin:16.5, cash_flow_status:'ปกติ',     delivery_date:isoIn(20), do_signed:false },
+    { id:4, project_stock_no:'STK-2026-004', job_no:'JOB-2026-004', bom_no:'BOM-2026-004', bom_status:'Sent to Purchasing', name:'เปลี่ยน LBS ศรีราชา (ปิดงาน)',   current_phase:'closed',     phase_acked:true,  total_budget:3950000,  margin:22.0, cash_flow_status:'ปกติ',     delivery_date:isoIn(-3), do_signed:true  },
   ];
   const tasks = [];
   // งานฝ่ายขาย → ผูกลูกค้า
@@ -138,9 +144,9 @@ function seedDemo(){
     let status = inSr ? (ti<=1 ? 'Completed' : 'In Progress') : (ti===0 ? 'In Progress' : 'Pending');
     tasks.push({ id:nid(), customer_id:c.id, project_id:null, department:'sales', task_title:title, task_detail:detail, sort_order:ti, status, updated_by:'seed', updated_at:new Date().toISOString() });
   }));
-  // งานฝ่ายโครงการ/จัดซื้อ/บริการ → ผูก Project Stock
+  // งานฝ่ายโครงการ/จัดซื้อ/บริการ → ผูก Project Stock (closed = ครบทุกข้อ)
   projects.forEach(p => {
-    const reached = PHASE_STEPS.indexOf(p.current_phase);
+    const reached = p.current_phase==='closed' ? PHASE_STEPS.length : PHASE_STEPS.indexOf(p.current_phase);
     PHASE_STEPS.forEach((dep, di) => TASK_TEMPLATE[dep].forEach(([title,detail], ti) => {
       let status = 'Pending';
       if (di < reached) status = 'Completed';
@@ -148,30 +154,48 @@ function seedDemo(){
       tasks.push({ id:nid(), customer_id:null, project_id:p.id, department:dep, task_title:title, task_detail:detail, sort_order:ti, status, updated_by:'seed', updated_at:new Date().toISOString() });
     }));
   });
-  // ---- BOM (คอลัมน์ Epicor) ----
+  // ---- BOM (จำนวน LBS ตรงกับที่ลูกค้าต้องการในแต่ละ Stock) ----
   const bom = [
+    // STK-001 (LBS รวม 10 = 6+4) — service: ของเข้าครบทุกรายการ
     { id:nid(), project_id:1, epicor_code:'LBS-115-MOT', description:'LBS 115kV 3-Pole Motorized', category:'LBS',       due_date:isoIn(-15), ium:'EA', quantity:6,  currency:'USD', unit_cost:24500, fx_rate:36.5, project_phase:'Phase 1', po_status:'Delivered' },
-    { id:nid(), project_id:1, epicor_code:'LBS-115-MAN', description:'LBS 115kV 3-Pole Manual',    category:'LBS',       due_date:isoIn(-10), ium:'EA', quantity:4,  currency:'USD', unit_cost:20000, fx_rate:36.5, project_phase:'Phase 1', po_status:'Delivered' },
+    { id:nid(), project_id:1, epicor_code:'LBS-115-MAN', description:'LBS 115kV 3-Pole Manual',    category:'LBS',       due_date:isoIn(-10), ium:'EA', quantity:4,  currency:'USD', unit_cost:20000, fx_rate:36.5, project_phase:'Phase 2', po_status:'Delivered' },
     { id:nid(), project_id:1, epicor_code:'ACC-SA-115',  description:'Surge Arrester 115kV',        category:'Accessory', due_date:isoIn(-8),  ium:'EA', quantity:30, currency:'THB', unit_cost:42000, fx_rate:1,    project_phase:'Phase 1', po_status:'Delivered' },
-    { id:nid(), project_id:2, epicor_code:'LBS-115-MOT', description:'LBS 115kV 3-Pole Motorized', category:'LBS',       due_date:isoIn(30),  ium:'EA', quantity:3,  currency:'USD', unit_cost:24500, fx_rate:36.5, project_phase:'Phase 1', po_status:'Awaiting PO' },
-    { id:nid(), project_id:2, epicor_code:'ACC-CC-01',   description:'Control Cabinet',             category:'Accessory', due_date:isoIn(30),  ium:'EA', quantity:3,  currency:'THB', unit_cost:95000, fx_rate:1,    project_phase:'Phase 1', po_status:'Awaiting PO' },
+    // STK-002 (LBS รวม 3) — project: ยังร่าง BOM
+    { id:nid(), project_id:2, epicor_code:'LBS-115-MOT', description:'LBS 115kV 3-Pole Motorized', category:'LBS',       due_date:isoIn(40),  ium:'EA', quantity:3,  currency:'USD', unit_cost:24500, fx_rate:36.5, project_phase:'Phase 1', po_status:'Awaiting PO' },
+    { id:nid(), project_id:2, epicor_code:'ACC-CC-01',   description:'Control Cabinet',             category:'Accessory', due_date:isoIn(40),  ium:'EA', quantity:3,  currency:'THB', unit_cost:95000, fx_rate:1,    project_phase:'Phase 1', po_status:'Awaiting PO' },
+    // STK-003 (LBS รวม 8) — purchasing: ของเข้าบางส่วน (ยัง handoff ไม่ได้ — ทดสอบ gate)
+    { id:nid(), project_id:3, epicor_code:'LBS-115-MOT', description:'LBS 115kV 3-Pole Motorized', category:'LBS',       due_date:isoIn(15),  ium:'EA', quantity:8,  currency:'USD', unit_cost:24500, fx_rate:36.2, project_phase:'Phase 1', po_status:'PO Received' },
+    { id:nid(), project_id:3, epicor_code:'ACC-SA-115',  description:'Surge Arrester 115kV',        category:'Accessory', due_date:isoIn(12),  ium:'EA', quantity:24, currency:'THB', unit_cost:42000, fx_rate:1,    project_phase:'Phase 1', po_status:'Delivered' },
+    // STK-004 (LBS รวม 4) — closed: ของเข้าครบ
+    { id:nid(), project_id:4, epicor_code:'LBS-115-MAN', description:'LBS 115kV 3-Pole Manual',    category:'LBS',       due_date:isoIn(-30), ium:'EA', quantity:4,  currency:'USD', unit_cost:20000, fx_rate:35.8, project_phase:'Phase 1', po_status:'Delivered' },
+    { id:nid(), project_id:4, epicor_code:'ACC-CC-01',   description:'Control Cabinet',             category:'Accessory', due_date:isoIn(-28), ium:'EA', quantity:4,  currency:'THB', unit_cost:95000, fx_rate:1,    project_phase:'Phase 1', po_status:'Delivered' },
   ];
   const pos = [
-    { id:nid(), project_id:1, po_no:'PO-2026-1001', supplier:'ABB (Thailand)',    status:'รับครบ', expected_date:isoIn(-20), amount:9300000, notified:true },
-    { id:nid(), project_id:1, po_no:'PO-2026-1002', supplier:'Schneider Electric', status:'รับครบ', expected_date:isoIn(-12), amount:1260000, notified:true },
+    { id:nid(), project_id:1, po_no:'PO-2026-1001', supplier:'ABB (Thailand)',     status:'รับครบ', expected_date:isoIn(-20), amount:9300000, notified:true },
+    { id:nid(), project_id:1, po_no:'PO-2026-1002', supplier:'Schneider Electric',  status:'รับครบ', expected_date:isoIn(-12), amount:1260000, notified:true },
+    { id:nid(), project_id:3, po_no:'PO-2026-1003', supplier:'Siemens',            status:'กำลังส่ง', expected_date:isoIn(10), amount:7100000, notified:true },
+    { id:nid(), project_id:3, po_no:'PO-2026-1004', supplier:'ลีดเดอร์ สวิตช์เกียร์', status:'ออกแล้ว', expected_date:isoIn(14), amount:1010000, notified:false },
+    { id:nid(), project_id:4, po_no:'PO-2026-1005', supplier:'ABB (Thailand)',     status:'รับครบ', expected_date:isoIn(-35), amount:3260000, notified:true },
   ];
   // ---- ทีม Service + ตารางคิวงานรายเดือน ----
   const team = [
     { id:nid(), name:'อนุชา (หัวหน้าทีม)', role:'Site Supervisor', phone:'081-111-1111', active:true },
-    { id:nid(), name:'ธีรพงษ์',           role:'Technician',      phone:'081-222-2222', active:true },
-    { id:nid(), name:'กิตติ',             role:'Technician',      phone:'081-333-3333', active:true },
-    { id:nid(), name:'สุริยา',            role:'Electrician',     phone:'081-444-4444', active:true },
+    { id:nid(), name:'ธีรพงษ์ ทองดี',     role:'Technician',      phone:'081-222-2222', active:true },
+    { id:nid(), name:'กิตติ ศรีสุข',       role:'Technician',      phone:'081-333-3333', active:true },
+    { id:nid(), name:'สุริยา แดงเดช',      role:'Electrician',     phone:'081-444-4444', active:true },
+    { id:nid(), name:'ประพันธ์ ใจกล้า',    role:'Helper',          phone:'081-555-5555', active:true },
   ];
   const ym = curYM();
   const schedule = [
-    { id:nid(), project_id:1, member_id:team[0].id, start_date:ym+'-05', end_date:ym+'-09', note:'ติดตั้งหลัก' },
+    // STK-001 (กำลังส่งมอบเดือนนี้)
+    { id:nid(), project_id:1, member_id:team[0].id, start_date:ym+'-05', end_date:ym+'-09', note:'ติดตั้งหลัก สถานีบางปะกง' },
     { id:nid(), project_id:1, member_id:team[1].id, start_date:ym+'-05', end_date:ym+'-09', note:'' },
     { id:nid(), project_id:1, member_id:team[3].id, start_date:ym+'-07', end_date:ym+'-12', note:'งานไฟฟ้า' },
+    // STK-004 (เก็บงานปิดท้าย ต้นเดือน)
+    { id:nid(), project_id:4, member_id:team[2].id, start_date:ym+'-02', end_date:ym+'-03', note:'ส่งมอบ + ลงนาม DO ศรีราชา' },
+    { id:nid(), project_id:4, member_id:team[4].id, start_date:ym+'-02', end_date:ym+'-03', note:'' },
+    // คิวล่วงหน้า STK-001 ปลายเดือน
+    { id:nid(), project_id:1, member_id:team[2].id, start_date:ym+'-18', end_date:ym+'-22', note:'ติดตั้งนิคมอมตะ' },
   ];
   return { customers, srs, projects, tasks, bom, pos, team, schedule, handoffs:[] };
 }
@@ -322,6 +346,13 @@ const Sel = ({value,onChange,options,labels}) => (
   <select value={value} onChange={e=>onChange(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 px-2 py-1.5 focus:outline-none focus:border-amber-500/60">
     {options.map(o=><option key={o} value={o} className="bg-slate-800">{labels?labels[o]:o}</option>)}
   </select>
+);
+// input แบบ uncontrolled commit ตอน blur — ใช้กับช่องที่ทุกครั้งที่พิมพ์จะ reload (กัน cursor หลุด)
+const EditText = ({value, onCommit, className, placeholder, type='text'}) => (
+  <input key={value} type={type} defaultValue={value} placeholder={placeholder}
+    onBlur={e=>{ if(String(e.target.value)!==String(value??'')) onCommit(e.target.value); }}
+    onKeyDown={e=>{ if(e.key==='Enter') e.target.blur(); }}
+    className={className||"w-full bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 px-2.5 py-1.5 focus:outline-none focus:border-amber-500/60"}/>
 );
 const Empty = ({msg}) => (
   <div className="col-span-full grid place-items-center py-20 text-slate-500"><div className="text-center"><div className="text-3xl mb-2 opacity-40">📦</div>{msg}</div></div>
@@ -748,7 +779,17 @@ function SalesPipeline({state, role, onAddCustomer, onUpdateCustomer, onCreateSR
             {state.srs.map(sr => { const custs=(state.customers||[]).filter(c=>c.sr_id===sr.id); const lbs=custs.reduce((s,c)=>s+num(c.lbs_qty),0); return (
               <tr key={sr.id} className="border-b border-slate-800/60 align-top">
                 <td className="px-5 py-3 mono text-slate-200">{sr.sr_no}<div className="text-[10px] text-slate-500">{sr.note}</div></td>
-                <td className="px-3 py-3 text-slate-300 text-[12px]">{custs.map(c=>c.name).join(', ')||'—'}</td>
+                <td className="px-3 py-3 text-[12px]">
+                  <div className="space-y-1.5">
+                    {custs.map(c=>(
+                      <div key={c.id} className="leading-tight">
+                        <div className="flex items-center gap-1.5 flex-wrap"><span className="text-slate-200 font-medium">{c.name}</span><Pill color={ctypeColor(c.customer_type)}>{c.customer_type}</Pill><Pill color={c.work_type==='Supply'?'#64748b':'#10b981'}>{c.work_type}</Pill><Pill color="#f59e0b">LBS {c.lbs_qty}</Pill></div>
+                        <div className="text-[10px] text-slate-500 mt-0.5">📍 {c.location||'—'} · ☎ {c.contact||'—'}{c.desired_date?' · 📅 ต้องการ '+c.desired_date:''}{c.scope?' · '+c.scope:''}</div>
+                      </div>
+                    ))}
+                    {custs.length===0 && '—'}
+                  </div>
+                </td>
                 <td className="px-3 py-3 text-right mono font-semibold" style={{color:'#f59e0b'}}>{lbs}</td>
                 <td className="px-3 py-3 w-40">{canEdit ? <Inp value={sr.cust_po_no||''} onChange={v=>onUpdateSR(sr.id,{cust_po_no:v})} placeholder="—"/> : <span className="text-slate-300">{sr.cust_po_no||'—'}</span>}</td>
                 <td className="px-3 py-3 w-44">{canEdit ? <Sel value={sr.contract_status} onChange={v=>onUpdateSR(sr.id,{contract_status:v})} options={CONTRACT_STATUS}/> : <Pill color={sr.contract_status==='ทำสัญญาแล้ว'?'#10b981':'#f59e0b'}>{sr.contract_status}</Pill>}</td>
@@ -766,13 +807,21 @@ function SalesPipeline({state, role, onAddCustomer, onUpdateCustomer, onCreateSR
 const Field = ({label, value, color, mono}) => (
   <div><div className="text-[11px] text-slate-500">{label}</div><div className={"text-lg font-semibold mt-0.5 "+(mono?'mono ':'')} style={color?{color}:{color:'#e2e8f0'}}>{value}</div></div>
 );
-function ProjectDept({state, project, role, onCreateStock, onAddBom, onUpdateBom, onDeleteBom, onSendBom, onUpdateProject}){
+function ProjectDept({state, project, role, onCreateStock, onAddBom, onUpdateBom, onDeleteBom, onSendBom, onUpdateProject, genDefaults}){
   const canEdit = role==='developer' || role==='project';
   const inbox = state.srs.filter(s=>!s.stock_id);              // SR รอสร้าง Stock
   const [sel,setSel]=useState([]);
+  const [mk,setMk]=useState(null);                             // ฟอร์มตั้งชื่อ/เลขตอนสร้าง Stock (null = ปิด)
   const toggle = id => setSel(s => s.includes(id) ? s.filter(x=>x!==id) : [...s,id]);
-  const create = () => { if(!sel.length) return; onCreateStock(sel); setSel([]); };
   const srCusts = sr => (state.customers||[]).filter(c=>c.sr_id===sr.id);
+  const openCreate = () => {
+    if(!sel.length) return;
+    const custs=(state.customers||[]).filter(c=>sel.includes(c.sr_id));
+    const d=genDefaults();
+    setMk({ name: custs[0] ? (custs[0].location || custs[0].name) : 'Project Stock', stockNo:d.stockNo, jobNo:d.jobNo, bomNo:d.bomNo });
+  };
+  const confirmCreate = () => { if(!mk.stockNo.trim()) return; onCreateStock(sel, { name:mk.name.trim()||'Project Stock', stockNo:mk.stockNo.trim(), jobNo:mk.jobNo.trim(), bomNo:mk.bomNo.trim() }); setSel([]); setMk(null); };
+  const selCusts = (state.customers||[]).filter(c=>sel.includes(c.sr_id));
   return (
     <div className="space-y-4">
       {/* Inbox: SR รอสร้าง Stock */}
@@ -780,17 +829,42 @@ function ProjectDept({state, project, role, onCreateStock, onAddBom, onUpdateBom
         <Card className="overflow-hidden" style={{borderColor:DEPT.project.c+'55'}}>
           <div className="px-5 py-3 border-b border-slate-800 flex items-center justify-between flex-wrap gap-2" style={{background:DEPT.project.c+'12'}}>
             <div className="flex items-center gap-2"><span style={{color:DEPT.project.c}}>📥</span><h3 className="text-slate-200 font-semibold">Sales Requisition ที่ฝ่ายขายส่งมา — เลือกหลายใบเพื่อสร้าง 1 Project Stock</h3><span className="text-[11px] text-slate-500">({inbox.length} ใบ)</span></div>
-            {canEdit && <button onClick={create} disabled={!sel.length} className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-1.5" style={sel.length?{background:DEPT.project.c,color:'#0b0f17'}:{background:'#1e293b',color:'#475569',cursor:'not-allowed'}}>{Icon.plus} สร้าง Project Stock ({sel.length})</button>}
+            {canEdit && <button onClick={openCreate} disabled={!sel.length} className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-1.5" style={sel.length?{background:DEPT.project.c,color:'#0b0f17'}:{background:'#1e293b',color:'#475569',cursor:'not-allowed'}}>{Icon.plus} สร้าง Project Stock ({sel.length})</button>}
           </div>
+          {/* ฟอร์มตั้งชื่อ/เลขก่อนสร้าง */}
+          {mk && canEdit && (
+            <div className="px-5 py-4 bg-slate-800/40 border-b border-slate-800 space-y-3">
+              <div className="text-[12px] text-slate-400">รวม {sel.length} SR · {selCusts.length} ลูกค้า · LBS รวม {selCusts.reduce((s,c)=>s+num(c.lbs_qty),0)} → ตั้งชื่อโครงการและเลขเอกสาร (แก้ไขได้)</div>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                <div className="md:col-span-4"><Lbl>ชื่อโครงการ (Project Stock Name)</Lbl><Inp value={mk.name} onChange={v=>setMk({...mk,name:v})} placeholder="เช่น งานปรับปรุงสถานีไฟฟ้าภาคตะวันออก"/></div>
+                <div><Lbl>Project Stock No.</Lbl><Inp value={mk.stockNo} onChange={v=>setMk({...mk,stockNo:v})}/></div>
+                <div><Lbl>Job No.</Lbl><Inp value={mk.jobNo} onChange={v=>setMk({...mk,jobNo:v})}/></div>
+                <div><Lbl>BOM No.</Lbl><Inp value={mk.bomNo} onChange={v=>setMk({...mk,bomNo:v})}/></div>
+                <div className="flex items-end gap-2">
+                  <button onClick={()=>setMk(null)} className="text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300">ยกเลิก</button>
+                  <button onClick={confirmCreate} disabled={!mk.stockNo.trim()} className="text-xs px-3 py-1.5 rounded-lg font-semibold" style={mk.stockNo.trim()?{background:DEPT.project.c,color:'#0b0f17'}:{background:'#1e293b',color:'#475569'}}>ยืนยันสร้าง Stock</button>
+                </div>
+              </div>
+            </div>
+          )}
           <div className="p-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {inbox.map(sr => { const custs=srCusts(sr); const lbs=custs.reduce((s,c)=>s+num(c.lbs_qty),0); const selected=sel.includes(sr.id); const dd=custs.map(c=>c.desired_date).filter(Boolean).sort()[0]; return (
               <div key={sr.id} className="rounded-lg border p-3 space-y-2" style={selected?{borderColor:DEPT.project.c,background:DEPT.project.c+'12'}:{borderColor:'#33415580',background:'#1e293b80'}}>
                 <div className="flex items-start gap-2">
                   {canEdit && <input type="checkbox" checked={selected} onChange={()=>toggle(sr.id)} className="mt-1 accent-amber-500"/>}
-                  <div className="flex-1"><div className="text-[13px] text-slate-200 font-medium mono">{sr.sr_no}</div><div className="text-[11px] text-slate-500">{custs.length} ลูกค้า · {sr.contract_status}</div></div>
+                  <div className="flex-1"><div className="text-[13px] text-slate-200 font-medium mono">{sr.sr_no}</div><div className="text-[11px] text-slate-500">{custs.length} ลูกค้า · {sr.contract_status}{sr.cust_po_no?' · PO '+sr.cust_po_no:''}</div></div>
                   <Pill color="#f59e0b">LBS {lbs}</Pill>
                 </div>
-                <div className="text-[11px] text-slate-400 leading-relaxed">{custs.map(c=>`${c.name} (${c.work_type}, ${c.location||'—'})`).join(' · ')}</div>
+                {/* รายละเอียดลูกค้าทั้งหมดในใบ */}
+                <div className="space-y-1.5 border-t border-slate-700/40 pt-2">
+                  {custs.map(c => (
+                    <div key={c.id} className="leading-tight">
+                      <div className="flex items-center gap-1.5"><span className="text-[12px] text-slate-200">{c.name}</span><Pill color={ctypeColor(c.customer_type)}>{c.customer_type}</Pill><Pill color="#f59e0b">LBS {c.lbs_qty}</Pill></div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">{c.work_type} · {c.location||'—'} · {c.contact||'—'}{c.desired_date?' · ต้องการ '+c.desired_date:''}{c.scope?' · '+c.scope:''}</div>
+                    </div>
+                  ))}
+                  {custs.length===0 && <div className="text-[11px] text-slate-500">—</div>}
+                </div>
                 {dd && <div className="text-[10px] text-slate-500">เร็วสุดต้องการ {dd}</div>}
               </div>
             );})}
@@ -819,6 +893,7 @@ function ProjectBom({state, project, canEdit, onAddBom, onUpdateBom, onDeleteBom
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card className="p-5 lg:col-span-2">
           <h3 className="text-slate-200 font-semibold mb-4 flex items-center gap-2">{Icon.layers} Project Budget & Flow</h3>
+          {canEdit && <div className="mb-4"><Lbl>ชื่อโครงการ (แก้ไขได้)</Lbl><EditText value={project.name} onCommit={v=>onUpdateProject(project.id,{name:v.trim()||project.name})}/></div>}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div><Lbl>งบประมาณรวม (฿)</Lbl>{canEdit ? <Inp type="number" value={project.total_budget} onChange={v=>onUpdateProject(project.id,{total_budget:num(v)})}/> : <div className="text-lg font-semibold" style={{color:'#6366f1'}}>{baht(project.total_budget)}</div>}</div>
             <div><Lbl>กำไร Margin (%)</Lbl>{canEdit ? <Inp type="number" value={project.margin} onChange={v=>onUpdateProject(project.id,{margin:num(v)})}/> : <div className="text-lg font-semibold" style={{color:'#10b981'}}>{project.margin}%</div>}</div>
@@ -864,7 +939,7 @@ function ProjectBom({state, project, canEdit, onAddBom, onUpdateBom, onDeleteBom
             <div><Lbl>Currency</Lbl><Sel value={form.currency} onChange={v=>setForm({...form,currency:v})} options={CURRENCY}/></div>
             <div><Lbl>Cost/unit</Lbl><Inp type="number" value={form.unit_cost} onChange={v=>setForm({...form,unit_cost:num(v)})}/></div>
             {form.currency==='USD' && <div><Lbl>FX (฿/USD)</Lbl><Inp type="number" value={form.fx_rate} onChange={v=>setForm({...form,fx_rate:num(v)})}/></div>}
-            <div><Lbl>Project Phase</Lbl><Sel value={form.project_phase} onChange={v=>setForm({...form,project_phase:v})} options={PROJECT_PHASES}/></div>
+            <div><Lbl>Project Phase</Lbl><Inp value={form.project_phase} onChange={v=>setForm({...form,project_phase:v})} placeholder="เช่น Phase 1 / งวดที่ 1"/></div>
             <div className="col-span-2 md:col-span-6 flex justify-end gap-2">
               <button onClick={()=>setOpen(false)} className="text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300">ยกเลิก</button>
               <button onClick={()=>{ if(!form.description)return; onAddBom({project_id:project.id, ...form, fx_rate:form.currency==='USD'?(num(form.fx_rate)||1):1, po_status:'Awaiting PO'}); setForm(BOM_BLANK); setOpen(false); }} className="text-xs px-3 py-1.5 rounded-lg font-medium" style={{background:'#f59e0b',color:'#0b0f17'}}>บันทึก</button>
@@ -891,7 +966,7 @@ function ProjectBom({state, project, canEdit, onAddBom, onUpdateBom, onDeleteBom
                 <td className="px-3 py-3 text-right mono text-slate-300">{b.quantity}</td>
                 <td className="px-3 py-3 text-right mono text-slate-400">{b.currency==='USD'?'$':'฿'}{num(b.unit_cost).toLocaleString()}{b.currency==='USD'?<span className="text-[10px] text-slate-600"> @{b.fx_rate}</span>:''}</td>
                 <td className="px-3 py-3 text-right mono text-slate-200">{baht(lineTHB(b))}</td>
-                <td className="px-3 py-3 text-slate-400 text-[12px]">{b.project_phase}</td>
+                <td className="px-3 py-3 text-slate-400 text-[12px]">{canEdit && !sent ? <EditText value={b.project_phase||''} onCommit={v=>onUpdateBom(b.id,{project_phase:v})} className="w-28 bg-slate-900 border border-slate-700 rounded px-1.5 py-1 text-[12px] text-slate-200 focus:outline-none focus:border-amber-500/60"/> : (b.project_phase||'—')}</td>
                 <td className="px-3 py-3"><Pill color={poColor(b.po_status)}>{b.po_status}</Pill></td>
                 {canEdit && !sent && <td className="px-3 py-3 text-right"><button onClick={()=>onDeleteBom(b.id)} className="text-slate-500 hover:text-rose-400">{Icon.trash}</button></td>}
               </tr>
@@ -1249,6 +1324,7 @@ function App(){
   const genJobNo   = () => `JOB-${pad3(nextSeq(state.projects,'job_no')+1)}`;
   const genBomNo   = () => `BOM-${year}-${pad3(nextSeq(state.projects,'bom_no')+1)}`;
   const genPoNo    = () => `PO-${year}-${pad4(Math.max(1000, nextSeq(state.pos,'po_no'))+1)}`;
+  const genDefaults = () => ({ stockNo:genStockNo(), jobNo:genJobNo(), bomNo:genBomNo() });   // ค่าตั้งต้นให้ฟอร์มสร้าง Stock
 
   const handleTask = run(async (taskId, status) => { await db.updateTask(taskId,{status, updated_by:DEPT[role].en}); });
   const handleAddTask = run(async (projectId, dep, title, detail) => {
@@ -1264,10 +1340,14 @@ function App(){
   const handleUpdateSR = run(async (id, patch) => { await db.updateSR(id, patch); });
 
   /* Project */
-  const handleCreateStock = run(async (srIds) => {
+  const handleCreateStock = run(async (srIds, custom) => {
     const custs=(state.customers||[]).filter(c=>srIds.includes(c.sr_id));
-    const name = custs[0] ? (custs[0].location || custs[0].name) : 'Project Stock';
-    const r=await db.createStock(srIds, genStockNo(), genJobNo(), genBomNo(), name);
+    const name    = (custom && custom.name)    || (custs[0] ? (custs[0].location || custs[0].name) : 'Project Stock');
+    const stockNo = (custom && custom.stockNo) || genStockNo();
+    const jobNo   = (custom && custom.jobNo)   || genJobNo();
+    const bomNo   = (custom && custom.bomNo)   || genBomNo();
+    if(state.projects.some(p=>p.project_stock_no===stockNo)) throw new Error(`Project Stock No. "${stockNo}" มีอยู่แล้ว — กรุณาใช้เลขอื่น`);
+    const r=await db.createStock(srIds, stockNo, jobNo, bomNo, name);
     await reload();
     if(r) { setActiveId(r.id); setPage('project'); }
   });
@@ -1308,7 +1388,7 @@ function App(){
         <main className="flex-1 overflow-y-auto p-6">
           {page==='dashboard'  && <Dashboard state={state} onNav={setPage} onSelectProject={goProject} onOpenPO={setPoProject}/>}
           {page==='sales'      && <SalesPipeline state={state} role={role} onAddCustomer={handleAddCustomer} onUpdateCustomer={handleUpdateCustomer} onCreateSR={handleCreateSR} onUpdateSR={handleUpdateSR} onTask={handleTask}/>}
-          {page==='project'    && <ProjectDept state={state} project={activeProject} role={role} onCreateStock={handleCreateStock} onAddBom={handleAddBom} onUpdateBom={handleUpdateBom} onDeleteBom={handleDeleteBom} onSendBom={handleSendBom} onUpdateProject={handleUpdateProject}/>}
+          {page==='project'    && <ProjectDept state={state} project={activeProject} role={role} onCreateStock={handleCreateStock} onAddBom={handleAddBom} onUpdateBom={handleUpdateBom} onDeleteBom={handleDeleteBom} onSendBom={handleSendBom} onUpdateProject={handleUpdateProject} genDefaults={genDefaults}/>}
           {page==='purchasing' && <Procurement state={state} role={role} onUpdateBom={handleUpdateBom} onAddPO={handleAddPO} onOpenPO={setPoProject}/>}
           {page==='service'    && <FieldService state={state} role={role} onTask={handleTask} onAddTask={handleAddTask} onAddMember={handleAddMember} onRemoveMember={handleRemoveMember} onAddSchedule={handleAddSchedule} onRemoveSchedule={handleRemoveSchedule} onSignDO={handleSignDO}/>}
           {page==='workflow'   && <WorkflowBoard state={state} project={activeProject} role={role} onTask={handleTask} onAddTask={handleAddTask} onHandoff={handleHandoff} onReject={handleReject} onAck={handleAck}/>}
