@@ -41,8 +41,8 @@
 const { useState, useEffect, useMemo } = React;
 
 /* ============================ CONFIG ============================ */
-const SUPABASE_URL  = "https://ptdoaxhjryypjsxeifak.supabase.co"; // เช่น https://xxxxx.supabase.co
-const SUPABASE_ANON = "sb_publishable_FKF357m9Egvt1X3gO8eyLQ_oTp92QtD"; // anon public key  → ใส่ครบ = LIVE
+const SUPABASE_URL  = ""; // เช่น https://xxxxx.supabase.co
+const SUPABASE_ANON = ""; // anon public key  → ใส่ครบ = LIVE
 const LIVE = !!(SUPABASE_URL && SUPABASE_ANON);
 const sb = LIVE ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON) : null;
 const ok = ({data,error}) => { if(error) throw error; return data; };   // โยน error ให้ UI จับ (แก้ปัญหา fail เงียบ)
@@ -1585,6 +1585,21 @@ function Login(){
   );
 }
 
+/* ============================ PENDING APPROVAL (LIVE: ยังไม่กำหนดสิทธิ์) ============================ */
+function Pending({email, onSignOut}){
+  return (
+    <div className="h-screen grid place-items-center bg-[var(--app-bg)] grain px-4">
+      <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900/70 p-7 text-center fade-up">
+        <div className="text-4xl mb-3">⏳</div>
+        <h2 className="text-slate-100 font-semibold text-lg">รอผู้ดูแลอนุมัติสิทธิ์</h2>
+        <p className="text-sm text-slate-400 mt-2 leading-relaxed">บัญชี <b className="text-slate-200">{email}</b> ยังไม่ได้รับการกำหนดบทบาท<br/>กรุณาติดต่อผู้ดูแลระบบเพื่อกำหนดสิทธิ์ฝ่ายของคุณก่อนเริ่มใช้งาน</p>
+        <div className="mt-4 text-[11px] text-slate-500 leading-relaxed rounded-lg border border-slate-800 bg-slate-800/40 p-3 text-left">สำหรับผู้ดูแล — กำหนดสิทธิ์ใน Supabase SQL Editor:<br/><span className="mono text-slate-300 break-all">INSERT INTO user_roles (user_id, department) SELECT id, 'sales' FROM auth.users WHERE email='{email}';</span></div>
+        <button onClick={onSignOut} className="mt-4 text-xs rounded-md px-3 py-1.5 border border-slate-700 text-slate-300 hover:bg-slate-800/60">ออกจากระบบ</button>
+      </div>
+    </div>
+  );
+}
+
 /* ============================ APP ============================ */
 function App(){
   const [state, setState] = useState({ customers:[], srs:[], projects:[], tasks:[], bom:[], pos:[], team:[], schedule:[], plans:[], handoffs:[], loading:true });
@@ -1699,6 +1714,7 @@ function App(){
   if (LIVE && session===undefined) return <div className="h-screen grid place-items-center text-slate-500">กำลังตรวจสอบสิทธิ์…</div>;
   if (LIVE && !session) return <Login/>;
   if (state.loading) return <div className="h-screen grid place-items-center text-slate-500">กำลังโหลดข้อมูล…</div>;
+  if (LIVE && me && !me.hasRole) return <Pending email={me.email} onSignOut={handleSignOut}/>;   // ยังไม่กำหนดสิทธิ์ → รอผู้ดูแลอนุมัติ
   const poProj = poProject ? state.projects.find(p=>p.id===poProject) : null;
 
   return (
