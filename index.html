@@ -21,6 +21,7 @@
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <style>
   :root { --app-bg:#eef2f7; --sidebar:#e9eef6; --header:#f4f7fbe6; --scroll:#cbd5e1; --scroll-hover:#94a3b8; --nav-active:#0f172a; color-scheme: light; }
   html[data-theme="dark"] { --app-bg:#0b0f17; --sidebar:#0a0e15; --header:#0b0f17e6; --scroll:#1e293b; --scroll-hover:#334155; --nav-active:#f1f5f9; color-scheme: dark; }
@@ -33,6 +34,7 @@
   @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
   .fade-up{animation:fadeUp .35s ease both}
   .grain{background-image:radial-gradient(rgba(100,116,139,.18) 1px,transparent 1px);background-size:3px 3px}
+  @media print { aside, header, .no-print { display:none !important; } main { overflow:visible !important; padding:0 !important; } body { background:#fff; } }
 </style>
 </head>
 <body>
@@ -127,6 +129,12 @@ function downloadCSV(filename, rows){
   const esc=v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"';
   const csv=rows.map(r=>r.map(esc).join(',')).join('\r\n');
   const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'})); a.download=filename; a.click(); URL.revokeObjectURL(a.href);
+}
+// ส่งออก Excel จริง (.xlsx) ด้วย SheetJS — rows = array ของ array (แถวแรก = หัวคอลัมน์)
+function exportXLSX(filename, sheetName, rows){
+  if(typeof XLSX==='undefined'){ downloadCSV(filename.replace(/\.xlsx$/,'.csv'), rows); return; }   // fallback ถ้า CDN ไม่โหลด
+  const ws=XLSX.utils.aoa_to_sheet(rows); const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, (sheetName||'Sheet1').slice(0,31)); XLSX.writeFile(wb, filename);
 }
 
 /* ============================ DATA LAYER (DEMO + LIVE) ============================ */
@@ -249,7 +257,28 @@ function seedDemo(){
   ho({project_id:4, from_phase:'project', to_phase:'purchasing', action:'forward', by_dept:'project',    created_at:isoIn(-50)});
   ho({project_id:4, from_phase:'purchasing', to_phase:'service', action:'forward', by_dept:'purchasing', created_at:isoIn(-20)});
   ho({project_id:4, from_phase:'service', to_phase:'closed',   action:'forward', by_dept:'service',    created_at:isoIn(-5)});
-  return { customers, srs, projects, tasks, bom, pos, team, schedule, plans, handoffs };
+  // ---- ผู้ใช้งาน & สิทธิ์ (สำหรับแท็บ Setting) — department:null = รออนุมัติ ----
+  const users = [
+    { user_id:'u-dev',   email:'siradanai.s@precise.co.th', department:'developer', is_developer:true,  created_at:isoIn(-90) },
+    { user_id:'u-sales', email:'sales1@precise.co.th',      department:'sales',      is_developer:false, created_at:isoIn(-60) },
+    { user_id:'u-proj',  email:'project1@precise.co.th',    department:'project',    is_developer:false, created_at:isoIn(-55) },
+    { user_id:'u-purc',  email:'purchase1@precise.co.th',   department:'purchasing', is_developer:false, created_at:isoIn(-50) },
+    { user_id:'u-serv',  email:'service1@precise.co.th',    department:'service',    is_developer:false, created_at:isoIn(-48) },
+    { user_id:'u-exec',  email:'boss@precise.co.th',        department:'executive',  is_developer:false, created_at:isoIn(-45) },
+    { user_id:'u-new1',  email:'newstaff@precise.co.th',    department:null,         is_developer:false, created_at:isoIn(-2) },
+    { user_id:'u-new2',  email:'intern@precise.co.th',      department:null,         is_developer:false, created_at:isoIn(-1) },
+  ];
+  // ---- คลังสินค้าจริง (Inventory) — บันทึกรับเข้า/เบิกออกด้วยมือ · project_id=null = สต็อกกลาง ----
+  const inventory=[]; let iid=7000; const mv=o=>inventory.push({ id:++iid, by:'seed', ...o });
+  mv({ epicor_code:'LBS-115-MOT', description:'LBS 115kV 3-Pole Motorized', project_id:1, type:'IN',  qty:6,  note:'รับจาก PO-2026-1001', created_at:isoIn(-18) });
+  mv({ epicor_code:'LBS-115-MAN', description:'LBS 115kV 3-Pole Manual',    project_id:1, type:'IN',  qty:4,  note:'รับจาก PO-2026-1001', created_at:isoIn(-18) });
+  mv({ epicor_code:'ACC-SA-115',  description:'Surge Arrester 115kV',        project_id:1, type:'IN',  qty:30, note:'รับจาก PO-2026-1002', created_at:isoIn(-16) });
+  mv({ epicor_code:'LBS-115-MOT', description:'LBS 115kV 3-Pole Motorized', project_id:1, type:'OUT', qty:2,  note:'เบิกติดตั้ง บางปะกง',  created_at:isoIn(-6) });
+  mv({ epicor_code:'LBS-115-MAN', description:'LBS 115kV 3-Pole Manual',    project_id:4, type:'IN',  qty:4,  note:'รับจาก PO-2026-1005', created_at:isoIn(-33) });
+  mv({ epicor_code:'ACC-CC-01',   description:'Control Cabinet',             project_id:4, type:'IN',  qty:4,  note:'',                    created_at:isoIn(-33) });
+  mv({ epicor_code:'LBS-115-MAN', description:'LBS 115kV 3-Pole Manual',    project_id:4, type:'OUT', qty:4,  note:'ติดตั้ง ศรีราชา',      created_at:isoIn(-6) });
+  mv({ epicor_code:'ACC-CC-01',   description:'Control Cabinet',             project_id:4, type:'OUT', qty:4,  note:'ติดตั้ง ศรีราชา',      created_at:isoIn(-6) });
+  return { customers, srs, projects, tasks, bom, pos, team, schedule, plans, handoffs, users, inventory };
 }
 
 let demo = null;
@@ -268,7 +297,9 @@ const db = {
       sb.from('service_plans').select('*').order('id').then(ok),
       sb.from('handoff_log').select('*').order('id').then(ok),
     ]);
-    return { customers:customers||[], srs:srs||[], projects:projects||[], tasks:tasks||[], bom:bom||[], pos:pos||[], team:team||[], schedule:schedule||[], plans:plans||[], handoffs:handoffs||[] };
+    const inventory = await sb.from('inventory_moves').select('*').order('id').then(ok);
+    let users=[]; try { users = (await sb.rpc('admin_list_users')).data || []; } catch(e){ users=[]; }   // เฉพาะ developer จะได้ข้อมูล
+    return { customers:customers||[], srs:srs||[], projects:projects||[], tasks:tasks||[], bom:bom||[], pos:pos||[], team:team||[], schedule:schedule||[], plans:plans||[], handoffs:handoffs||[], inventory:inventory||[], users };
   },
 
   /* ---- งาน (tasks) ---- */
@@ -358,6 +389,15 @@ const db = {
   async addPlan(row){ if(!LIVE){ const r={id:nid(),acked:false,created_at:new Date().toISOString(),...row}; demo.plans.push(r); return r; } return ok(await sb.from('service_plans').insert(row).select().single()); },
   async ackPlan(id){ if(!LIVE){ Object.assign(demo.plans.find(x=>x.id===id),{acked:true}); return; } ok(await sb.from('service_plans').update({acked:true}).eq('id',id)); },
 
+  /* ---- Admin (Setting) — จัดการสิทธิ์ผู้ใช้ + ลบข้อมูลทุกฝ่าย ---- */
+  async setUserRole(uid, department, is_developer){ if(!LIVE){ const u=demo.users.find(x=>x.user_id===uid); if(u){ u.department=department; u.is_developer=!!is_developer; } return; } ok(await sb.rpc('admin_set_role', { p_uid:uid, p_dept:department, p_dev:!!is_developer })); },
+  async revokeUser(uid){ if(!LIVE){ const u=demo.users.find(x=>x.user_id===uid); if(u){ u.department=null; u.is_developer=false; } return; } ok(await sb.rpc('admin_revoke', { p_uid:uid })); },
+  async deleteRow(demoKey, table, id){ if(!LIVE){ demo[demoKey]=demo[demoKey].filter(x=>x.id!==id); return; } ok(await sb.from(table).delete().eq('id',id)); },
+
+  /* ---- คลังสินค้าจริง (Inventory) ---- */
+  async addMovement(row){ if(!LIVE){ const r={id:nid(),created_at:new Date().toISOString(),...row}; demo.inventory.push(r); return r; } return ok(await sb.from('inventory_moves').insert(row).select().single()); },
+  async deleteMovement(id){ if(!LIVE){ demo.inventory=demo.inventory.filter(x=>x.id!==id); return; } ok(await sb.from('inventory_moves').delete().eq('id',id)); },
+
   /* ---- Linkage (ส่งงาน/ตีกลับ/รับงาน) ---- */
   async handoff(projectId, fromPhase, toPhase, byDept){
     if(!LIVE){ Object.assign(demo.projects.find(p=>p.id===projectId), { current_phase:toPhase, phase_acked:false, updated_at:new Date().toISOString() });
@@ -395,6 +435,7 @@ const Icon = {
   users:<Ic d={<><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></>}/>,
   cal:<Ic d={<><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></>}/>,
   trash:<Ic d={<><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></>}/>,
+  gear:<Ic d={<><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H2a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V2a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H22a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></>}/>,
 };
 
 /* ============================ UI ATOMS ============================ */
@@ -442,6 +483,17 @@ function targetLBS(state, p){ return p.target_lbs!=null ? num(p.target_lbs) : re
 // PO เป็น line items — รองรับแยกจำนวนบางส่วน
 function poOrderedQty(state, bomId){ let q=0; (state.pos||[]).forEach(o=>(o.lines||[]).forEach(l=>{ if(l.bom_id===bomId) q+=num(l.qty); })); return q; }
 function bomRemaining(state, b){ return num(b.quantity) - poOrderedQty(state, b.id); }                          // จำนวนที่ยังไม่ลงใบ PO
+// คลังสินค้า: รายการรหัสวัสดุ + ยอดคงเหลือ (รับเข้า-เบิกออก) · projectId=null = สต็อกกลางรวมทุกโครงการ
+function invCodes(state){ const m={}; (state.bom||[]).forEach(b=>{ if(b.epicor_code) m[b.epicor_code]=b.description; }); (state.inventory||[]).forEach(x=>{ if(x.epicor_code && !m[x.epicor_code]) m[x.epicor_code]=x.description; }); return m; }
+function invBalance(state, projectId){
+  const rows={};
+  (state.inventory||[]).filter(x=> projectId==null || x.project_id===projectId).forEach(x=>{
+    const r = rows[x.epicor_code] || (rows[x.epicor_code]={ code:x.epicor_code, desc:x.description, inQ:0, outQ:0 });
+    if(x.type==='IN') r.inQ+=num(x.qty); else r.outQ+=num(x.qty);
+    if(x.description) r.desc=x.description;
+  });
+  return Object.values(rows).map(r=>({...r, onhand:r.inQ-r.outQ})).sort((a,b)=>String(a.code).localeCompare(String(b.code)));
+}
 
 function phaseGate(project, state){
   const pid=project.id, ph=project.current_phase;
@@ -482,10 +534,14 @@ const NAV = [
   { id:'project',    label:'Project Department',    icon:Icon.layers,   dep:'project',    kids:[ { id:'project-stocks', label:'Stock No. (กล่องโครงการ)' } ] },
   { id:'purchasing', label:'Purchasing Department', icon:Icon.cart,     dep:'purchasing', kids:[ { id:'purchasing-done', label:'BOM Delivered completed' } ] },
   { id:'service',    label:'Service Department',    icon:Icon.truck,    dep:'service' },
+  { id:'inventory',  label:'คลังสินค้า (Inventory)', icon:Icon.box },
+  { id:'settings',   label:'Setting (ผู้ดูแล)',      icon:Icon.gear,     devOnly:true },
 ];
 // page ใดอยู่ใต้ parent ใด (ไว้ไฮไลต์)
-const PAGE_GROUP = { sales:'sales','sales-sr':'sales', project:'project','project-stocks':'project', workflow:'project', purchasing:'purchasing','purchasing-done':'purchasing', service:'service', dashboard:'dashboard' };
-function Sidebar({page, onNav, state}){
+const PAGE_GROUP = { sales:'sales','sales-sr':'sales', project:'project','project-stocks':'project', workflow:'project', purchasing:'purchasing','purchasing-done':'purchasing', service:'service', inventory:'inventory', settings:'settings', dashboard:'dashboard' };
+// หน้าใดเป็นของฝ่ายใด (ไว้แสดงแบนเนอร์ "ดูอย่างเดียว" เมื่อไม่ใช่ฝ่ายตน) — #1 per-action
+const PAGE_DEP = { sales:'sales','sales-sr':'sales', project:'project','project-stocks':'project', workflow:'project', purchasing:'purchasing','purchasing-done':'purchasing', service:'service' };
+function Sidebar({page, onNav, state, isDev}){
   return (
     <aside className="w-60 shrink-0 bg-[var(--sidebar)] border-r border-slate-800/80 flex flex-col">
       <div className="px-5 py-5 border-b border-slate-800/80">
@@ -495,11 +551,11 @@ function Sidebar({page, onNav, state}){
         </div>
       </div>
       <nav className="flex-1 py-3 overflow-y-auto">
-        {NAV.map(n => {
+        {NAV.filter(n=>!n.devOnly || isDev).map(n => {
           const ac = n.dep ? DEPT[n.dep].c : '#0ea5e9';
           const inGroup = PAGE_GROUP[page]===n.id;
           const active = page===n.id;
-          const inbox = n.dep ? incomingCount(state, n.dep) : 0;
+          const inbox = n.dep ? incomingCount(state, n.dep) : (n.id==='settings' ? (state.users||[]).filter(u=>!u.department&&!u.is_developer).length : 0);
           return (
             <div key={n.id}>
               <button onClick={()=>onNav(n.id)} className="group w-full flex items-center gap-3 px-5 py-2.5 text-sm transition relative" style={{ color: (active||inGroup)?'var(--nav-active)':'#64748b', background: active?ac+'14':'transparent' }}>
@@ -525,8 +581,41 @@ function Sidebar({page, onNav, state}){
   );
 }
 
+/* ============================ NOTIFICATION BELL (#2) ============================ */
+function buildNotifs(state, role){
+  const list=[];
+  state.projects.filter(p=>p.current_phase!=='closed').forEach(p=>{ const d=daysUntil(p.delivery_date); if(d!==null&&d<=15) list.push({k:'due'+p.id, icon:'⏰', color:'#f43f5e', text:`${p.project_stock_no} ใกล้ครบกำหนดส่งมอบ (${d} วัน)`, page:'project-stocks'}); });
+  (state.handoffs||[]).filter(h=>h.action==='reject').slice(-6).reverse().forEach(h=>{ const p=state.projects.find(x=>x.id===h.project_id); list.push({k:'rej'+h.id, icon:'↩️', color:'#f43f5e', text:`ตีกลับ: ${p?.project_stock_no||''} → ${PHASE_LABEL[h.to_phase]}${h.note?' · '+h.note:''}`, page:'project-stocks'}); });
+  if(role!=='executive'){ const dep = role==='developer'?null:role;
+    state.projects.filter(p=>p.current_phase!=='closed' && !p.phase_acked && (dep?p.current_phase===dep:true)).forEach(p=>list.push({k:'in'+p.id, icon:'📥', color:DEPT[p.current_phase]?.c||'#0ea5e9', text:`งานเข้าใหม่ (${PHASE_LABEL[p.current_phase]}): ${p.project_stock_no}`, page:'workflow'}));
+  }
+  if(role==='project'||role==='developer') state.srs.filter(s=>!s.stock_id).forEach(s=>list.push({k:'sr'+s.id, icon:'📋', color:DEPT.project.c, text:`SR รอสร้าง Stock: ${s.sr_no}`, page:'project'}));
+  if(role==='service'||role==='developer') (state.plans||[]).filter(pl=>!pl.acked).forEach(pl=>{ const p=state.projects.find(x=>x.id===pl.project_id); list.push({k:'pl'+pl.id, icon:'📦', color:DEPT.service.c, text:`แผนส่งมอบใหม่รอรับ: ${p?.project_stock_no||''}`, page:'service'}); });
+  return list;
+}
+function NotifBell({state, role, onNav}){
+  const [open,setOpen]=useState(false);
+  const items=buildNotifs(state, role);
+  return (
+    <div className="relative">
+      <button onClick={()=>setOpen(o=>!o)} className="relative w-8 h-8 grid place-items-center rounded-lg border border-slate-700 text-slate-400 hover:text-slate-100 hover:bg-slate-800/60">{Icon.bell}{items.length>0 && <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 grid place-items-center rounded-full text-[9px] font-bold px-1" style={{background:'#f43f5e',color:'#fff'}}>{items.length}</span>}</button>
+      {open && (
+        <div className="absolute right-0 mt-2 w-80 max-h-96 overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 shadow-2xl z-50 fade-up">
+          <div className="px-4 py-2.5 border-b border-slate-800 flex items-center justify-between sticky top-0 bg-slate-900"><span className="text-sm font-semibold text-slate-200">🔔 การแจ้งเตือน ({items.length})</span><button onClick={()=>setOpen(false)} className="text-slate-400 hover:text-slate-100">{Icon.x}</button></div>
+          {items.length===0 && <div className="px-4 py-8 text-center text-slate-500 text-sm">ไม่มีการแจ้งเตือน</div>}
+          {items.map(n=>(
+            <button key={n.k} onClick={()=>{ onNav(n.page); setOpen(false); }} className="w-full text-left px-4 py-2.5 flex items-start gap-2 hover:bg-slate-800/40 border-b border-slate-800/40">
+              <span className="text-sm" style={{color:n.color}}>{n.icon}</span><span className="flex-1 text-[12px] text-slate-300 leading-snug">{n.text}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ============================ TOPBAR ============================ */
-function TopBar({projects, activeId, onProject, role, onRole, page, me, onSignOut}){
+function TopBar({state, onNav, role, onRole, page, me, onSignOut}){
   const title = page==='workflow' ? 'Workflow Board' : (NAV.find(n=>n.id===page)||{}).label || '';
   const roleLocked = LIVE && me && !me.is_developer;
   const themeIcon = (document.documentElement.dataset.theme==='dark') ? '☀️' : '🌙';
@@ -542,6 +631,7 @@ function TopBar({projects, activeId, onProject, role, onRole, page, me, onSignOu
               {Object.keys(DEPT).map(k => <option key={k} value={k} className="bg-slate-800 text-slate-100">{DEPT[k].icon} {DEPT[k].label}</option>)}
             </select>}
       </div>
+      <NotifBell state={state} role={role} onNav={onNav}/>
       <button onClick={()=>{ const cur=document.documentElement.dataset.theme; localStorage.setItem('theme', cur==='dark'?'light':'dark'); location.reload(); }} title="สลับธีม สว่าง/มืด" className="w-8 h-8 grid place-items-center rounded-lg border border-slate-700 text-slate-400 hover:text-slate-100 hover:bg-slate-800/60">{themeIcon}</button>
       <span className="ml-1 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold" style={ LIVE ? {background:'#16a34a22',color:'#16a34a'} : {background:'#64748b22',color:'#94a3b8'} }>
         <span className="w-1.5 h-1.5 rounded-full" style={{background: LIVE?'#16a34a':'#94a3b8'}}/>{LIVE?'LIVE':'DEMO'}
@@ -611,6 +701,10 @@ function Dashboard({state, onNav, onSelectProject, onOpenPO}){
   );
   return (
     <div className="space-y-5">
+      <div className="flex items-center justify-end gap-2 no-print">
+        <button onClick={()=>exportXLSX('dashboard-summary.xlsx','Summary',[['Stock No.','โครงการ','เฟส','ความคืบหน้า %','งบประมาณ','Margin %'], ...projects.map(p=>[p.project_stock_no,p.name,PHASE_LABEL[p.current_phase],projProgress(tasks,p.id),p.total_budget,p.margin])])} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:'#16a34a22',color:'#16a34a'}}>⬇ สรุป (Excel)</button>
+        <button onClick={()=>window.print()} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:'#3b82f622',color:'#3b82f6'}}>🖨️ พิมพ์ / PDF</button>
+      </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <KPI label="งบประมาณรวม (Total)" value={bahtShort(totalSales)} sub={baht(totalSales)} color="#3b82f6" icon={Icon.pipeline}/>
         <KPI label="กำไรรวมประมาณการ" value={bahtShort(totalProfit)} sub={"เฉลี่ย margin "+(projects.length?(projects.reduce((s,p)=>s+num(p.margin),0)/projects.length).toFixed(1):0)+'%'} color="#16a34a" icon={Icon.chart}/>
@@ -1053,7 +1147,7 @@ function ProjectBom({state, project, canEdit, onAddBom, onUpdateBom, onDeleteBom
         <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between flex-wrap gap-2">
           <h3 className="text-slate-200 font-semibold flex items-center gap-2">{Icon.box} Material List (BOM) · {project.bom_no} <Pill color={bomStatusColor(project.bom_status)}>{project.bom_status==='Sent to Purchasing'?'ส่งจัดซื้อแล้ว':'ร่าง'}</Pill></h3>
           <div className="flex items-center gap-2">
-            {items.length>0 && <button onClick={()=>downloadCSV(`${project.bom_no}.csv`, [['Epicor Code','Description','Category','Due Date','IUM','Qty','Currency','Cost/unit','FX','Total THB','Project Phase','PO Status'], ...items.map(b=>[b.epicor_code,b.description,b.category,b.due_date,b.ium,b.quantity,b.currency,b.unit_cost,b.fx_rate,Math.round(lineTHB(b)),b.project_phase,b.po_status])])} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:'#3b82f622',color:'#3b82f6'}}>⬇ CSV</button>}
+            {items.length>0 && <button onClick={()=>exportXLSX(`${project.bom_no}.xlsx`, project.bom_no, [['Epicor Code','Description','Category','Due Date','IUM','Qty','Currency','Cost/unit','FX','Total THB','Project Phase','PO Status'], ...items.map(b=>[b.epicor_code,b.description,b.category,b.due_date,b.ium,b.quantity,b.currency,b.unit_cost,b.fx_rate,Math.round(lineTHB(b)),b.project_phase,b.po_status])])} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:'#16a34a22',color:'#16a34a'}}>⬇ Excel</button>}
             {canEdit && !sent && items.length>0 && <button onClick={()=>onSendBom(project.id)} className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-1.5" style={{background:'#16a34a',color:'#0b0f17'}}>{Icon.send} ส่ง BOM ให้จัดซื้อ</button>}
             {canEdit && !sent && <button onClick={()=>setOpen(o=>!o)} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:'#f9731622',color:'#f97316'}}>{Icon.plus} เพิ่มรายการ</button>}
           </div>
@@ -1141,13 +1235,13 @@ function ProjectStocks({state, role, onAddBom, onUpdateBom, onDeleteBom, onSendB
   const startPlan = (p) => { const custs=stockCustomers(state,p.id); setPf({ delivery_date:p.delivery_date||'', location:custs.map(c=>c.location).filter(Boolean).join(' / '), team_need:'', note:'' }); setPlanFor(p.id); };
   if(state.projects.length===0) return <Empty msg="ยังไม่มี Project Stock — สร้างจากแท็บหลักของฝ่ายโครงการ"/>;
   const list = state.projects.filter(p=> !q || (p.project_stock_no+' '+p.name+' '+PHASE_LABEL[p.current_phase]).toLowerCase().includes(q.toLowerCase()));
-  const exportAll = () => downloadCSV('project-stocks.csv', [['Stock No.','Job No.','BOM No.','ชื่อโครงการ','เฟส','LBS เป้าหมาย','LBS ใน BOM','งบประมาณ','Margin %','ลูกค้า'],
+  const exportAll = () => exportXLSX('project-stocks.xlsx', 'Project Stocks', [['Stock No.','Job No.','BOM No.','ชื่อโครงการ','เฟส','LBS เป้าหมาย','LBS ใน BOM','งบประมาณ','Margin %','ลูกค้า'],
     ...state.projects.map(p=>[p.project_stock_no,p.job_no,p.bom_no,p.name,PHASE_LABEL[p.current_phase],targetLBS(state,p),bomLBS(state,p.id),p.total_budget,p.margin,stockCustomers(state,p.id).map(c=>c.name).join('; ')])]);
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <input value={q} onChange={e=>setQ(e.target.value)} placeholder="🔍 ค้นหา Stock No. / ชื่อโครงการ / เฟส" className="w-80 max-w-full bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 px-3 py-1.5 focus:outline-none focus:border-amber-500/60"/>
-        <button onClick={exportAll} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:'#3b82f622',color:'#3b82f6'}}>⬇ สรุปทั้งหมด (CSV)</button>
+        <button onClick={exportAll} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:'#16a34a22',color:'#16a34a'}}>⬇ สรุปทั้งหมด (Excel)</button>
       </div>
       {list.length===0 && <Empty msg="ไม่พบ Stock ที่ตรงกับคำค้นหา"/>}
       {list.map(p => {
@@ -1585,6 +1679,172 @@ function Login(){
   );
 }
 
+/* ============================ INVENTORY (คลังสินค้าจริง #3) ============================ */
+const INV_BLANK = { epicor_code:'', description:'', project_id:'', type:'IN', qty:1, note:'' };
+const INV_EDIT_ROLES = ['developer','purchasing','project','service'];
+function Inventory({state, role, onAddMovement, onDeleteMovement}){
+  const canEdit = INV_EDIT_ROLES.includes(role);
+  const [view,setView]=useState('central');   // central = ตามวัสดุรวมทุกโครงการ · stock = ต่อ Project Stock
+  const [pid,setPid]=useState('');
+  const [q,setQ]=useState(''); const [open,setOpen]=useState(false); const [f,setF]=useState(INV_BLANK);
+  const codes=invCodes(state);
+  const balProject = view==='stock' && pid ? Number(pid) : null;
+  const showStockPrompt = view==='stock' && !pid;
+  const balance = invBalance(state, view==='central'?null:balProject).filter(r=>!q||(r.code+' '+(r.desc||'')).toLowerCase().includes(q.toLowerCase()));
+  const moves = (state.inventory||[]).filter(x=> view==='central' || (balProject && x.project_id===balProject)).slice().reverse().slice(0,40);
+  const pName = id => state.projects.find(p=>p.id===id)?.project_stock_no || (id?('#'+id):'— กลาง —');
+  const totalOnhand = balance.reduce((s,r)=>s+r.onhand,0);
+  const submit = () => { if(!f.epicor_code.trim()||num(f.qty)<=0) return; onAddMovement({ epicor_code:f.epicor_code.trim(), description:f.description||codes[f.epicor_code]||'', project_id:f.project_id?Number(f.project_id):null, type:f.type, qty:num(f.qty), note:f.note }); setF(INV_BLANK); setOpen(false); };
+  const exp = () => exportXLSX(`inventory-${view}${balProject?'-'+pName(balProject):''}.xlsx`, 'Inventory', [['Epicor Code','Description','รับเข้า','เบิกออก','คงเหลือ'], ...balance.map(r=>[r.code,r.desc,r.inQ,r.outQ,r.onhand])]);
+  const TabBtn = ({id,label}) => <button onClick={()=>setView(id)} className="text-xs font-medium rounded-lg px-3 py-1.5 transition" style={view===id?{background:'#0ea5e922',color:'#0ea5e9'}:{color:'#64748b'}}>{label}</button>;
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-0.5 rounded-lg border border-slate-700 p-0.5"><TabBtn id="central" label="คลังกลาง (ตามวัสดุ)"/><TabBtn id="stock" label="ตาม Project Stock"/></div>
+        <div className="flex items-center gap-2 flex-wrap">
+          {view==='stock' && <select value={pid} onChange={e=>setPid(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 px-2.5 py-1.5"><option value="">— เลือก Stock —</option>{state.projects.map(p=><option key={p.id} value={p.id}>{p.project_stock_no} · {p.name}</option>)}</select>}
+          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="🔍 ค้นหารหัส/ชื่อวัสดุ" className="w-56 bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 px-3 py-1.5 focus:outline-none focus:border-amber-500/60"/>
+          <button onClick={exp} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:'#16a34a22',color:'#16a34a'}}>⬇ Excel</button>
+          {canEdit && <button onClick={()=>{ setF({...INV_BLANK, project_id:balProject||''}); setOpen(o=>!o); }} className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-1.5" style={{background:'#0ea5e9',color:'#0b0f17'}}>{Icon.plus} บันทึกรับ/เบิก</button>}
+        </div>
+      </div>
+
+      {open && canEdit && (
+        <Card className="p-4">
+          <h3 className="text-slate-200 font-semibold mb-3">บันทึกการเคลื่อนไหวสต็อก (ด้วยมือ)</h3>
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-3 items-end">
+            <div><Lbl>Epicor Code</Lbl><input list="inv-codes" value={f.epicor_code} onChange={e=>setF({...f,epicor_code:e.target.value,description:codes[e.target.value]||f.description})} className="w-full bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 px-2.5 py-1.5"/><datalist id="inv-codes">{Object.keys(codes).map(c=><option key={c} value={c}>{codes[c]}</option>)}</datalist></div>
+            <div className="col-span-2"><Lbl>Description</Lbl><Inp value={f.description} onChange={v=>setF({...f,description:v})}/></div>
+            <div><Lbl>โครงการ (เว้น=กลาง)</Lbl><select value={f.project_id} onChange={e=>setF({...f,project_id:e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 px-2 py-1.5"><option value="">— กลาง —</option>{state.projects.map(p=><option key={p.id} value={p.id}>{p.project_stock_no}</option>)}</select></div>
+            <div><Lbl>ประเภท</Lbl><Sel value={f.type} onChange={v=>setF({...f,type:v})} options={['IN','OUT']} labels={{IN:'รับเข้า (IN)',OUT:'เบิกออก (OUT)'}}/></div>
+            <div><Lbl>จำนวน</Lbl><Inp type="number" value={f.qty} onChange={v=>setF({...f,qty:num(v)})}/></div>
+            <div className="col-span-2 md:col-span-5"><Lbl>หมายเหตุ</Lbl><Inp value={f.note} onChange={v=>setF({...f,note:v})} placeholder="เช่น รับจาก PO-... / เบิกติดตั้ง..."/></div>
+            <div className="flex items-end justify-end gap-2"><button onClick={()=>setOpen(false)} className="text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300">ยกเลิก</button><button onClick={submit} className="text-xs px-3 py-1.5 rounded-lg font-semibold" style={{background:'#0ea5e9',color:'#0b0f17'}}>บันทึก</button></div>
+          </div>
+        </Card>
+      )}
+
+      {showStockPrompt ? <Empty msg="เลือก Project Stock เพื่อดูยอดคงเหลือของโครงการนั้น"/> : (
+      <Card className="overflow-hidden">
+        <div className="px-5 py-3 border-b border-slate-800 flex items-center justify-between"><h3 className="text-slate-200 font-semibold flex items-center gap-2">{Icon.box} ยอดคงเหลือ {view==='central'?'(คลังกลาง · ทุกโครงการ)':'· '+pName(balProject)}</h3><span className="text-[11px] text-slate-500">{balance.length} รายการ · คงเหลือรวม {totalOnhand} หน่วย</span></div>
+        <div className="overflow-x-auto"><table className="w-full text-sm">
+          <thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-800"><th className="px-5 py-2.5 font-medium">Epicor Code</th><th className="px-3 py-2.5 font-medium">Description</th><th className="px-3 py-2.5 font-medium text-right">รับเข้า</th><th className="px-3 py-2.5 font-medium text-right">เบิกออก</th><th className="px-3 py-2.5 font-medium text-right">คงเหลือ</th></tr></thead>
+          <tbody>
+            {balance.length===0 && <tr><td colSpan="5" className="px-5 py-8 text-center text-slate-500">ยังไม่มีข้อมูลสต็อก</td></tr>}
+            {balance.map(r=>(
+              <tr key={r.code} className="border-b border-slate-800/60">
+                <td className="px-5 py-3 mono text-slate-300">{r.code}</td><td className="px-3 py-3 text-slate-200">{r.desc}</td>
+                <td className="px-3 py-3 text-right mono" style={{color:'#16a34a'}}>+{r.inQ}</td><td className="px-3 py-3 text-right mono" style={{color:'#f43f5e'}}>-{r.outQ}</td>
+                <td className="px-3 py-3 text-right mono font-bold" style={{color:r.onhand<0?'#f43f5e':'#0f172a'}}>{r.onhand}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table></div>
+      </Card>
+      )}
+
+      <Card className="overflow-hidden">
+        <div className="px-5 py-3 border-b border-slate-800"><h3 className="text-slate-200 font-semibold">รายการเคลื่อนไหวล่าสุด {moves.length>0&&`(${moves.length})`}</h3></div>
+        <div className="overflow-x-auto"><table className="w-full text-sm whitespace-nowrap">
+          <thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-800"><th className="px-5 py-2.5 font-medium">วันที่</th><th className="px-3 py-2.5 font-medium">รหัส</th><th className="px-3 py-2.5 font-medium">โครงการ</th><th className="px-3 py-2.5 font-medium">ประเภท</th><th className="px-3 py-2.5 font-medium text-right">จำนวน</th><th className="px-3 py-2.5 font-medium">หมายเหตุ</th>{role==='developer'&&<th/>}</tr></thead>
+          <tbody>
+            {moves.length===0 && <tr><td colSpan="7" className="px-5 py-6 text-center text-slate-500">— ไม่มีรายการ —</td></tr>}
+            {moves.map(x=>(
+              <tr key={x.id} className="border-b border-slate-800/60">
+                <td className="px-5 py-2.5 mono text-slate-500 text-[12px]">{String(x.created_at||'').slice(0,10)}</td>
+                <td className="px-3 py-2.5 mono text-slate-300">{x.epicor_code}</td>
+                <td className="px-3 py-2.5 text-slate-400 text-[12px]">{pName(x.project_id)}</td>
+                <td className="px-3 py-2.5"><Pill color={x.type==='IN'?'#16a34a':'#f43f5e'}>{x.type==='IN'?'รับเข้า':'เบิกออก'}</Pill></td>
+                <td className="px-3 py-2.5 text-right mono" style={{color:x.type==='IN'?'#16a34a':'#f43f5e'}}>{x.type==='IN'?'+':'-'}{x.qty}</td>
+                <td className="px-3 py-2.5 text-slate-400 text-[12px]">{x.note||'—'}</td>
+                {role==='developer'&&<td className="px-3 py-2.5 text-right"><button onClick={()=>{ if(confirm('ลบรายการเคลื่อนไหวนี้?')) onDeleteMovement(x.id); }} className="text-slate-500 hover:text-rose-600">{Icon.trash}</button></td>}
+              </tr>
+            ))}
+          </tbody>
+        </table></div>
+      </Card>
+    </div>
+  );
+}
+
+/* ============================ SETTING (Developer เท่านั้น) ============================ */
+const DATA_ENTITIES = [
+  { key:'customers', table:'customers',          label:'ลูกค้า (Sales)',     fmt:r=>r.name },
+  { key:'srs',       table:'sales_requisitions', label:'Sales Requisition',  fmt:r=>`${r.sr_no} · ${r.contract_status||''}` },
+  { key:'projects',  table:'projects',           label:'Project Stock',      fmt:r=>`${r.project_stock_no} · ${r.name}` },
+  { key:'bom',       table:'bom_items',          label:'BOM Items',          fmt:r=>`${r.epicor_code||''} · ${r.description}` },
+  { key:'pos',       table:'purchase_orders',    label:'Purchase Orders',    fmt:r=>`${r.po_no} · ${r.supplier||''}` },
+  { key:'team',      table:'service_team',       label:'ทีม Service',        fmt:r=>`${r.name} · ${r.role||''}` },
+  { key:'plans',     table:'service_plans',      label:'แผนส่งมอบ',          fmt:r=>`#${r.id} · ${r.delivery_date||''}` },
+];
+const ROLE_OPTS = ['sales','project','purchasing','service','executive'];
+function Settings({state, role, onSetRole, onRevoke, onDeleteRow}){
+  if(role!=='developer') return <Empty msg="เฉพาะผู้ดูแล (Developer) เท่านั้น"/>;
+  const users = state.users||[];
+  const pending = users.filter(u=>!u.department && !u.is_developer);
+  const [openKey,setOpenKey]=useState(null);
+  const roleLabel = u => u.is_developer ? 'Developer' : (u.department ? DEPT[u.department]?.label||u.department : null);
+  return (
+    <div className="space-y-5">
+      {/* A) ผู้ใช้งาน & สิทธิ์ */}
+      <Card className="overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-slate-800 flex items-center gap-2"><span style={{color:'#0ea5e9'}}>{Icon.users}</span><h3 className="text-slate-200 font-semibold">ผู้ใช้งาน & สิทธิ์ (อนุมัติ/ยกเลิก)</h3><span className="text-[11px] text-slate-500">({users.length} บัญชี · รออนุมัติ {pending.length})</span></div>
+        {pending.length>0 && <div className="px-5 py-2 bg-amber-500/10 border-b border-slate-800 text-[12px] text-amber-700 font-medium">⏳ มีผู้สมัครรออนุมัติ {pending.length} ราย — เลือกฝ่ายเพื่ออนุมัติ</div>}
+        <div className="overflow-x-auto">
+        <table className="w-full text-sm whitespace-nowrap">
+          <thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-800">
+            <th className="px-5 py-2.5 font-medium">อีเมล</th><th className="px-3 py-2.5 font-medium">ฝ่าย / บทบาท</th><th className="px-3 py-2.5 font-medium text-center">Developer</th><th className="px-3 py-2.5 font-medium">สมัครเมื่อ</th><th className="px-3 py-2.5 font-medium text-right">จัดการ</th>
+          </tr></thead>
+          <tbody>
+            {users.length===0 && <tr><td colSpan="5" className="px-5 py-8 text-center text-slate-500">ยังไม่มีผู้ใช้ (โหมด LIVE จะดึงจาก Supabase)</td></tr>}
+            {users.map(u => { const approved=!!u.department||u.is_developer; return (
+              <tr key={u.user_id} className="border-b border-slate-800/60">
+                <td className="px-5 py-3 text-slate-200">{u.email} {!approved && <Pill color="#f97316">รออนุมัติ</Pill>}</td>
+                <td className="px-3 py-3 w-44">
+                  <select value={u.department||''} onChange={e=>onSetRole(u.user_id, e.target.value||null, u.is_developer)} className="w-full text-xs rounded-md px-2 py-1.5 border bg-slate-900 border-slate-700 text-slate-200">
+                    <option value="">— เลือกฝ่าย —</option>
+                    {ROLE_OPTS.map(r=><option key={r} value={r}>{DEPT[r].label}</option>)}
+                  </select>
+                </td>
+                <td className="px-3 py-3 text-center"><input type="checkbox" checked={u.is_developer} onChange={e=>onSetRole(u.user_id, u.department||'developer', e.target.checked)} className="accent-sky-500"/></td>
+                <td className="px-3 py-3 mono text-slate-500 text-[12px]">{String(u.created_at||'').slice(0,10)}</td>
+                <td className="px-3 py-3 text-right">{approved && <button onClick={()=>{ if(confirm(`ยกเลิกสิทธิ์ของ ${u.email}?`)) onRevoke(u.user_id); }} className="text-xs font-medium rounded-md px-2.5 py-1" style={{background:'#f43f5e22',color:'#f43f5e'}}>ยกเลิกสิทธิ์</button>}</td>
+              </tr>
+            );})}
+          </tbody>
+        </table>
+        </div>
+        <div className="px-5 py-2.5 border-t border-slate-800 text-[11px] text-slate-500">อนุมัติ = เลือกฝ่าย · เลื่อนเป็นผู้ดูแล = ติ๊ก Developer · ยกเลิกสิทธิ์ = กลับเป็น "รออนุมัติ" (ใช้งานไม่ได้จนกว่าจะกำหนดใหม่)</div>
+      </Card>
+
+      {/* B) จัดการข้อมูลทุกฝ่าย (ดูภาพรวม + ลบ) */}
+      <Card className="overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-slate-800 flex items-center gap-2"><span style={{color:'#0ea5e9'}}>{Icon.box}</span><h3 className="text-slate-200 font-semibold">จัดการข้อมูลทุกฝ่าย (CRUD)</h3></div>
+        <div className="px-5 py-2 text-[11px] text-slate-500 border-b border-slate-800">เพิ่ม/แก้ไขทำได้จากหน้าแต่ละฝ่ายโดยตรง (Developer มีสิทธิ์ทุกที่) · ส่วนนี้สำหรับดูภาพรวมและ <b className="text-rose-600">ลบ</b> ข้ามฝ่าย</div>
+        <div className="p-3 grid grid-cols-1 md:grid-cols-2 gap-2">
+          {DATA_ENTITIES.map(en => { const rows=state[en.key]||[]; const isOpen=openKey===en.key; return (
+            <div key={en.key} className="rounded-lg border border-slate-800">
+              <button onClick={()=>setOpenKey(isOpen?null:en.key)} className="w-full px-3 py-2.5 flex items-center justify-between hover:bg-slate-800/30">
+                <span className="text-[13px] text-slate-200 font-medium flex items-center gap-2"><span className="text-slate-500">{isOpen?'▼':'▶'}</span>{en.label}</span>
+                <span className="text-[11px] rounded-full px-2 py-0.5" style={{background:'#0ea5e922',color:'#0ea5e9'}}>{rows.length}</span>
+              </button>
+              {isOpen && <div className="max-h-60 overflow-y-auto border-t border-slate-800">
+                {rows.length===0 && <div className="px-3 py-3 text-[12px] text-slate-500">— ว่าง —</div>}
+                {rows.map(r=>(
+                  <div key={r.id} className="px-3 py-2 flex items-center justify-between gap-2 border-b border-slate-800/40">
+                    <span className="text-[12px] text-slate-300 truncate">{en.fmt(r)}</span>
+                    <button onClick={()=>{ if(confirm(`ลบ "${en.fmt(r)}" ?`)) onDeleteRow(en.key, en.table, r.id); }} className="text-slate-500 hover:text-rose-600 shrink-0">{Icon.trash}</button>
+                  </div>
+                ))}
+              </div>}
+            </div>
+          );})}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 /* ============================ PENDING APPROVAL (LIVE: ยังไม่กำหนดสิทธิ์) ============================ */
 function Pending({email, onSignOut}){
   return (
@@ -1602,7 +1862,7 @@ function Pending({email, onSignOut}){
 
 /* ============================ APP ============================ */
 function App(){
-  const [state, setState] = useState({ customers:[], srs:[], projects:[], tasks:[], bom:[], pos:[], team:[], schedule:[], plans:[], handoffs:[], loading:true });
+  const [state, setState] = useState({ customers:[], srs:[], projects:[], tasks:[], bom:[], pos:[], team:[], schedule:[], plans:[], handoffs:[], users:[], inventory:[], loading:true });
   const [page, setPage] = useState('dashboard');
   const [role, setRole] = useState('developer');
   const [activeId, setActiveId] = useState('all');
@@ -1705,6 +1965,17 @@ function App(){
   const handleSendPlan = run(async (projectId, row) => { await db.addPlan({ project_id:projectId, ...row }); });
   const handleAckPlan = run(async (id) => { await db.ackPlan(id); });
 
+  /* Admin (Setting) */
+  const handleSetRole = run(async (uid, department, is_developer) => { await db.setUserRole(uid, department, is_developer); },
+    (s, uid, department, is_developer) => ({...s, users:s.users.map(u=>u.user_id===uid?{...u,department,is_developer}:u)}));
+  const handleRevoke = run(async (uid) => { await db.revokeUser(uid); },
+    (s, uid) => ({...s, users:s.users.map(u=>u.user_id===uid?{...u,department:null,is_developer:false}:u)}));
+  const handleDeleteRow = run(async (demoKey, table, id) => { await db.deleteRow(demoKey, table, id); });
+
+  /* Inventory (#3) */
+  const handleAddMovement = run(async (row) => { await db.addMovement({...row, by:DEPT[role].en}); });
+  const handleDeleteMovement = run(async (id) => { await db.deleteMovement(id); });
+
   /* Linkage */
   const handleHandoff = run(async (project) => { const g=phaseGate(project,state); if(!g.ok) return; const nxt=nextPhase(project.current_phase); if(!nxt) return; await db.handoff(project.id, project.current_phase, nxt, role); });
   const handleReject = run(async (project, note) => { const prev=prevPhase(project.current_phase); if(!prev) return; await db.reject(project.id, project.current_phase, prev, role, note); });
@@ -1719,10 +1990,13 @@ function App(){
 
   return (
     <div className="h-screen flex bg-[var(--app-bg)] text-slate-200">
-      <Sidebar page={page} onNav={p=>setPage(p)} state={state}/>
+      <Sidebar page={page} onNav={p=>setPage(p)} state={state} isDev={role==='developer'}/>
       <div className="flex-1 flex flex-col min-w-0">
-        <TopBar projects={state.projects} activeId={activeId} onProject={setActiveId} role={role} onRole={setRole} page={page} me={me} onSignOut={handleSignOut}/>
+        <TopBar state={state} onNav={setPage} role={role} onRole={setRole} page={page} me={me} onSignOut={handleSignOut}/>
         {err && <div className="px-6 py-2 bg-rose-500/15 border-b border-rose-500/30 text-rose-700 text-xs flex items-center justify-between"><span>⚠ {err}</span><button onClick={()=>setErr('')} className="text-rose-600 hover:text-rose-800">✕</button></div>}
+        {PAGE_DEP[page] && !canDept(role, PAGE_DEP[page]) && (
+          <div className="px-6 py-2 text-[12px] flex items-center gap-2" style={{background:DEPT[PAGE_DEP[page]].c+'14', color:DEPT[PAGE_DEP[page]].c}}>👁 โหมดดูอย่างเดียว — คุณคือ <b>{DEPT[role].label}</b> · ข้อมูลของ <b>{DEPT[PAGE_DEP[page]].label}</b> แก้ไขไม่ได้</div>
+        )}
         <main className="flex-1 overflow-y-auto p-6">
           {page==='dashboard'  && <Dashboard state={state} onNav={setPage} onSelectProject={goProject} onOpenPO={setPoProject}/>}
           {page==='sales'      && <SalesPipeline state={state} role={role} onAddCustomer={handleAddCustomer} onUpdateCustomer={handleUpdateCustomer} onCreateSR={handleCreateSR} onUpdateSR={handleUpdateSR} onTask={handleTask}/>}
@@ -1733,6 +2007,8 @@ function App(){
           {page==='purchasing-done' && <PurchasingDone state={state}/>}
           {page==='service'    && <FieldService state={state} role={role} onTask={handleTask} onAddTask={handleAddTask} onAddMember={handleAddMember} onRemoveMember={handleRemoveMember} onAddSchedule={handleAddSchedule} onRemoveSchedule={handleRemoveSchedule} onSignDO={handleSignDO} onAckPlan={handleAckPlan}/>}
           {page==='workflow'   && <WorkflowBoard state={state} project={activeProject} role={role} onTask={handleTask} onAddTask={handleAddTask} onHandoff={handleHandoff} onReject={handleReject} onAck={handleAck} onPickStock={(id)=>setActiveId(id)}/>}
+          {page==='inventory'  && <Inventory state={state} role={role} onAddMovement={handleAddMovement} onDeleteMovement={handleDeleteMovement}/>}
+          {page==='settings'   && role==='developer' && <Settings state={state} role={role} onSetRole={handleSetRole} onRevoke={handleRevoke} onDeleteRow={handleDeleteRow}/>}
         </main>
       </div>
       {poProj && <PoModal project={poProj} pos={state.pos} onClose={()=>setPoProject(null)}/>}
