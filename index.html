@@ -43,8 +43,8 @@
 const { useState, useEffect, useMemo } = React;
 
 /* ============================ CONFIG ============================ */
-const SUPABASE_URL  = "https://ptdoaxhjryypjsxeifak.supabase.co"; // เช่น https://xxxxx.supabase.co
-const SUPABASE_ANON = "sb_publishable_FKF357m9Egvt1X3gO8eyLQ_oTp92QtD"; // anon public key  → ใส่ครบ = LIVE
+const SUPABASE_URL  = "https://ptdoaxhjryypjsxeifak.supabase.co"; // Project URL
+const SUPABASE_ANON = "sb_publishable_FKF357m9Egvt1X3gO8eyLQ_oTp92QtD"; // publishable/anon key → ใส่ครบ = LIVE
 const LIVE = !!(SUPABASE_URL && SUPABASE_ANON);
 const sb = LIVE ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON) : null;
 const ok = ({data,error}) => { if(error) throw error; return data; };   // โยน error ให้ UI จับ (แก้ปัญหา fail เงียบ)
@@ -268,16 +268,30 @@ function seedDemo(){
     { user_id:'u-new1',  email:'newstaff@precise.co.th',    department:null,         is_developer:false, created_at:isoIn(-2) },
     { user_id:'u-new2',  email:'intern@precise.co.th',      department:null,         is_developer:false, created_at:isoIn(-1) },
   ];
-  // ---- คลังสินค้าจริง (Inventory) — บันทึกรับเข้า/เบิกออกด้วยมือ · project_id=null = สต็อกกลาง ----
-  const inventory=[]; let iid=7000; const mv=o=>inventory.push({ id:++iid, by:'seed', ...o });
-  mv({ epicor_code:'LBS-115-MOT', description:'LBS 115kV 3-Pole Motorized', project_id:1, type:'IN',  qty:6,  note:'รับจาก PO-2026-1001', created_at:isoIn(-18) });
-  mv({ epicor_code:'LBS-115-MAN', description:'LBS 115kV 3-Pole Manual',    project_id:1, type:'IN',  qty:4,  note:'รับจาก PO-2026-1001', created_at:isoIn(-18) });
-  mv({ epicor_code:'ACC-SA-115',  description:'Surge Arrester 115kV',        project_id:1, type:'IN',  qty:30, note:'รับจาก PO-2026-1002', created_at:isoIn(-16) });
-  mv({ epicor_code:'LBS-115-MOT', description:'LBS 115kV 3-Pole Motorized', project_id:1, type:'OUT', qty:2,  note:'เบิกติดตั้ง บางปะกง',  created_at:isoIn(-6) });
-  mv({ epicor_code:'LBS-115-MAN', description:'LBS 115kV 3-Pole Manual',    project_id:4, type:'IN',  qty:4,  note:'รับจาก PO-2026-1005', created_at:isoIn(-33) });
-  mv({ epicor_code:'ACC-CC-01',   description:'Control Cabinet',             project_id:4, type:'IN',  qty:4,  note:'',                    created_at:isoIn(-33) });
-  mv({ epicor_code:'LBS-115-MAN', description:'LBS 115kV 3-Pole Manual',    project_id:4, type:'OUT', qty:4,  note:'ติดตั้ง ศรีราชา',      created_at:isoIn(-6) });
-  mv({ epicor_code:'ACC-CC-01',   description:'Control Cabinet',             project_id:4, type:'OUT', qty:4,  note:'ติดตั้ง ศรีราชา',      created_at:isoIn(-6) });
+  // ---- คลังสินค้าจริง (Inventory) — project_id=null = คลังกลาง · มี reason/po_no ----
+  const inventory=[]; let iid=7000; const mv=o=>inventory.push({ id:++iid, by:'seed', reason:null, po_no:null, ...o });
+  // รับเข้าคลังกลางตาม PO (จำนวนตรงกับ line ของ PO นั้น)
+  mv({ epicor_code:'LBS-115-MOT', description:'LBS 115kV 3-Pole Motorized', project_id:null, type:'IN', reason:'รับตาม PO', po_no:'PO-2026-1001', qty:6,  note:'รับเข้าคลังกลาง', created_at:isoIn(-20) });
+  mv({ epicor_code:'LBS-115-MAN', description:'LBS 115kV 3-Pole Manual',    project_id:null, type:'IN', reason:'รับตาม PO', po_no:'PO-2026-1001', qty:4,  note:'', created_at:isoIn(-20) });
+  mv({ epicor_code:'ACC-SA-115',  description:'Surge Arrester 115kV',        project_id:null, type:'IN', reason:'รับตาม PO', po_no:'PO-2026-1001', qty:30, note:'', created_at:isoIn(-20) });
+  mv({ epicor_code:'LBS-115-MAN', description:'LBS 115kV 3-Pole Manual',    project_id:null, type:'IN', reason:'รับตาม PO', po_no:'PO-2026-1005', qty:4,  note:'', created_at:isoIn(-34) });
+  mv({ epicor_code:'ACC-CC-01',   description:'Control Cabinet',             project_id:null, type:'IN', reason:'รับตาม PO', po_no:'PO-2026-1005', qty:4,  note:'', created_at:isoIn(-34) });
+  mv({ epicor_code:'LBS-115-MOT', description:'LBS 115kV 3-Pole Motorized', project_id:null, type:'IN', reason:'รับเข้าทั่วไป', qty:2, note:'สต็อกสำรองคลังกลาง', created_at:isoIn(-19) });
+  // โอนเข้าโครงการ (OUT คลังกลาง + IN โครงการ)
+  mv({ epicor_code:'LBS-115-MOT', description:'LBS 115kV 3-Pole Motorized', project_id:null, type:'OUT', reason:'โอนเข้าโครงการ', qty:6, note:'โอนเข้า STK-2026-001', created_at:isoIn(-14) });
+  mv({ epicor_code:'LBS-115-MOT', description:'LBS 115kV 3-Pole Motorized', project_id:1, type:'IN', reason:'รับโอน', qty:6, note:'รับโอนจากคลังกลาง', created_at:isoIn(-14) });
+  mv({ epicor_code:'LBS-115-MAN', description:'LBS 115kV 3-Pole Manual',    project_id:null, type:'OUT', reason:'โอนเข้าโครงการ', qty:4, note:'โอนเข้า STK-2026-001', created_at:isoIn(-14) });
+  mv({ epicor_code:'LBS-115-MAN', description:'LBS 115kV 3-Pole Manual',    project_id:1, type:'IN', reason:'รับโอน', qty:4, note:'', created_at:isoIn(-14) });
+  mv({ epicor_code:'ACC-SA-115',  description:'Surge Arrester 115kV',        project_id:null, type:'OUT', reason:'โอนเข้าโครงการ', qty:30, note:'โอนเข้า STK-2026-001', created_at:isoIn(-14) });
+  mv({ epicor_code:'ACC-SA-115',  description:'Surge Arrester 115kV',        project_id:1, type:'IN', reason:'รับโอน', qty:30, note:'', created_at:isoIn(-14) });
+  mv({ epicor_code:'LBS-115-MAN', description:'LBS 115kV 3-Pole Manual',    project_id:null, type:'OUT', reason:'โอนเข้าโครงการ', qty:4, note:'โอนเข้า STK-2026-004', created_at:isoIn(-32) });
+  mv({ epicor_code:'LBS-115-MAN', description:'LBS 115kV 3-Pole Manual',    project_id:4, type:'IN', reason:'รับโอน', qty:4, note:'', created_at:isoIn(-32) });
+  mv({ epicor_code:'ACC-CC-01',   description:'Control Cabinet',             project_id:null, type:'OUT', reason:'โอนเข้าโครงการ', qty:4, note:'โอนเข้า STK-2026-004', created_at:isoIn(-32) });
+  mv({ epicor_code:'ACC-CC-01',   description:'Control Cabinet',             project_id:4, type:'IN', reason:'รับโอน', qty:4, note:'', created_at:isoIn(-32) });
+  // เบิกออกติดตั้งงาน
+  mv({ epicor_code:'LBS-115-MOT', description:'LBS 115kV 3-Pole Motorized', project_id:1, type:'OUT', reason:'ติดตั้งงาน', qty:2, note:'ติดตั้ง บางปะกง', created_at:isoIn(-6) });
+  mv({ epicor_code:'LBS-115-MAN', description:'LBS 115kV 3-Pole Manual',    project_id:4, type:'OUT', reason:'ติดตั้งงาน', qty:4, note:'ติดตั้ง ศรีราชา', created_at:isoIn(-6) });
+  mv({ epicor_code:'ACC-CC-01',   description:'Control Cabinet',             project_id:4, type:'OUT', reason:'ติดตั้งงาน', qty:4, note:'ติดตั้ง ศรีราชา', created_at:isoIn(-6) });
   return { customers, srs, projects, tasks, bom, pos, team, schedule, plans, handoffs, users, inventory };
 }
 
@@ -396,7 +410,9 @@ const db = {
 
   /* ---- คลังสินค้าจริง (Inventory) ---- */
   async addMovement(row){ if(!LIVE){ const r={id:nid(),created_at:new Date().toISOString(),...row}; demo.inventory.push(r); return r; } return ok(await sb.from('inventory_moves').insert(row).select().single()); },
+  async addMovements(rows){ if(!LIVE){ rows.forEach(row=>demo.inventory.push({id:nid(),created_at:new Date().toISOString(),...row})); return; } ok(await sb.from('inventory_moves').insert(rows)); },
   async deleteMovement(id){ if(!LIVE){ demo.inventory=demo.inventory.filter(x=>x.id!==id); return; } ok(await sb.from('inventory_moves').delete().eq('id',id)); },
+  async markBomDelivered(ids){ if(!ids.length) return; if(!LIVE){ ids.forEach(id=>{ const b=demo.bom.find(x=>x.id===id); if(b) b.po_status='Delivered'; }); return; } ok(await sb.from('bom_items').update({po_status:'Delivered'}).in('id',ids)); },
 
   /* ---- Linkage (ส่งงาน/ตีกลับ/รับงาน) ---- */
   async handoff(projectId, fromPhase, toPhase, byDept){
@@ -485,15 +501,19 @@ function poOrderedQty(state, bomId){ let q=0; (state.pos||[]).forEach(o=>(o.line
 function bomRemaining(state, b){ return num(b.quantity) - poOrderedQty(state, b.id); }                          // จำนวนที่ยังไม่ลงใบ PO
 // คลังสินค้า: รายการรหัสวัสดุ + ยอดคงเหลือ (รับเข้า-เบิกออก) · projectId=null = สต็อกกลางรวมทุกโครงการ
 function invCodes(state){ const m={}; (state.bom||[]).forEach(b=>{ if(b.epicor_code) m[b.epicor_code]=b.description; }); (state.inventory||[]).forEach(x=>{ if(x.epicor_code && !m[x.epicor_code]) m[x.epicor_code]=x.description; }); return m; }
-function invBalance(state, projectId){
+// loc: null = คลังกลาง · number = โครงการ · 'ALL' = รวมทั้งบริษัท
+function invBalance(state, loc){
   const rows={};
-  (state.inventory||[]).filter(x=> projectId==null || x.project_id===projectId).forEach(x=>{
+  (state.inventory||[]).filter(x=> loc==='ALL' || x.project_id===loc).forEach(x=>{
     const r = rows[x.epicor_code] || (rows[x.epicor_code]={ code:x.epicor_code, desc:x.description, inQ:0, outQ:0 });
     if(x.type==='IN') r.inQ+=num(x.qty); else r.outQ+=num(x.qty);
     if(x.description) r.desc=x.description;
   });
   return Object.values(rows).map(r=>({...r, onhand:r.inQ-r.outQ})).sort((a,b)=>String(a.code).localeCompare(String(b.code)));
 }
+const invOnhand = (state, loc, code) => { const r=invBalance(state, loc).find(x=>x.code===code); return r?r.onhand:0; };   // ยอดคงเหลือ ณ ที่ตั้ง
+// จำนวนที่รับเข้าแล้วของ PO+รหัส (ไว้คำนวณค้างรับ)
+const poReceivedQty = (state, poNo, code) => (state.inventory||[]).filter(x=>x.po_no===poNo && x.epicor_code===code && x.type==='IN').reduce((s,x)=>s+num(x.qty),0);
 
 function phaseGate(project, state){
   const pid=project.id, ph=project.current_phase;
@@ -1680,53 +1700,107 @@ function Login(){
 }
 
 /* ============================ INVENTORY (คลังสินค้าจริง #3) ============================ */
-const INV_BLANK = { epicor_code:'', description:'', project_id:'', type:'IN', qty:1, note:'' };
+const MANUAL_BLANK = { type:'IN', location:'', reason:'ติดตั้งงาน', toProject:'', epicor_code:'', description:'', qty:1, note:'' };
+const OUT_REASONS = ['ติดตั้งงาน','โอนเข้าโครงการ','คืนผู้ขาย','ชำรุด/ตัดทิ้ง'];
 const INV_EDIT_ROLES = ['developer','purchasing','project','service'];
-function Inventory({state, role, onAddMovement, onDeleteMovement}){
+function Inventory({state, role, onAddMovement, onReceivePO, onTransfer, onDeleteMovement}){
   const canEdit = INV_EDIT_ROLES.includes(role);
-  const [view,setView]=useState('central');   // central = ตามวัสดุรวมทุกโครงการ · stock = ต่อ Project Stock
+  const [view,setView]=useState('central');   // central = คลังกลาง (project_id null) · stock = ต่อ Project Stock
   const [pid,setPid]=useState('');
-  const [q,setQ]=useState(''); const [open,setOpen]=useState(false); const [f,setF]=useState(INV_BLANK);
+  const [q,setQ]=useState(''); const [mode,setMode]=useState(null);   // null | 'manual' | 'recv'
+  const [f,setF]=useState(MANUAL_BLANK);
+  const [recvPO,setRecvPO]=useState(''); const [recvQ,setRecvQ]=useState({});
   const codes=invCodes(state);
-  const balProject = view==='stock' && pid ? Number(pid) : null;
+  const balLoc = view==='central' ? null : (pid?Number(pid):null);
   const showStockPrompt = view==='stock' && !pid;
-  const balance = invBalance(state, view==='central'?null:balProject).filter(r=>!q||(r.code+' '+(r.desc||'')).toLowerCase().includes(q.toLowerCase()));
-  const moves = (state.inventory||[]).filter(x=> view==='central' || (balProject && x.project_id===balProject)).slice().reverse().slice(0,40);
-  const pName = id => state.projects.find(p=>p.id===id)?.project_stock_no || (id?('#'+id):'— กลาง —');
+  const balance = invBalance(state, balLoc).filter(r=>!q||(r.code+' '+(r.desc||'')).toLowerCase().includes(q.toLowerCase()));
+  const moves = (state.inventory||[]).filter(x=> view==='central' ? x.project_id==null : (balLoc && x.project_id===balLoc)).slice().reverse().slice(0,50);
+  const pName = id => state.projects.find(p=>p.id===id)?.project_stock_no || (id?('#'+id):'คลังกลาง');
   const totalOnhand = balance.reduce((s,r)=>s+r.onhand,0);
-  const submit = () => { if(!f.epicor_code.trim()||num(f.qty)<=0) return; onAddMovement({ epicor_code:f.epicor_code.trim(), description:f.description||codes[f.epicor_code]||'', project_id:f.project_id?Number(f.project_id):null, type:f.type, qty:num(f.qty), note:f.note }); setF(INV_BLANK); setOpen(false); };
-  const exp = () => exportXLSX(`inventory-${view}${balProject?'-'+pName(balProject):''}.xlsx`, 'Inventory', [['Epicor Code','Description','รับเข้า','เบิกออก','คงเหลือ'], ...balance.map(r=>[r.code,r.desc,r.inQ,r.outQ,r.onhand])]);
+  // PO ที่ยังมีของค้างรับ
+  const outstandingPOs = state.pos.filter(po=>(po.lines||[]).some(l=>{ const b=state.bom.find(x=>x.id===l.bom_id); return b && (num(l.qty)-poReceivedQty(state,po.po_no,b.epicor_code))>0; }));
+  const recvPoObj = state.pos.find(o=>o.id===Number(recvPO));
+  const exp = () => exportXLSX(`inventory-${view}.xlsx`, 'Inventory', [['Epicor Code','Description','รับเข้า','เบิกออก','คงเหลือ'], ...balance.map(r=>[r.code,r.desc,r.inQ,r.outQ,r.onhand])]);
   const TabBtn = ({id,label}) => <button onClick={()=>setView(id)} className="text-xs font-medium rounded-lg px-3 py-1.5 transition" style={view===id?{background:'#0ea5e922',color:'#0ea5e9'}:{color:'#64748b'}}>{label}</button>;
+
+  const submitManual = () => {
+    const code=f.epicor_code.trim(), qty=num(f.qty); if(!code||qty<=0) return;
+    const desc=f.description||codes[code]||'';
+    if(f.type==='IN'){ onAddMovement({ epicor_code:code, description:desc, project_id:f.location===''?null:Number(f.location), type:'IN', reason:'รับเข้าทั่วไป', qty, note:f.note }); }
+    else if(f.reason==='โอนเข้าโครงการ'){
+      if(!f.toProject){ alert('เลือกโครงการปลายทาง'); return; }
+      const onh=invOnhand(state,null,code); if(onh<qty){ alert(`คลังกลางมี ${code} เหลือ ${onh} — โอน ${qty} ไม่ได้`); return; }
+      onTransfer(code, desc, Number(f.toProject), qty, f.note);
+    } else {
+      const loc=f.location===''?null:Number(f.location);
+      const onh=invOnhand(state,loc,code); if(onh<qty){ alert(`${code} ที่ ${pName(loc)} เหลือ ${onh} — เบิก ${qty} ไม่ได้`); return; }
+      onAddMovement({ epicor_code:code, description:desc, project_id:loc, type:'OUT', reason:f.reason, qty, note:f.note });
+    }
+    setF(MANUAL_BLANK); setMode(null);
+  };
+  const confirmRecv = () => {
+    if(!recvPoObj) return; const rows=[]; const delivered=[];
+    (recvPoObj.lines||[]).forEach(l=>{ const b=state.bom.find(x=>x.id===l.bom_id); if(!b) return; const recv=num(recvQ[l.bom_id]); if(recv>0){ rows.push({ epicor_code:b.epicor_code, description:b.description, project_id:null, type:'IN', reason:'รับตาม PO', po_no:recvPoObj.po_no, qty:recv, note:'รับเข้าคลังกลาง' }); if(poReceivedQty(state,recvPoObj.po_no,b.epicor_code)+recv >= num(l.qty)) delivered.push(b.id); } });
+    if(rows.length) onReceivePO(rows, delivered);
+    setMode(null); setRecvPO(''); setRecvQ({});
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex items-center gap-0.5 rounded-lg border border-slate-700 p-0.5"><TabBtn id="central" label="คลังกลาง (ตามวัสดุ)"/><TabBtn id="stock" label="ตาม Project Stock"/></div>
+        <div className="flex items-center gap-0.5 rounded-lg border border-slate-700 p-0.5"><TabBtn id="central" label="คลังกลาง"/><TabBtn id="stock" label="ตาม Project Stock"/></div>
         <div className="flex items-center gap-2 flex-wrap">
           {view==='stock' && <select value={pid} onChange={e=>setPid(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 px-2.5 py-1.5"><option value="">— เลือก Stock —</option>{state.projects.map(p=><option key={p.id} value={p.id}>{p.project_stock_no} · {p.name}</option>)}</select>}
-          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="🔍 ค้นหารหัส/ชื่อวัสดุ" className="w-56 bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 px-3 py-1.5 focus:outline-none focus:border-amber-500/60"/>
+          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="🔍 ค้นหารหัส/ชื่อวัสดุ" className="w-52 bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 px-3 py-1.5 focus:outline-none focus:border-amber-500/60"/>
           <button onClick={exp} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:'#16a34a22',color:'#16a34a'}}>⬇ Excel</button>
-          {canEdit && <button onClick={()=>{ setF({...INV_BLANK, project_id:balProject||''}); setOpen(o=>!o); }} className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-1.5" style={{background:'#0ea5e9',color:'#0b0f17'}}>{Icon.plus} บันทึกรับ/เบิก</button>}
+          {canEdit && <button onClick={()=>{ setRecvPO(''); setRecvQ({}); setMode(mode==='recv'?null:'recv'); }} className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-1.5" style={{background:'#16a34a',color:'#0b0f17'}}>📥 รับตาม PO</button>}
+          {canEdit && <button onClick={()=>{ setF(MANUAL_BLANK); setMode(mode==='manual'?null:'manual'); }} className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-1.5" style={{background:'#0ea5e9',color:'#0b0f17'}}>✏️ บันทึกเอง (เบิก/โอน/รับ)</button>}
         </div>
       </div>
 
-      {open && canEdit && (
-        <Card className="p-4">
-          <h3 className="text-slate-200 font-semibold mb-3">บันทึกการเคลื่อนไหวสต็อก (ด้วยมือ)</h3>
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-3 items-end">
-            <div><Lbl>Epicor Code</Lbl><input list="inv-codes" value={f.epicor_code} onChange={e=>setF({...f,epicor_code:e.target.value,description:codes[e.target.value]||f.description})} className="w-full bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 px-2.5 py-1.5"/><datalist id="inv-codes">{Object.keys(codes).map(c=><option key={c} value={c}>{codes[c]}</option>)}</datalist></div>
-            <div className="col-span-2"><Lbl>Description</Lbl><Inp value={f.description} onChange={v=>setF({...f,description:v})}/></div>
-            <div><Lbl>โครงการ (เว้น=กลาง)</Lbl><select value={f.project_id} onChange={e=>setF({...f,project_id:e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 px-2 py-1.5"><option value="">— กลาง —</option>{state.projects.map(p=><option key={p.id} value={p.id}>{p.project_stock_no}</option>)}</select></div>
-            <div><Lbl>ประเภท</Lbl><Sel value={f.type} onChange={v=>setF({...f,type:v})} options={['IN','OUT']} labels={{IN:'รับเข้า (IN)',OUT:'เบิกออก (OUT)'}}/></div>
-            <div><Lbl>จำนวน</Lbl><Inp type="number" value={f.qty} onChange={v=>setF({...f,qty:num(v)})}/></div>
-            <div className="col-span-2 md:col-span-5"><Lbl>หมายเหตุ</Lbl><Inp value={f.note} onChange={v=>setF({...f,note:v})} placeholder="เช่น รับจาก PO-... / เบิกติดตั้ง..."/></div>
-            <div className="flex items-end justify-end gap-2"><button onClick={()=>setOpen(false)} className="text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300">ยกเลิก</button><button onClick={submit} className="text-xs px-3 py-1.5 rounded-lg font-semibold" style={{background:'#0ea5e9',color:'#0b0f17'}}>บันทึก</button></div>
+      {/* รับตาม PO (รับบางส่วนได้ · อัปเดต po_status เมื่อรับครบ) */}
+      {mode==='recv' && canEdit && (
+        <Card className="p-4 space-y-3" style={{borderColor:'#16a34a55'}}>
+          <div className="flex items-center gap-2 flex-wrap"><span className="text-slate-200 font-semibold">📥 รับสินค้าเข้าคลังกลางตาม PO</span>
+            <select value={recvPO} onChange={e=>{ setRecvPO(e.target.value); setRecvQ({}); }} className="bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 px-2.5 py-1.5"><option value="">— เลือก PO ที่มีของค้างรับ —</option>{outstandingPOs.map(o=>{ const p=state.projects.find(x=>x.id===o.project_id); return <option key={o.id} value={o.id}>{o.po_no} · {p?.project_stock_no} · {o.supplier}</option>; })}</select>
+            {outstandingPOs.length===0 && <span className="text-[12px] text-slate-500">ไม่มี PO ที่ค้างรับ</span>}
           </div>
+          {recvPoObj && (<>
+            <table className="w-full text-sm"><thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-800"><th className="px-2 py-2 font-medium">Epicor Code</th><th className="px-2 py-2 font-medium">Description</th><th className="px-2 py-2 font-medium text-right">สั่ง</th><th className="px-2 py-2 font-medium text-right">รับแล้ว</th><th className="px-2 py-2 font-medium text-right">ค้างรับ</th><th className="px-2 py-2 font-medium text-right w-28">รับครั้งนี้</th></tr></thead>
+              <tbody>{(recvPoObj.lines||[]).map(l=>{ const b=state.bom.find(x=>x.id===l.bom_id); if(!b) return null; const rec=poReceivedQty(state,recvPoObj.po_no,b.epicor_code); const rem=num(l.qty)-rec; return (
+                <tr key={l.bom_id} className="border-b border-slate-800/50"><td className="px-2 py-2 mono text-slate-300">{b.epicor_code}</td><td className="px-2 py-2 text-slate-200">{b.description}</td><td className="px-2 py-2 text-right mono text-slate-400">{l.qty}</td><td className="px-2 py-2 text-right mono text-slate-400">{rec}</td><td className="px-2 py-2 text-right mono" style={{color:rem>0?'#f59e0b':'#16a34a'}}>{rem}</td>
+                  <td className="px-2 py-2 text-right">{rem>0 ? <input type="number" min="0" max={rem} value={recvQ[l.bom_id]??''} placeholder="0" onChange={e=>setRecvQ({...recvQ,[l.bom_id]:Math.max(0,Math.min(rem,num(e.target.value)))})} className="w-20 bg-slate-900 border border-emerald-500/50 rounded px-2 py-1 text-xs text-emerald-700 text-center"/> : <span className="text-[11px] text-slate-500">ครบแล้ว</span>}</td>
+                </tr>
+              );})}</tbody>
+            </table>
+            <div className="flex justify-end gap-2"><button onClick={()=>setMode(null)} className="text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300">ยกเลิก</button><button onClick={confirmRecv} className="text-xs px-3 py-1.5 rounded-lg font-semibold" style={{background:'#16a34a',color:'#0b0f17'}}>ยืนยันรับเข้า (รับครบ→อัปเดต PO เป็น Delivered)</button></div>
+          </>)}
+        </Card>
+      )}
+
+      {/* บันทึกเอง: รับเข้าทั่วไป / เบิกออก (มีประเภท) / โอนคลังกลาง→โครงการ */}
+      {mode==='manual' && canEdit && (
+        <Card className="p-4">
+          <h3 className="text-slate-200 font-semibold mb-3">บันทึกเคลื่อนไหวสต็อก</h3>
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-3 items-end">
+            <div><Lbl>ประเภท</Lbl><Sel value={f.type} onChange={v=>setF({...f,type:v})} options={['IN','OUT']} labels={{IN:'รับเข้า',OUT:'เบิกออก'}}/></div>
+            {f.type==='OUT' && <div><Lbl>เหตุผล</Lbl><Sel value={f.reason} onChange={v=>setF({...f,reason:v})} options={OUT_REASONS}/></div>}
+            {f.type==='OUT' && f.reason==='โอนเข้าโครงการ'
+              ? <div><Lbl>โอนไปโครงการ (จากคลังกลาง)</Lbl><select value={f.toProject} onChange={e=>setF({...f,toProject:e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 px-2 py-1.5"><option value="">— เลือก —</option>{state.projects.map(p=><option key={p.id} value={p.id}>{p.project_stock_no}</option>)}</select></div>
+              : <div><Lbl>ที่ตั้ง (เว้น=คลังกลาง)</Lbl><select value={f.location} onChange={e=>setF({...f,location:e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 px-2 py-1.5"><option value="">— คลังกลาง —</option>{state.projects.map(p=><option key={p.id} value={p.id}>{p.project_stock_no}</option>)}</select></div>}
+            <div><Lbl>Epicor Code</Lbl><input list="inv-codes" value={f.epicor_code} onChange={e=>setF({...f,epicor_code:e.target.value,description:codes[e.target.value]||f.description})} className="w-full bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 px-2.5 py-1.5"/><datalist id="inv-codes">{Object.keys(codes).map(c=><option key={c} value={c}>{codes[c]}</option>)}</datalist></div>
+            <div><Lbl>จำนวน</Lbl><Inp type="number" value={f.qty} onChange={v=>setF({...f,qty:num(v)})}/></div>
+            <div className="col-span-2"><Lbl>Description</Lbl><Inp value={f.description} onChange={v=>setF({...f,description:v})}/></div>
+            <div className="col-span-2 md:col-span-3"><Lbl>หมายเหตุ</Lbl><Inp value={f.note} onChange={v=>setF({...f,note:v})}/></div>
+            <div className="col-span-2 md:col-span-1 flex items-end justify-end gap-2"><button onClick={()=>setMode(null)} className="text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300">ยกเลิก</button><button onClick={submitManual} className="text-xs px-3 py-1.5 rounded-lg font-semibold" style={{background:'#0ea5e9',color:'#0b0f17'}}>บันทึก</button></div>
+          </div>
+          {f.type==='OUT' && <p className="text-[11px] text-slate-500 mt-2">⚠ ระบบบล็อกการเบิก/โอนเกินยอดคงเหลือ ณ ที่ตั้งนั้น</p>}
         </Card>
       )}
 
       {showStockPrompt ? <Empty msg="เลือก Project Stock เพื่อดูยอดคงเหลือของโครงการนั้น"/> : (
       <Card className="overflow-hidden">
-        <div className="px-5 py-3 border-b border-slate-800 flex items-center justify-between"><h3 className="text-slate-200 font-semibold flex items-center gap-2">{Icon.box} ยอดคงเหลือ {view==='central'?'(คลังกลาง · ทุกโครงการ)':'· '+pName(balProject)}</h3><span className="text-[11px] text-slate-500">{balance.length} รายการ · คงเหลือรวม {totalOnhand} หน่วย</span></div>
+        <div className="px-5 py-3 border-b border-slate-800 flex items-center justify-between"><h3 className="text-slate-200 font-semibold flex items-center gap-2">{Icon.box} ยอดคงเหลือ · {view==='central'?'คลังกลาง':pName(balLoc)}</h3><span className="text-[11px] text-slate-500">{balance.length} รายการ · คงเหลือรวม {totalOnhand} หน่วย</span></div>
         <div className="overflow-x-auto"><table className="w-full text-sm">
           <thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-800"><th className="px-5 py-2.5 font-medium">Epicor Code</th><th className="px-3 py-2.5 font-medium">Description</th><th className="px-3 py-2.5 font-medium text-right">รับเข้า</th><th className="px-3 py-2.5 font-medium text-right">เบิกออก</th><th className="px-3 py-2.5 font-medium text-right">คงเหลือ</th></tr></thead>
           <tbody>
@@ -1746,7 +1820,7 @@ function Inventory({state, role, onAddMovement, onDeleteMovement}){
       <Card className="overflow-hidden">
         <div className="px-5 py-3 border-b border-slate-800"><h3 className="text-slate-200 font-semibold">รายการเคลื่อนไหวล่าสุด {moves.length>0&&`(${moves.length})`}</h3></div>
         <div className="overflow-x-auto"><table className="w-full text-sm whitespace-nowrap">
-          <thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-800"><th className="px-5 py-2.5 font-medium">วันที่</th><th className="px-3 py-2.5 font-medium">รหัส</th><th className="px-3 py-2.5 font-medium">โครงการ</th><th className="px-3 py-2.5 font-medium">ประเภท</th><th className="px-3 py-2.5 font-medium text-right">จำนวน</th><th className="px-3 py-2.5 font-medium">หมายเหตุ</th>{role==='developer'&&<th/>}</tr></thead>
+          <thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-800"><th className="px-5 py-2.5 font-medium">วันที่</th><th className="px-3 py-2.5 font-medium">รหัส</th><th className="px-3 py-2.5 font-medium">ที่ตั้ง</th><th className="px-3 py-2.5 font-medium">ประเภท/เหตุผล</th><th className="px-3 py-2.5 font-medium text-right">จำนวน</th><th className="px-3 py-2.5 font-medium">อ้างอิง/หมายเหตุ</th>{role==='developer'&&<th/>}</tr></thead>
           <tbody>
             {moves.length===0 && <tr><td colSpan="7" className="px-5 py-6 text-center text-slate-500">— ไม่มีรายการ —</td></tr>}
             {moves.map(x=>(
@@ -1754,9 +1828,9 @@ function Inventory({state, role, onAddMovement, onDeleteMovement}){
                 <td className="px-5 py-2.5 mono text-slate-500 text-[12px]">{String(x.created_at||'').slice(0,10)}</td>
                 <td className="px-3 py-2.5 mono text-slate-300">{x.epicor_code}</td>
                 <td className="px-3 py-2.5 text-slate-400 text-[12px]">{pName(x.project_id)}</td>
-                <td className="px-3 py-2.5"><Pill color={x.type==='IN'?'#16a34a':'#f43f5e'}>{x.type==='IN'?'รับเข้า':'เบิกออก'}</Pill></td>
+                <td className="px-3 py-2.5"><Pill color={x.type==='IN'?'#16a34a':'#f43f5e'}>{x.type==='IN'?'รับเข้า':'เบิกออก'}</Pill>{x.reason&&<span className="text-[10px] text-slate-500 ml-1">{x.reason}</span>}</td>
                 <td className="px-3 py-2.5 text-right mono" style={{color:x.type==='IN'?'#16a34a':'#f43f5e'}}>{x.type==='IN'?'+':'-'}{x.qty}</td>
-                <td className="px-3 py-2.5 text-slate-400 text-[12px]">{x.note||'—'}</td>
+                <td className="px-3 py-2.5 text-slate-400 text-[12px]">{x.po_no?<span className="mono text-indigo-600">{x.po_no} </span>:''}{x.note||''}</td>
                 {role==='developer'&&<td className="px-3 py-2.5 text-right"><button onClick={()=>{ if(confirm('ลบรายการเคลื่อนไหวนี้?')) onDeleteMovement(x.id); }} className="text-slate-500 hover:text-rose-600">{Icon.trash}</button></td>}
               </tr>
             ))}
@@ -1974,6 +2048,11 @@ function App(){
 
   /* Inventory (#3) */
   const handleAddMovement = run(async (row) => { await db.addMovement({...row, by:DEPT[role].en}); });
+  const handleReceivePO = run(async (rows, deliveredIds) => { await db.addMovements(rows.map(r=>({...r, by:DEPT[role].en}))); await db.markBomDelivered(deliveredIds||[]); });
+  const handleTransfer = run(async (code, desc, toProject, qty, note) => { await db.addMovements([
+    { epicor_code:code, description:desc, project_id:null, type:'OUT', reason:'โอนเข้าโครงการ', qty, note:note||('โอนเข้า '+(state.projects.find(p=>p.id===toProject)?.project_stock_no||'')), by:DEPT[role].en },
+    { epicor_code:code, description:desc, project_id:toProject, type:'IN', reason:'รับโอน', qty, note:'รับโอนจากคลังกลาง', by:DEPT[role].en },
+  ]); });
   const handleDeleteMovement = run(async (id) => { await db.deleteMovement(id); });
 
   /* Linkage */
@@ -2007,7 +2086,7 @@ function App(){
           {page==='purchasing-done' && <PurchasingDone state={state}/>}
           {page==='service'    && <FieldService state={state} role={role} onTask={handleTask} onAddTask={handleAddTask} onAddMember={handleAddMember} onRemoveMember={handleRemoveMember} onAddSchedule={handleAddSchedule} onRemoveSchedule={handleRemoveSchedule} onSignDO={handleSignDO} onAckPlan={handleAckPlan}/>}
           {page==='workflow'   && <WorkflowBoard state={state} project={activeProject} role={role} onTask={handleTask} onAddTask={handleAddTask} onHandoff={handleHandoff} onReject={handleReject} onAck={handleAck} onPickStock={(id)=>setActiveId(id)}/>}
-          {page==='inventory'  && <Inventory state={state} role={role} onAddMovement={handleAddMovement} onDeleteMovement={handleDeleteMovement}/>}
+          {page==='inventory'  && <Inventory state={state} role={role} onAddMovement={handleAddMovement} onReceivePO={handleReceivePO} onTransfer={handleTransfer} onDeleteMovement={handleDeleteMovement}/>}
           {page==='settings'   && role==='developer' && <Settings state={state} role={role} onSetRole={handleSetRole} onRevoke={handleRevoke} onDeleteRow={handleDeleteRow}/>}
         </main>
       </div>
