@@ -43,6 +43,8 @@ CREATE TABLE IF NOT EXISTS customers (
   location      VARCHAR(255),
   scope         TEXT,
   note          TEXT,
+  cust_po_no      VARCHAR(80),                             -- เลขที่ PO จากลูกค้า (ติดตามแยก "รายชื่อลูกค้า")
+  contract_status VARCHAR(40) NOT NULL DEFAULT 'รอ PO/สัญญา', -- สถานะสัญญาแยกตามลูกค้า
   sr_id         BIGINT REFERENCES sales_requisitions(id) ON DELETE SET NULL,  -- อยู่ใน SR ใบไหน
   owner         UUID DEFAULT auth.uid(),
   created_at    TIMESTAMPTZ DEFAULT NOW(),
@@ -50,6 +52,9 @@ CREATE TABLE IF NOT EXISTS customers (
 );
 CREATE INDEX IF NOT EXISTS idx_customers_type ON customers (customer_type);
 CREATE INDEX IF NOT EXISTS idx_customers_sr   ON customers (sr_id);
+-- migration (ฐานข้อมูลเดิม): เพิ่มคอลัมน์ติดตาม PO/สัญญา รายลูกค้า
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS cust_po_no      VARCHAR(80);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS contract_status VARCHAR(40) NOT NULL DEFAULT 'รอ PO/สัญญา';
 
 -- ---------- 3) projects (Project Stock — รวมหลาย SR) ----------
 CREATE TABLE IF NOT EXISTS projects (
@@ -95,9 +100,16 @@ CREATE TABLE IF NOT EXISTS bom_items (
   project_phase VARCHAR(40)  DEFAULT 'Phase 1',
   po_status     po_status_t  NOT NULL DEFAULT 'Awaiting PO',
   po_id         BIGINT,                                   -- ลงใบ PO ใบไหน (NULL = ยังเลือกเข้าใบ PO ได้) — FK เพิ่มหลังสร้าง purchase_orders
+  round         INT          NOT NULL DEFAULT 1,          -- "ครั้งที่" ของ Material List (1 Stock สร้าง BOM ได้หลายครั้ง: ครั้ง1/ครั้ง2…)
+  is_sent       BOOLEAN      NOT NULL DEFAULT FALSE,      -- ส่งให้จัดซื้อแล้วหรือยัง (ส่งแยกรายครั้ง)
   created_at    TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_bom_project ON bom_items (project_id);
+-- migration (ฐานข้อมูลเดิม): เพิ่มคอลัมน์รอบ BOM ถ้ายังไม่มี
+ALTER TABLE bom_items ADD COLUMN IF NOT EXISTS round   INT     NOT NULL DEFAULT 1;
+ALTER TABLE bom_items ADD COLUMN IF NOT EXISTS is_sent BOOLEAN NOT NULL DEFAULT FALSE;
+-- ของเดิมที่ Stock เคยส่งจัดซื้อแล้ว (bom_status) → ตั้ง is_sent=TRUE ให้รายการในนั้น
+UPDATE bom_items b SET is_sent=TRUE FROM projects p WHERE b.project_id=p.id AND p.bom_status='Sent to Purchasing' AND b.is_sent=FALSE;
 
 -- Total Cost เป็นบาท (USD คูณ fx_rate)
 CREATE OR REPLACE VIEW bom_value AS
@@ -341,7 +353,7 @@ BEGIN
   IF cur = 'project' THEN
     IF (SELECT job_no FROM projects WHERE id=p_id) IS NULL THEN RAISE EXCEPTION 'ยังไม่มี Job No.'; END IF;
     IF NOT EXISTS (SELECT 1 FROM bom_items WHERE project_id=p_id) THEN RAISE EXCEPTION 'ยังไม่มีรายการ BOM'; END IF;
-    IF bs <> 'Sent to Purchasing' THEN RAISE EXCEPTION 'ยังไม่ได้ส่ง BOM ให้จัดซื้อ'; END IF;
+    IF EXISTS (SELECT 1 FROM bom_items WHERE project_id=p_id AND is_sent=FALSE) THEN RAISE EXCEPTION 'ยังส่ง BOM ให้จัดซื้อไม่ครบทุกครั้ง (ครั้ง/รอบ)'; END IF;
     SELECT COALESCE(target_lbs,0) INTO req FROM projects WHERE id=p_id;        -- เป้าหมาย LBS ของ Stock
     SELECT COALESCE(SUM(quantity),0) INTO got FROM bom_items WHERE project_id=p_id AND category='LBS';
     IF req <> got THEN RAISE EXCEPTION 'จำนวน LBS ใน BOM (%) ไม่ตรงกับเป้าหมาย Stock (%)', got, req; END IF;
