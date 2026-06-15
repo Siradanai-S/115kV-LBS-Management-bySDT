@@ -112,7 +112,9 @@ ALTER TABLE bom_items ADD COLUMN IF NOT EXISTS is_sent BOOLEAN NOT NULL DEFAULT 
 UPDATE bom_items b SET is_sent=TRUE FROM projects p WHERE b.project_id=p.id AND p.bom_status='Sent to Purchasing' AND b.is_sent=FALSE;
 
 -- Total Cost เป็นบาท (USD คูณ fx_rate)
-CREATE OR REPLACE VIEW bom_value AS
+-- DROP ก่อน (view ใช้ b.* — เพิ่มคอลัมน์ใน bom_items ทำให้ลำดับคอลัมน์เปลี่ยน, CREATE OR REPLACE จะ error)
+DROP VIEW IF EXISTS bom_value;
+CREATE VIEW bom_value AS
   SELECT b.*, ROUND(b.quantity * b.unit_cost * b.fx_rate, 2) AS total_thb
   FROM bom_items b;
 
