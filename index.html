@@ -407,6 +407,8 @@ const db = {
   async setUserRole(uid, department, is_developer){ if(!LIVE){ const u=demo.users.find(x=>x.user_id===uid); if(u){ u.department=department; u.is_developer=!!is_developer; } return; } ok(await sb.rpc('admin_set_role', { p_uid:uid, p_dept:department, p_dev:!!is_developer })); },
   async revokeUser(uid){ if(!LIVE){ const u=demo.users.find(x=>x.user_id===uid); if(u){ u.department=null; u.is_developer=false; } return; } ok(await sb.rpc('admin_revoke', { p_uid:uid })); },
   async deleteRow(demoKey, table, id){ if(!LIVE){ demo[demoKey]=demo[demoKey].filter(x=>x.id!==id); return; } ok(await sb.from(table).delete().eq('id',id)); },
+  // แก้ไขข้อมูลข้ามฝ่าย (เฉพาะ Developer ในแท็บ Setting) — generic update ทุกตาราง
+  async updateRow(demoKey, table, id, patch){ if(!LIVE){ const r=demo[demoKey].find(x=>x.id===id); if(r) Object.assign(r, patch); return; } ok(await sb.from(table).update(patch).eq('id',id)); },
 
   /* ---- คลังสินค้าจริง (Inventory) ---- */
   async addMovement(row){ if(!LIVE){ const r={id:nid(),created_at:new Date().toISOString(),...row}; demo.inventory.push(r); return r; } return ok(await sb.from('inventory_moves').insert(row).select().single()); },
@@ -451,6 +453,7 @@ const Icon = {
   users:<Ic d={<><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></>}/>,
   cal:<Ic d={<><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></>}/>,
   trash:<Ic d={<><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></>}/>,
+  edit:<Ic d={<><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5Z"/></>}/>,
   gear:<Ic d={<><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H2a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V2a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H22a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></>}/>,
 };
 
@@ -2052,21 +2055,73 @@ function Inventory({state, role, onAddMovement, onReceivePO, onTransfer, onDelet
 }
 
 /* ============================ SETTING (Developer เท่านั้น) ============================ */
+// ตัวเลือกสถานะ (ใช้ในตัวแก้ไขข้อมูลของ Developer)
+const BOM_PO_STATUS  = ['Awaiting PO','PO Received','Delivered'];
+const BOM_DOC_STATUS = ['Draft','Sent to Purchasing'];
+const CASHFLOW_STATUS = ['ปกติ','เฝ้าระวัง','วิกฤติ'];
+const PO_DOC_STATUS  = ['รอออก','ออกแล้ว','กำลังส่ง','รับครบ'];
+// f(): สร้าง field meta — k=คอลัมน์, l=ป้าย, t=ชนิด(text|num|date|sel|bool), o=ตัวเลือก(สำหรับ sel)
+const f = (k,l,t='text',o)=>({k,l,t,o});
 const DATA_ENTITIES = [
-  { key:'customers', table:'customers',          label:'ลูกค้า (Sales)',     fmt:r=>r.name },
-  { key:'srs',       table:'sales_requisitions', label:'Sales Requisition',  fmt:r=>`${r.sr_no} · ${r.contract_status||''}` },
-  { key:'projects',  table:'projects',           label:'Project Stock',      fmt:r=>`${r.project_stock_no} · ${r.name}` },
-  { key:'bom',       table:'bom_items',          label:'BOM Items',          fmt:r=>`${r.epicor_code||''} · ${r.description}` },
-  { key:'pos',       table:'purchase_orders',    label:'Purchase Orders',    fmt:r=>`${r.po_no} · ${r.supplier||''}` },
-  { key:'team',      table:'service_team',       label:'ทีม Service',        fmt:r=>`${r.name} · ${r.role||''}` },
-  { key:'plans',     table:'service_plans',      label:'แผนส่งมอบ',          fmt:r=>`#${r.id} · ${r.delivery_date||''}` },
+  { key:'customers', table:'customers',          label:'ลูกค้า (Sales)',     fmt:r=>r.name,
+    fields:[f('name','ชื่อลูกค้า'),f('customer_type','ประเภทลูกค้า','sel',CUSTOMER_TYPE),f('work_type','ประเภทงาน','sel',WORK_TYPE),f('contact','ผู้ติดต่อ'),f('lbs_qty','จำนวน LBS','num'),f('desired_date','วันที่ต้องการ','date'),f('location','สถานที่'),f('scope','Scope'),f('note','หมายเหตุ')] },
+  { key:'srs',       table:'sales_requisitions', label:'Sales Requisition',  fmt:r=>`${r.sr_no} · ${r.contract_status||''}`,
+    fields:[f('sr_no','SR No.'),f('cust_po_no','PO ลูกค้า'),f('contract_status','สถานะสัญญา','sel',CONTRACT_STATUS),f('note','หมายเหตุ')] },
+  { key:'projects',  table:'projects',           label:'Project Stock',      fmt:r=>`${r.project_stock_no} · ${r.name}`,
+    fields:[f('project_stock_no','Stock No.'),f('job_no','Job No.'),f('bom_no','BOM No.'),f('name','ชื่อโครงการ'),f('current_phase','เฟสปัจจุบัน','sel',PHASES),f('bom_status','สถานะ BOM','sel',BOM_DOC_STATUS),f('target_lbs','LBS เป้าหมาย','num'),f('total_budget','งบประมาณ','num'),f('margin','Margin %','num'),f('cash_flow_status','กระแสเงินสด','sel',CASHFLOW_STATUS),f('delivery_date','วันส่งมอบ','date'),f('do_signed','ลงนาม DO แล้ว','bool')] },
+  { key:'bom',       table:'bom_items',          label:'BOM Items',          fmt:r=>`${r.epicor_code||''} · ${r.description}`,
+    fields:[f('epicor_code','Epicor Code'),f('description','รายละเอียด'),f('category','หมวด','sel',BOM_CAT),f('due_date','Due Date','date'),f('ium','IUM'),f('quantity','จำนวน','num'),f('currency','สกุลเงิน','sel',CURRENCY),f('unit_cost','ราคา/หน่วย','num'),f('fx_rate','FX Rate','num'),f('project_phase','Phase','sel',PROJECT_PHASES),f('po_status','สถานะ PO','sel',BOM_PO_STATUS)] },
+  { key:'pos',       table:'purchase_orders',    label:'Purchase Orders',    fmt:r=>`${r.po_no} · ${r.supplier||''}`,
+    fields:[f('po_no','PO No.'),f('supplier','ผู้ขาย'),f('status','สถานะ','sel',PO_DOC_STATUS),f('expected_date','กำหนดรับ','date'),f('amount','มูลค่า','num'),f('notified','แจ้งกลับแล้ว','bool')] },
+  { key:'team',      table:'service_team',       label:'ทีม Service',        fmt:r=>`${r.name} · ${r.role||''}`,
+    fields:[f('name','ชื่อ'),f('role','ตำแหน่ง'),f('phone','โทร'),f('active','ใช้งาน','bool')] },
+  { key:'plans',     table:'service_plans',      label:'แผนส่งมอบ',          fmt:r=>`#${r.id} · ${r.delivery_date||''}`,
+    fields:[f('delivery_date','วันส่งมอบ','date'),f('location','สถานที่'),f('team_need','ทีมที่ต้องการ'),f('note','หมายเหตุ'),f('acked','ฝ่ายบริการรับแล้ว','bool')] },
 ];
 const ROLE_OPTS = ['sales','project','purchasing','service','executive'];
-function Settings({state, role, onSetRole, onRevoke, onDeleteRow}){
+
+// ตัวแก้ไขข้อมูลแบบ modal (Developer แก้ข้ามฝ่าย) — ส่งเฉพาะ field ที่เปลี่ยน
+function RowEditor({en, row, onClose, onSave}){
+  const [form,setForm]=useState(()=>{ const m={}; en.fields.forEach(fd=>{ m[fd.k]=row[fd.k]; }); return m; });
+  const set=(k,v)=>setForm(s=>({...s,[k]:v}));
+  const save=()=>{
+    const patch={};
+    en.fields.forEach(fd=>{ let v=form[fd.k]; if(fd.t==='num') v=num(v); if(String(v??'')!==String(row[fd.k]??'')) patch[fd.k]=v; });
+    if(Object.keys(patch).length) onSave(en.key, en.table, row.id, patch);
+    onClose();
+  };
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onClick={onClose}>
+      <div className="w-full max-w-lg rounded-xl border border-slate-700 bg-slate-900 fade-up max-h-[90vh] flex flex-col" onClick={e=>e.stopPropagation()}>
+        <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between">
+          <div><div className="text-slate-100 font-semibold flex items-center gap-2">{Icon.edit} แก้ไข: {en.label}</div>
+            <div className="text-[11px] text-slate-500 mono truncate max-w-[22rem]">{en.fmt(row)}</div></div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-100">{Icon.x}</button>
+        </div>
+        <div className="overflow-y-auto p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {en.fields.map(fd=>(
+            <div key={fd.k} className={fd.t==='bool'?'sm:col-span-2':''}>
+              <Lbl>{fd.l}</Lbl>
+              {fd.t==='sel' ? <Sel value={form[fd.k]??''} onChange={v=>set(fd.k,v)} options={fd.o}/>
+               : fd.t==='bool' ? <label className="flex items-center gap-2 text-[13px] text-slate-300 cursor-pointer"><input type="checkbox" checked={!!form[fd.k]} onChange={e=>set(fd.k,e.target.checked)} className="accent-sky-500"/> {form[fd.k]?'ใช่':'ไม่'}</label>
+               : <Inp type={fd.t==='num'?'number':fd.t==='date'?'date':'text'} value={form[fd.k]??''} onChange={v=>set(fd.k,v)}/>}
+            </div>
+          ))}
+        </div>
+        <div className="px-5 py-3 border-t border-slate-800 flex items-center justify-end gap-2">
+          <button onClick={onClose} className="text-xs font-medium rounded-lg px-3 py-1.5 border border-slate-700 text-slate-300 hover:bg-slate-800">ยกเลิก</button>
+          <button onClick={save} className="text-xs font-semibold rounded-lg px-4 py-1.5" style={{background:'#0ea5e9',color:'#0b0f17'}}>{Icon.check} บันทึก</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+function Settings({state, role, onSetRole, onRevoke, onDeleteRow, onUpdateRow}){
   if(role!=='developer') return <Empty msg="เฉพาะผู้ดูแล (Developer) เท่านั้น"/>;
   const users = state.users||[];
   const pending = users.filter(u=>!u.department && !u.is_developer);
   const [openKey,setOpenKey]=useState(null);
+  const [edit,setEdit]=useState(null);   // {en, row} ที่กำลังแก้ไข
   const roleLabel = u => u.is_developer ? 'Developer' : (u.department ? DEPT[u.department]?.label||u.department : null);
   return (
     <div className="space-y-5">
@@ -2104,7 +2159,7 @@ function Settings({state, role, onSetRole, onRevoke, onDeleteRow}){
       {/* B) จัดการข้อมูลทุกฝ่าย (ดูภาพรวม + ลบ) */}
       <Card className="overflow-hidden">
         <div className="px-5 py-3.5 border-b border-slate-800 flex items-center gap-2"><span style={{color:'#0ea5e9'}}>{Icon.box}</span><h3 className="text-slate-200 font-semibold">จัดการข้อมูลทุกฝ่าย (CRUD)</h3></div>
-        <div className="px-5 py-2 text-[11px] text-slate-500 border-b border-slate-800">เพิ่ม/แก้ไขทำได้จากหน้าแต่ละฝ่ายโดยตรง (Developer มีสิทธิ์ทุกที่) · ส่วนนี้สำหรับดูภาพรวมและ <b className="text-rose-600">ลบ</b> ข้ามฝ่าย</div>
+        <div className="px-5 py-2 text-[11px] text-slate-500 border-b border-slate-800">เพิ่มทำได้จากหน้าแต่ละฝ่าย · ส่วนนี้สำหรับ Developer <b className="text-sky-600">ดู / แก้ไข ✎ / ลบ</b> ข้ามฝ่ายได้ทุกตาราง</div>
         <div className="p-3 grid grid-cols-1 md:grid-cols-2 gap-2">
           {DATA_ENTITIES.map(en => { const rows=state[en.key]||[]; const isOpen=openKey===en.key; return (
             <div key={en.key} className="rounded-lg border border-slate-800">
@@ -2117,7 +2172,10 @@ function Settings({state, role, onSetRole, onRevoke, onDeleteRow}){
                 {rows.map(r=>(
                   <div key={r.id} className="px-3 py-2 flex items-center justify-between gap-2 border-b border-slate-800/40">
                     <span className="text-[12px] text-slate-300 truncate">{en.fmt(r)}</span>
-                    <button onClick={()=>{ if(confirm(`ลบ "${en.fmt(r)}" ?`)) onDeleteRow(en.key, en.table, r.id); }} className="text-slate-500 hover:text-rose-600 shrink-0">{Icon.trash}</button>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button onClick={()=>setEdit({en, row:r})} className="text-slate-500 hover:text-sky-500" title="แก้ไข">{Icon.edit}</button>
+                      <button onClick={()=>{ if(confirm(`ลบ "${en.fmt(r)}" ?`)) onDeleteRow(en.key, en.table, r.id); }} className="text-slate-500 hover:text-rose-600" title="ลบ">{Icon.trash}</button>
+                    </div>
                   </div>
                 ))}
               </div>}
@@ -2125,6 +2183,7 @@ function Settings({state, role, onSetRole, onRevoke, onDeleteRow}){
           );})}
         </div>
       </Card>
+      {edit && <RowEditor en={edit.en} row={state[edit.en.key].find(x=>x.id===edit.row.id)||edit.row} onClose={()=>setEdit(null)} onSave={onUpdateRow}/>}
     </div>
   );
 }
@@ -2257,6 +2316,8 @@ function App(){
   const handleRevoke = run(async (uid) => { await db.revokeUser(uid); },
     (s, uid) => ({...s, users:s.users.map(u=>u.user_id===uid?{...u,department:null,is_developer:false}:u)}));
   const handleDeleteRow = run(async (demoKey, table, id) => { await db.deleteRow(demoKey, table, id); });
+  const handleUpdateRow = run(async (demoKey, table, id, patch) => { await db.updateRow(demoKey, table, id, patch); },
+    (s, demoKey, table, id, patch) => ({...s, [demoKey]: s[demoKey].map(x=>x.id===id?{...x,...patch}:x)}));
 
   /* Inventory (#3) */
   const handleAddMovement = run(async (row) => { await db.addMovement({...row, by:DEPT[role].en}); });
@@ -2299,7 +2360,7 @@ function App(){
           {page==='service'    && <FieldService state={state} role={role} onTask={handleTask} onAddTask={handleAddTask} onAddMember={handleAddMember} onRemoveMember={handleRemoveMember} onAddSchedule={handleAddSchedule} onRemoveSchedule={handleRemoveSchedule} onSignDO={handleSignDO} onAckPlan={handleAckPlan} onInstallDraw={handleInstallDraw}/>}
           {page==='workflow'   && <WorkflowBoard state={state} project={activeProject} role={role} onTask={handleTask} onAddTask={handleAddTask} onHandoff={handleHandoff} onReject={handleReject} onAck={handleAck} onPickStock={(id)=>setActiveId(id)}/>}
           {page==='inventory'  && <Inventory state={state} role={role} onAddMovement={handleAddMovement} onReceivePO={handleReceivePO} onTransfer={handleTransfer} onDeleteMovement={handleDeleteMovement}/>}
-          {page==='settings'   && role==='developer' && <Settings state={state} role={role} onSetRole={handleSetRole} onRevoke={handleRevoke} onDeleteRow={handleDeleteRow}/>}
+          {page==='settings'   && role==='developer' && <Settings state={state} role={role} onSetRole={handleSetRole} onRevoke={handleRevoke} onDeleteRow={handleDeleteRow} onUpdateRow={handleUpdateRow}/>}
         </main>
       </div>
       {poProj && <PoModal project={poProj} pos={state.pos} onClose={()=>setPoProject(null)}/>}
