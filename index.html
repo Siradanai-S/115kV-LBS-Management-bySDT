@@ -514,6 +514,15 @@ function invBalance(state, loc){
 const invOnhand = (state, loc, code) => { const r=invBalance(state, loc).find(x=>x.code===code); return r?r.onhand:0; };   // ยอดคงเหลือ ณ ที่ตั้ง
 // จำนวนที่รับเข้าแล้วของ PO+รหัส (ไว้คำนวณค้างรับ)
 const poReceivedQty = (state, poNo, code) => (state.inventory||[]).filter(x=>x.po_no===poNo && x.epicor_code===code && x.type==='IN').reduce((s,x)=>s+num(x.qty),0);
+// จำนวนที่เบิกติดตั้งไปแล้วของรหัสในโครงการ (เบิกตามงานติดตั้ง = OUT reason 'ติดตั้งงาน')
+const installedQty = (state, pid, code) => (state.inventory||[]).filter(x=>x.project_id===pid && x.epicor_code===code && x.type==='OUT' && x.reason==='ติดตั้งงาน').reduce((s,x)=>s+num(x.qty),0);
+// สรุปความคืบหน้าการเบิกติดตั้งตาม BOM ของโครงการ: {need,done,lines,complete}
+function installSummary(state, pid){
+  const items=(state.bom||[]).filter(b=>b.project_id===pid);
+  let need=0, done=0, full=0;
+  items.forEach(b=>{ const q=num(b.quantity), ins=Math.min(q,installedQty(state,pid,b.epicor_code)); need+=q; done+=ins; if(ins>=q && q>0) full++; });
+  return { need, done, lines:items.length, full, complete: items.length>0 && full===items.length };
+}
 
 function phaseGate(project, state){
   const pid=project.id, ph=project.current_phase;
@@ -703,6 +712,121 @@ function PoModal({project, pos, onClose}){
   );
 }
 
+/* ============================ DASHBOARD CHARTS (SVG, theme-aware) ============================ */
+// น้ำหนักความคืบหน้าตามเฟส (ใช้คำนวณมูลค่างานที่ทำได้สะสมจาก handoff_log)
+const PHASE_WEIGHT = { sales:0, project:0.25, purchasing:0.5, service:0.75, closed:1 };
+const ymOf  = d => d ? String(d).slice(0,7) : null;
+const pad2y = n => String(n).padStart(2,'0');
+function ymAdd(ym, n){ const [y,m]=ym.split('-').map(Number); const idx=(y*12+(m-1))+n; return Math.floor(idx/12)+'-'+pad2y((idx%12)+1); }
+function monthsBetween(a, b){ const [ay,am]=a.split('-').map(Number); const [by,bm]=b.split('-').map(Number); return (by*12+bm)-(ay*12+am); }
+function ymList(from, to){ const out=[]; let cur=from, guard=0; while(cur<=to && guard++<120){ out.push(cur); cur=ymAdd(cur,1); } return out; }
+const ymLabel = ym => { const m=Number(ym.split('-')[1]); return MONTHS_TH[m-1]||ym; };
+
+// S-curve: แผนสะสม (ramp ตามกำหนดส่ง) vs ทำได้สะสม (มูลค่า×น้ำหนักเฟสจาก handoff) — เป็น % ของงบรวม
+function scurveData(state){
+  const projects = state.projects||[];
+  const total = projects.reduce((s,p)=>s+num(p.total_budget),0);
+  if(!projects.length || total<=0) return null;
+  const evByProj = {};
+  (state.handoffs||[]).forEach(h=>{ (evByProj[h.project_id]=evByProj[h.project_id]||[]).push(h); });
+  Object.values(evByProj).forEach(a=>a.sort((x,y)=>String(x.created_at).localeCompare(String(y.created_at))));
+  const allYm=[];
+  projects.forEach(p=>{ if(p.delivery_date) allYm.push(ymOf(p.delivery_date)); });
+  (state.handoffs||[]).forEach(h=>{ if(h.created_at) allYm.push(ymOf(h.created_at)); });
+  if(!allYm.length) return null;
+  const from=allYm.reduce((a,b)=>a<b?a:b), to=allYm.reduce((a,b)=>a>b?a:b);
+  const cur=curYM();
+  return ymList(from, to).map(ym=>{
+    let planned=0, actual=0;
+    projects.forEach(p=>{
+      const b=num(p.total_budget), evs=evByProj[p.id]||[];
+      const startYm = evs.length ? ymOf(evs[0].created_at) : (p.delivery_date?ymOf(p.delivery_date):from);
+      const endYm   = p.delivery_date ? ymOf(p.delivery_date) : startYm;
+      let frac = ym>=endYm ? 1 : ym<startYm ? 0 : monthsBetween(startYm,ym)/(monthsBetween(startYm,endYm)||1);
+      planned += b*frac;
+      let w=0; evs.forEach(e=>{ if(ymOf(e.created_at)<=ym && PHASE_WEIGHT[e.to_phase]!=null) w=PHASE_WEIGHT[e.to_phase]; });
+      actual += b*w;
+    });
+    return { ym, planned: planned/total*100, actual: ym<=cur ? actual/total*100 : null };
+  });
+}
+
+function SCurveChart({state}){
+  const data = scurveData(state);
+  const W=540, H=250, padL=34, padR=14, padT=14, padB=30;
+  if(!data || data.length<2) return <div className="grid place-items-center py-16 text-slate-500 text-sm">ข้อมูลยังไม่พอสร้างกราฟ S-curve</div>;
+  const n=data.length, plotW=W-padL-padR, plotH=H-padT-padB;
+  const x = i => padL + (n===1?plotW/2:i*plotW/(n-1));
+  const y = v => padT + (1-v/100)*plotH;
+  const lineOf = key => data.map((d,i)=> d[key]==null?null:`${x(i)},${y(d[key])}`).filter(Boolean).join(' ');
+  const planPts=lineOf('planned'), actPts=lineOf('actual');
+  const actLast = data.filter(d=>d.actual!=null).pop();
+  const planLast = data[data.length-1];
+  return (
+    <div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{maxHeight:260}}>
+        {[0,25,50,75,100].map(g=>(
+          <g key={g}>
+            <line x1={padL} y1={y(g)} x2={W-padR} y2={y(g)} stroke="currentColor" className="text-slate-700" strokeWidth="0.5" strokeDasharray={g===0?'':'3 3'} opacity="0.5"/>
+            <text x={padL-5} y={y(g)+3} textAnchor="end" className="fill-slate-500" fontSize="9">{g}</text>
+          </g>
+        ))}
+        {data.map((d,i)=> (i===0||i===n-1||n<=8||i%2===0) && (
+          <text key={d.ym} x={x(i)} y={H-padB+14} textAnchor="middle" className="fill-slate-500" fontSize="9">{ymLabel(d.ym)}</text>
+        ))}
+        <polyline points={planPts} fill="none" stroke="#94a3b8" strokeWidth="2" strokeDasharray="5 4" strokeLinecap="round" strokeLinejoin="round"/>
+        {actPts && <polyline points={actPts} fill="none" stroke="#3b82f6" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>}
+        {data.map((d,i)=> d.actual!=null && <circle key={i} cx={x(i)} cy={y(d.actual)} r="2.6" fill="#3b82f6"/>)}
+      </svg>
+      <div className="flex items-center justify-center gap-5 mt-1 text-[11px]">
+        <span className="flex items-center gap-1.5 text-slate-400"><span style={{display:'inline-block',width:16,height:0,borderTop:'2px dashed #94a3b8'}}/>แผนสะสม {planLast?planLast.planned.toFixed(0):0}%</span>
+        <span className="flex items-center gap-1.5 text-slate-400"><span style={{display:'inline-block',width:16,height:3,background:'#3b82f6',borderRadius:2}}/>ทำได้สะสม {actLast?actLast.actual.toFixed(0):0}%</span>
+      </div>
+    </div>
+  );
+}
+
+// กราฟแท่งรายเดือน: รับเข้า vs เบิกออก (จาก inventory_moves)
+function monthlyInvData(state){
+  const m={};
+  (state.inventory||[]).forEach(x=>{ const ym=ymOf(x.created_at); if(!ym) return; const r=m[ym]||(m[ym]={ym,inQ:0,outQ:0}); if(x.type==='IN') r.inQ+=num(x.qty); else r.outQ+=num(x.qty); });
+  const keys=Object.keys(m).sort(); if(!keys.length) return [];
+  return ymList(keys[0], keys[keys.length-1]).map(ym=> m[ym]||{ym,inQ:0,outQ:0});
+}
+function MonthlyBars({state}){
+  const data=monthlyInvData(state);
+  const W=540, H=250, padL=34, padR=14, padT=14, padB=30;
+  if(!data.length) return <div className="grid place-items-center py-16 text-slate-500 text-sm">ยังไม่มีการเคลื่อนไหวคลัง</div>;
+  const max=Math.max(1,...data.map(d=>Math.max(d.inQ,d.outQ)));
+  const plotW=W-padL-padR, plotH=H-padT-padB, n=data.length;
+  const grp=plotW/n, bw=Math.min(18, grp/2.6), gap=3;
+  const y=v=>padT+(1-v/max)*plotH;
+  const ticks=[0,0.25,0.5,0.75,1].map(f=>Math.round(max*f));
+  return (
+    <div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{maxHeight:260}}>
+        {ticks.map((t,i)=>(
+          <g key={i}>
+            <line x1={padL} y1={y(t)} x2={W-padR} y2={y(t)} stroke="currentColor" className="text-slate-700" strokeWidth="0.5" strokeDasharray={i===0?'':'3 3'} opacity="0.5"/>
+            <text x={padL-5} y={y(t)+3} textAnchor="end" className="fill-slate-500" fontSize="9">{t}</text>
+          </g>
+        ))}
+        {data.map((d,i)=>{ const cx=padL+grp*i+grp/2; return (
+          <g key={d.ym}>
+            <rect x={cx-bw-gap/2} y={y(d.inQ)} width={bw} height={Math.max(0,plotH-(y(d.inQ)-padT))} rx="2" fill="#16a34a"/>
+            <rect x={cx+gap/2} y={y(d.outQ)} width={bw} height={Math.max(0,plotH-(y(d.outQ)-padT))} rx="2" fill="#f43f5e"/>
+            <text x={cx} y={H-padB+14} textAnchor="middle" className="fill-slate-500" fontSize="9">{ymLabel(d.ym)}</text>
+          </g>
+        );})}
+      </svg>
+      <div className="flex items-center justify-center gap-5 mt-1 text-[11px]">
+        <span className="flex items-center gap-1.5 text-slate-400"><span style={{display:'inline-block',width:12,height:12,background:'#16a34a',borderRadius:2}}/>รับเข้า</span>
+        <span className="flex items-center gap-1.5 text-slate-400"><span style={{display:'inline-block',width:12,height:12,background:'#f43f5e',borderRadius:2}}/>เบิกออก</span>
+      </div>
+    </div>
+  );
+}
+
 /* ============================ DASHBOARD ============================ */
 function Dashboard({state, onNav, onSelectProject, onOpenPO}){
   const { projects, tasks, bom, pos, customers, srs } = state;
@@ -758,6 +882,16 @@ function Dashboard({state, onNav, onSelectProject, onOpenPO}){
               </button>
             ))}</div>
           )}
+        </Card>
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Card className="p-5 fade-up">
+          <div className="flex items-center justify-between mb-2"><h3 className="text-slate-200 font-semibold">S-Curve ความก้าวหน้าโครงการ</h3><span className="text-[11px] text-slate-500">แผน vs ทำได้ (สะสม % มูลค่า)</span></div>
+          <SCurveChart state={state}/>
+        </Card>
+        <Card className="p-5 fade-up">
+          <div className="flex items-center justify-between mb-2"><h3 className="text-slate-200 font-semibold">การเคลื่อนไหวคลังรายเดือน</h3><span className="text-[11px] text-slate-500">รับเข้า vs เบิกออก (จำนวน)</span></div>
+          <MonthlyBars state={state}/>
         </Card>
       </div>
       <Card className="fade-up overflow-hidden">
@@ -1446,11 +1580,76 @@ function PurchasingDone({state}){
 }
 
 /* ============================ SERVICE DEPARTMENT ============================ */
-function FieldService({state, role, onTask, onAddTask, onAddMember, onRemoveMember, onAddSchedule, onRemoveSchedule, onSignDO, onAckPlan}){
+// เบิกวัสดุตามงานติดตั้ง (ดึงจาก BOM) — ตัดสต็อกระดับโครงการ (OUT reason 'ติดตั้งงาน')
+function InstallDraw({project, state, onClose, onSubmit}){
+  const lines = useMemo(()=> (state.bom||[]).filter(b=>b.project_id===project.id).map(b=>{
+    const code=b.epicor_code, need=num(b.quantity);
+    const installed=Math.min(need, installedQty(state, project.id, code));
+    const onhand=invOnhand(state, project.id, code);
+    const remaining=Math.max(0, need-installed);
+    return { id:b.id, code, desc:b.description, need, installed, onhand, remaining, cat:b.category };
+  }), [state, project.id]);
+  const [qty, setQty] = useState(()=>{ const m={}; lines.forEach(l=>{ m[l.id]=Math.min(l.remaining, l.onhand); }); return m; });
+  const setQ = (id, v, cap) => setQty(m=>({...m, [id]:Math.max(0, Math.min(cap, Math.floor(num(v))))}));
+  const totalDraw = lines.reduce((s,l)=>s+num(qty[l.id]),0);
+  const submit = () => {
+    const rows=lines.filter(l=>num(qty[l.id])>0).map(l=>({ epicor_code:l.code, description:l.desc, project_id:project.id, type:'OUT', reason:'ติดตั้งงาน', qty:num(qty[l.id]), note:'เบิกตามงานติดตั้ง (BOM)' }));
+    if(!rows.length){ onClose(); return; }
+    onSubmit(project.id, rows); onClose();
+  };
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onClick={onClose}>
+      <div className="w-full max-w-3xl rounded-xl border border-slate-700 bg-slate-900 fade-up max-h-[90vh] flex flex-col" onClick={e=>e.stopPropagation()}>
+        <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between">
+          <div><div className="text-slate-100 font-semibold flex items-center gap-2">🔧 เบิกวัสดุตามงานติดตั้ง (ดึงจาก BOM)</div>
+            <div className="text-[11px] text-slate-500 mono">{project.project_stock_no} · {project.job_no}</div></div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-100">{Icon.x}</button>
+        </div>
+        <div className="overflow-y-auto">
+          <table className="w-full text-sm">
+            <thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-800">
+              <th className="px-5 py-2.5 font-medium">Epicor Code</th><th className="px-3 py-2.5 font-medium">รายการ</th>
+              <th className="px-3 py-2.5 font-medium text-right">BOM</th><th className="px-3 py-2.5 font-medium text-right">เบิกแล้ว</th>
+              <th className="px-3 py-2.5 font-medium text-right">คงเหลือคลัง</th><th className="px-3 py-2.5 font-medium text-right w-24">เบิกครั้งนี้</th>
+            </tr></thead>
+            <tbody>
+              {lines.length===0 && <tr><td colSpan="6" className="px-5 py-8 text-center text-slate-500">โครงการนี้ยังไม่มีรายการ BOM</td></tr>}
+              {lines.map(l=>{ const cap=l.onhand; const full=l.installed>=l.need && l.need>0; return (
+                <tr key={l.id} className="border-b border-slate-800/60">
+                  <td className="px-5 py-2.5 mono text-slate-300">{l.code} {l.cat==='LBS'&&<Pill color="#3b82f6">LBS</Pill>}</td>
+                  <td className="px-3 py-2.5 text-slate-300">{l.desc}</td>
+                  <td className="px-3 py-2.5 text-right mono text-slate-300">{l.need}</td>
+                  <td className="px-3 py-2.5 text-right mono">{full ? <span className="text-emerald-500">✓ {l.installed}</span> : <span className="text-slate-400">{l.installed}</span>}</td>
+                  <td className="px-3 py-2.5 text-right mono" style={{color:l.onhand>0?'#cbd5e1':'#f43f5e'}}>{l.onhand}</td>
+                  <td className="px-3 py-2.5 text-right">
+                    <input type="number" min="0" max={cap} value={qty[l.id]} disabled={cap<=0}
+                      onChange={e=>setQ(l.id, e.target.value, cap)}
+                      className="w-20 text-right bg-slate-900 border border-slate-700 rounded-md text-sm text-slate-100 px-2 py-1 focus:outline-none focus:border-amber-500/60 disabled:opacity-40"/>
+                  </td>
+                </tr>
+              );})}
+            </tbody>
+          </table>
+          <p className="px-5 py-2 text-[11px] text-slate-500">⚠ เบิกได้ไม่เกินยอดคงเหลือในคลังของโครงการ — ถ้าคงเหลือเป็น 0 ให้โอนจากคลังกลางเข้าโครงการก่อน (เมนูคลังสินค้า)</p>
+        </div>
+        <div className="px-5 py-3 border-t border-slate-800 flex items-center justify-between">
+          <span className="text-[12px] text-slate-400">รวมเบิกครั้งนี้ <b className="text-slate-100">{totalDraw}</b> ชิ้น</span>
+          <div className="flex gap-2">
+            <button onClick={onClose} className="text-xs font-medium rounded-lg px-3 py-1.5 border border-slate-700 text-slate-300 hover:bg-slate-800">ยกเลิก</button>
+            <button onClick={submit} disabled={totalDraw<=0} className="text-xs font-semibold rounded-lg px-4 py-1.5 disabled:opacity-40" style={{background:DEPT.service.c,color:'#0b0f17'}}>✓ ยืนยันเบิกติดตั้ง</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FieldService({state, role, onTask, onAddTask, onAddMember, onRemoveMember, onAddSchedule, onRemoveSchedule, onSignDO, onAckPlan, onInstallDraw}){
   const canEdit = role==='developer' || role==='service';
   const ready = state.projects.filter(p => (p.current_phase==='service' || p.current_phase==='closed') && p.delivery_date);
   const inboxPlans = (state.plans||[]).filter(pl=>!pl.acked);
   const projOf = pid => state.projects.find(p=>p.id===pid);
+  const [drawProj, setDrawProj] = useState(null);
   return (
     <div className="space-y-5">
       {/* Inbox: แผนส่งมอบใหม่จากฝ่ายโครงการ — กดรับ */}
@@ -1488,17 +1687,28 @@ function FieldService({state, role, onTask, onAddTask, onAddMember, onRemoveMemb
                 ))}
                 {canEdit && <AddTask color={DEPT.service.c} onAdd={(title,detail)=>onAddTask(p.id,'service',title,detail)}/>}
               </div>
-              {canEdit && (
-                <div className="mt-3 pt-3 border-t border-slate-800 flex items-center justify-between">
-                  <span className="text-[11px] text-slate-500">{p.do_signed?'✓ ลงนาม DO แล้ว':'ส่งมอบ/ติดตั้งเสร็จแล้วกดลงนาม DO'}</span>
-                  <button onClick={()=>onSignDO(p.id)} disabled={p.do_signed} className="text-xs font-semibold rounded-md px-3 py-1.5 inline-flex items-center gap-1.5" style={p.do_signed?{background:'#e2e8f0',color:'#94a3b8'}:{background:DEPT.service.c,color:'#0b0f17'}}>{Icon.doc} ลงนาม DO</button>
+              {(() => { const ins=installSummary(state,p.id); return (
+                <div className="mt-3 pt-3 border-t border-slate-800 space-y-2.5">
+                  {ins.lines>0 && (
+                    <div>
+                      <div className="flex items-center justify-between text-[11px] mb-1"><span className="text-slate-400">เบิกวัสดุติดตั้งตาม BOM</span><span className="mono" style={{color:ins.complete?'#16a34a':'#94a3b8'}}>{ins.done}/{ins.need} ชิ้น · {ins.full}/{ins.lines} รายการครบ</span></div>
+                      <div className="h-1.5 rounded-full bg-slate-800"><div className="h-full rounded-full transition-all" style={{width:(ins.need?Math.round(ins.done/ins.need*100):0)+'%',background:ins.complete?'#16a34a':DEPT.service.c}}/></div>
+                    </div>
+                  )}
+                  {canEdit && (
+                    <div className="flex items-center justify-between gap-2">
+                      <button onClick={()=>setDrawProj(p)} className="text-xs font-semibold rounded-md px-3 py-1.5 inline-flex items-center gap-1.5 border" style={{borderColor:DEPT.service.c+'66',color:DEPT.service.c}}>🔧 เบิกตามงานติดตั้ง (BOM)</button>
+                      <button onClick={()=>onSignDO(p.id)} disabled={p.do_signed} title={ins.lines>0 && !ins.complete ? 'ยังเบิกติดตั้งไม่ครบตาม BOM' : ''} className="text-xs font-semibold rounded-md px-3 py-1.5 inline-flex items-center gap-1.5" style={p.do_signed?{background:'#e2e8f0',color:'#94a3b8'}:{background:DEPT.service.c,color:'#0b0f17'}}>{Icon.doc} {p.do_signed?'ลงนาม DO แล้ว':'ลงนาม DO'}</button>
+                    </div>
+                  )}
                 </div>
-              )}
+              );})()}
             </Card>
           );
         })}
       </div>
       <ServiceTeam state={state} canEdit={canEdit} onAddMember={onAddMember} onRemoveMember={onRemoveMember} onAddSchedule={onAddSchedule} onRemoveSchedule={onRemoveSchedule}/>
+      {drawProj && <InstallDraw project={drawProj} state={state} onClose={()=>setDrawProj(null)} onSubmit={onInstallDraw}/>}
     </div>
   );
 }
@@ -2036,6 +2246,8 @@ function App(){
   const handleAddSchedule = run(async (row) => { await db.addSchedule(row); });
   const handleRemoveSchedule = run(async (id) => { await db.removeSchedule(id); });
   const handleSignDO = run(async (projectId) => { await db.signDO(projectId); });
+  // เบิกวัสดุตามงานติดตั้ง (ดึงจาก BOM) → ตัดสต็อกโครงการ (OUT 'ติดตั้งงาน')
+  const handleInstallDraw = run(async (projectId, rows) => { await db.addMovements(rows.map(r=>({...r, by:DEPT[role].en}))); });
   const handleSendPlan = run(async (projectId, row) => { await db.addPlan({ project_id:projectId, ...row }); });
   const handleAckPlan = run(async (id) => { await db.ackPlan(id); });
 
@@ -2084,7 +2296,7 @@ function App(){
           {page==='project-stocks' && <ProjectStocks state={state} role={role} onAddBom={handleAddBom} onUpdateBom={handleUpdateBom} onDeleteBom={handleDeleteBom} onSendBom={handleSendBom} onUpdateProject={handleUpdateProject} onOpenWorkflow={(id)=>{setActiveId(id);setPage('workflow');}} onSendPlan={handleSendPlan}/>}
           {page==='purchasing' && <Procurement state={state} role={role} onUpdateBom={handleUpdateBom} onCreatePO={handleCreatePO} onOpenPO={setPoProject} genPoNo={genPoNo}/>}
           {page==='purchasing-done' && <PurchasingDone state={state}/>}
-          {page==='service'    && <FieldService state={state} role={role} onTask={handleTask} onAddTask={handleAddTask} onAddMember={handleAddMember} onRemoveMember={handleRemoveMember} onAddSchedule={handleAddSchedule} onRemoveSchedule={handleRemoveSchedule} onSignDO={handleSignDO} onAckPlan={handleAckPlan}/>}
+          {page==='service'    && <FieldService state={state} role={role} onTask={handleTask} onAddTask={handleAddTask} onAddMember={handleAddMember} onRemoveMember={handleRemoveMember} onAddSchedule={handleAddSchedule} onRemoveSchedule={handleRemoveSchedule} onSignDO={handleSignDO} onAckPlan={handleAckPlan} onInstallDraw={handleInstallDraw}/>}
           {page==='workflow'   && <WorkflowBoard state={state} project={activeProject} role={role} onTask={handleTask} onAddTask={handleAddTask} onHandoff={handleHandoff} onReject={handleReject} onAck={handleAck} onPickStock={(id)=>setActiveId(id)}/>}
           {page==='inventory'  && <Inventory state={state} role={role} onAddMovement={handleAddMovement} onReceivePO={handleReceivePO} onTransfer={handleTransfer} onDeleteMovement={handleDeleteMovement}/>}
           {page==='settings'   && role==='developer' && <Settings state={state} role={role} onSetRole={handleSetRole} onRevoke={handleRevoke} onDeleteRow={handleDeleteRow}/>}
