@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<title>คู่มือการใช้งาน — ระบบบริหารโครงการขาย 115 kV LBS</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 20mm 16mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Noto Sans Thai", "Tahoma", "TH Sarabun New", sans-serif;
+    font-size: 14px; line-height: 1.7; color: #1f2933;
+    margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .cover { text-align: center; padding: 30mm 0 14mm; border-bottom: 3px solid #0b6bcb; margin-bottom: 14px; }
+  .cover h1 { font-size: 30px; color: #0b3a66; margin: 0 0 10px; line-height: 1.3; }
+  .cover .sub { font-size: 16px; color: #486581; }
+  .cover .meta { margin-top: 18px; font-size: 13px; color: #829ab1; }
+  h2 { font-size: 20px; color: #0b6bcb; border-bottom: 2px solid #d9e2ec; padding-bottom: 6px;
+       margin: 26px 0 12px; page-break-after: avoid; }
+  h3 { font-size: 16px; color: #243b53; margin: 18px 0 8px; page-break-after: avoid; }
+  p { margin: 8px 0; }
+  ul, ol { margin: 8px 0; padding-left: 24px; }
+  li { margin: 4px 0; }
+  strong { color: #102a43; }
+  code { font-family: "Consolas","Courier New",monospace; background: #f0f4f8;
+         padding: 1px 5px; border-radius: 4px; font-size: 12.5px; color: #0b3a66; }
+  pre { background: #102a43; color: #d9e2ec; padding: 14px 16px; border-radius: 8px;
+        overflow-x: auto; line-height: 1.5; page-break-inside: avoid;
+        font-family: "Consolas","TH Sarabun New","Courier New",monospace; font-size: 12.5px; }
+  pre code { background: none; color: inherit; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 13px; page-break-inside: avoid; }
+  th, td { border: 1px solid #bcccdc; padding: 7px 10px; text-align: left; vertical-align: top; }
+  th { background: #0b6bcb; color: #fff; font-weight: 600; }
+  tr:nth-child(even) td { background: #f4f8fb; }
+  blockquote { border-left: 4px solid #f0b429; background: #fffbef; margin: 12px 0;
+               padding: 8px 14px; border-radius: 0 6px 6px 0; color: #5c4813; }
+  blockquote p { margin: 4px 0; }
+  hr { border: none; border-top: 1px solid #d9e2ec; margin: 20px 0; }
+  .section { page-break-inside: auto; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <h1>คู่มือการใช้งาน<br>ระบบบริหารโครงการขาย 115 kV LBS</h1>
+  <div class="sub">แยกตามฝ่าย (Department) พร้อมหมายเหตุ Flow เชื่อมโยงระหว่างฝ่าย</div>
+  <div class="meta">เอกสารอ้างอิงการใช้งาน · ปรับปรุง 15 มิถุนายน 2569</div>
+</div>
+
+<h2>🔑 พื้นฐานที่ต้องรู้ก่อน</h2>
+<ul>
+  <li><strong>บทบาท (Role):</strong> developer / sales / project / purchasing / service / executive</li>
+  <li><strong>สิทธิ์:</strong> แต่ละฝ่าย <strong>แก้ไขได้เฉพาะงานของตน</strong> · <strong>ดูข้ามฝ่ายได้ทุกหน้า (อ่านอย่างเดียว)</strong> — เมื่อเปิดหน้าฝ่ายอื่นจะมีแถบ <strong>👁 โหมดดูอย่างเดียว</strong></li>
+  <li><strong>Developer (Mr. Siradanai)</strong> ทำได้ทุกอย่าง + มีแท็บ <strong>Setting</strong></li>
+  <li><strong>🔔 กระดิ่ง (มุมขวาบน):</strong> รวมงานเข้าใหม่ / ตีกลับ / ใกล้ครบกำหนด ≤15 วัน — คลิกเพื่อกระโดดไปงานนั้น</li>
+  <li><strong>🌙/☀️ สลับธีม</strong> สว่าง/มืด · เมนูแม่มี <strong>กิ่งย่อย</strong> (แท็บลูก) ใต้แต่ละฝ่าย</li>
+</ul>
+
+<hr>
+
+<h2>📋 Sales Department (ฝ่ายขาย)</h2>
+<p><strong>หน้าที่:</strong> เก็บข้อมูลลูกค้า → รวบรวมเป็นใบขอ (SR) ส่งให้ฝ่ายโครงการ → ติดตาม PO/สัญญาจากลูกค้า</p>
+<p><strong>หน้าหลัก (Sales Department)</strong> — แสดงเฉพาะลูกค้าที่ยังไม่ได้รวบรวม</p>
+<ol>
+  <li>กด <strong>+ เพิ่มลูกค้า</strong> กรอก: ชื่อ, ประเภทลูกค้า, ประเภทงาน, ผู้ติดต่อ, <strong>จำนวน LBS ที่ต้องการ</strong>, วันที่ต้องการ, สถานที่ติดตั้ง, Scope</li>
+  <li>ลูกค้าจะถูกจัดกลุ่มตามประเภท (ราชการ / เอกชน / รัฐวิสาหกิจ)</li>
+  <li><strong>ติ๊กเลือกลูกค้า</strong> (เลือกได้หลายราย) → กด <strong>รวบรวมส่งฝ่ายโครงการ</strong> → ระบบออกเลข <strong>SR-YYYY-NNN</strong></li>
+</ol>
+<p><strong>แท็บกิ่งย่อย → Sales Requisition &amp; ติดตาม PO</strong></p>
+<ul>
+  <li>กล่อง <strong>⏳ รอฝ่ายโครงการสร้าง Stock</strong> / <strong>✓ สร้าง Project Stock แล้ว</strong></li>
+  <li>กรอก <strong>เลขที่ PO จากลูกค้า</strong> + <strong>สถานะสัญญา</strong> เพื่อติดตาม</li>
+</ul>
+<blockquote><p>🔗 <strong>Flow:</strong> เมื่อกด "รวบรวมส่ง" → SR จะไปโผล่ใน <strong>Inbox ของ Project</strong> ทันที · ลูกค้าจะถูกย้ายออกจากหน้าหลัก Sales (ไปอยู่ใต้ SR)</p></blockquote>
+
+<hr>
+
+<h2>📐 Project Department (ฝ่ายโครงการ)</h2>
+<p><strong>หน้าที่:</strong> รับ SR → สร้าง Project Stock → ทำ BOM → ส่งให้จัดซื้อ → แจ้งแผนส่งมอบให้บริการ</p>
+<p><strong>หน้าหลัก (Project Department)</strong> — Inbox ของ SR ที่ฝ่ายขายส่งมา</p>
+<ol>
+  <li><strong>ติ๊กเลือก SR</strong> (เลือกได้หลายใบ) → กด <strong>สร้าง Project Stock</strong></li>
+  <li><strong>Popup:</strong> ตั้งชื่อโครงการ + <strong>กรอกจำนวน LBS เป้าหมาย</strong> (ระบบเติมยอดรวมลูกค้าให้ แก้ได้) + แก้ Stock No./Job No./BOM No. ได้</li>
+  <li>กดยืนยัน → ระบบสร้าง Stock + ย้ายไปแท็บ <strong>Stock No.</strong></li>
+</ol>
+<p><strong>แท็บกิ่งย่อย → Stock No.</strong> (การ์ดรายโครงการ พับได้)</p>
+<ul>
+  <li>กางการ์ด → จัดการ <strong>Budget &amp; Flow</strong> (งบ/กำไร/กระแสเงินสด) + <strong>Material List (BOM)</strong></li>
+  <li>เพิ่มรายการ BOM: <strong>Epicor Code, Description, Due Date, IUM, จำนวน, สกุลเงิน (THB/USD + FX), Project Phase</strong> → Total คิดเป็นบาท</li>
+  <li><strong>ตรวจสอบจำนวน LBS:</strong> ยอด LBS ใน BOM ต้องตรงกับ <strong>เป้าหมาย Stock</strong> (สีเขียว = ตรง / แดง = ขาด-เกิน)</li>
+  <li>กด <strong>ส่ง BOM ให้จัดซื้อ</strong> (ส่งแล้วล็อกแก้ไข) · กด <strong>ส่งแผน Service</strong> (วันส่ง/สถานที่/ทีม)</li>
+  <li>มี <strong>📜 Audit Timeline</strong> ประวัติส่งงาน/ตีกลับ · ปุ่ม <strong>Workflow →</strong> เปิด Workflow board</li>
+</ul>
+<blockquote><p>🔗 <strong>Flow:</strong> ส่ง BOM → ไปฝ่าย <strong>Purchasing</strong> · ส่งแผน → เข้า <strong>Inbox ของ Service</strong> · ส่งงานต่อเฟส (Workflow) ต้องผ่านเงื่อนไข: มี Job No. + ส่ง BOM แล้ว + <strong>LBS ตรงเป้า</strong></p></blockquote>
+
+<hr>
+
+<h2>🛒 Purchasing Department (ฝ่ายจัดซื้อ)</h2>
+<p><strong>หน้าที่:</strong> รับ BOM → ออก PO → อัปเดตสถานะของเข้า แจ้งกลับฝ่ายโครงการ</p>
+<p><strong>หน้าหลัก (Purchasing Department)</strong> — การ์ดต่อ BOM No. (พับได้, เริ่มต้นซ่อน)</p>
+<ol>
+  <li>กางการ์ด → เห็นรายการ BOM ครบทุกคอลัมน์</li>
+  <li>กด <strong>ออก PO</strong> → <strong>เลือกรายการ + ระบุจำนวนต่อรายการ</strong> (แยกออกหลายใบได้) → กรอกเลขที่ PO เอง + <strong>แนบไฟล์ PDF</strong> → มูลค่ารวมคิดอัตโนมัติ</li>
+  <li>อัปเดต <strong>สถานะ PO</strong> ราย BOM (Awaiting → PO Received → Delivered) — ฝ่ายโครงการเห็นเลข PO + เปิดไฟล์ PDF ได้</li>
+</ol>
+<p><strong>แท็บกิ่งย่อย → BOM Delivered completed</strong> — รวมรายการที่ส่งมอบครบทุก PO</p>
+<blockquote><p>🔗 <strong>Flow:</strong> PO ผูกกับ BOM No. (Project Stock) · เมื่อทุกรายการ <strong>Delivered</strong> ครบ → ฝ่ายจัดซื้อ "ส่งงานต่อ" ไป Service ได้ใน Workflow</p></blockquote>
+
+<hr>
+
+<h2>🛠️ Service Department (ฝ่ายบริการ)</h2>
+<p><strong>หน้าที่:</strong> รับแผนส่งมอบ → จัดทีม/ตารางคิว → ลงนาม DO → ปิดงาน</p>
+<ol>
+  <li><strong>📥 Inbox แผนส่งมอบใหม่</strong> จากฝ่ายโครงการ → กด <strong>รับแผนงาน</strong></li>
+  <li>การ์ดโครงการพร้อมส่งมอบ: เช็กลิสต์งาน + <strong>ลงนาม DO</strong> (เสร็จแล้วปิดงานได้)</li>
+  <li><strong>ทีมงาน &amp; Scheduling Calendar:</strong> เพิ่ม/ลบสมาชิก · ปฏิทินรายเดือน (คลิกวันที่มีงานดู Event) · มอบหมายทีมเข้าโครงการ</li>
+</ol>
+<blockquote><p>🔗 <strong>Flow:</strong> ต้อง <strong>ลงนาม DO</strong> ก่อน จึง "ส่งงานต่อ" เป็น <strong>ปิดงาน (Closed)</strong> ใน Workflow ได้</p></blockquote>
+
+<hr>
+
+<h2>📦 คลังสินค้า (Inventory)</h2>
+<p><strong>หน้าที่:</strong> ติดตามสต็อกจริง 2 ระดับ — <strong>คลังกลาง</strong> ↔ <strong>ต่อ Project Stock</strong> (บันทึกรับ/เบิกด้วยมือ)</p>
+<ul>
+  <li><strong>📥 รับตาม PO:</strong> เลือก PO ที่ค้างรับ → กรอกจำนวนรับครั้งนี้ (<strong>รับบางส่วนได้</strong>) → รับครบ → <strong>อัปเดต BOM เป็น Delivered อัตโนมัติ</strong></li>
+  <li><strong>✏️ บันทึกเอง:</strong>
+    <ul>
+      <li><strong>รับเข้า</strong> (เข้าคลังกลาง/โครงการ)</li>
+      <li><strong>เบิกออก</strong> — มีประเภท: ติดตั้งงาน / คืนผู้ขาย / ชำรุด-ตัดทิ้ง</li>
+      <li><strong>โอนเข้าโครงการ</strong> — ย้ายของจากคลังกลาง → Project Stock</li>
+    </ul>
+  </li>
+  <li><strong>⚠ ระบบบล็อกการเบิก/โอนเกินยอดคงเหลือ</strong> (สต็อกห้ามติดลบ)</li>
+  <li>ดูยอดคงเหลือ (รับเข้า/เบิกออก/คงเหลือ) + ledger เคลื่อนไหวล่าสุด · Export Excel</li>
+</ul>
+<blockquote><p>🔗 <strong>Flow:</strong> รับตาม PO เชื่อมกับ PO ของฝ่ายจัดซื้อ (รับครบ → po_status = Delivered) · โอน/เบิกผูกกับ Project Stock</p></blockquote>
+
+<hr>
+
+<h2>⚙️ Setting (เฉพาะ Mr. Siradanai)</h2>
+<ol>
+  <li><strong>ผู้ใช้งาน &amp; สิทธิ์:</strong> อนุมัติผู้สมัครใหม่ (เลือกฝ่าย) · เลื่อนเป็น Developer · ยกเลิกสิทธิ์</li>
+  <li><strong>จัดการข้อมูลทุกฝ่าย:</strong> ดูภาพรวม + ลบข้อมูลข้ามฝ่าย</li>
+</ol>
+<blockquote><p>ผู้สมัครใหม่ที่ยังไม่ถูกกำหนดสิทธิ์จะเห็นหน้า <strong>⏳ รอผู้ดูแลอนุมัติ</strong> จนกว่าจะได้รับฝ่าย</p></blockquote>
+
+<hr>
+
+<h2>🔗 สรุป Flow เชื่อมโยงทั้งระบบ</h2>
+<pre><code>ลูกค้า ──(Sales รวบรวม)──▶ Sales Requisition (SR)
+                                  │ ส่งให้โครงการ
+                                  ▼
+         (Project เลือกหลาย SR + ถามจำนวน LBS) ──▶ Project Stock + BOM
+                                  │ ส่ง BOM                    │ ส่งแผน
+                                  ▼                            ▼
+                            Purchasing (ออก PO)          Service (รับแผน)
+                                  │ Delivered ครบ              │ ลงนาม DO
+                                  ▼                            ▼
+              คลังสินค้า: รับตาม PO ─▶ โอนเข้าโครงการ ─▶ เบิกติดตั้ง      ปิดงาน (Closed)</code></pre>
+<p><strong>เฟสของ Project Stock (Workflow):</strong> <code>project → purchasing → service → closed</code></p>
+<p><strong>เงื่อนไขส่งงานต่อ (Gate) แต่ละเฟส:</strong></p>
+<table>
+  <thead><tr><th>จาก → ไป</th><th>ต้องผ่านเงื่อนไข</th></tr></thead>
+  <tbody>
+    <tr><td>project → purchasing</td><td>งานฝ่ายโครงการครบ + มี Job No. + มี BOM + <strong>ส่ง BOM แล้ว</strong> + <strong>LBS ใน BOM = เป้าหมาย</strong></td></tr>
+    <tr><td>purchasing → service</td><td>งานฝ่ายจัดซื้อครบ + <strong>ทุกรายการ BOM = Delivered</strong></td></tr>
+    <tr><td>service → closed</td><td>งานฝ่ายบริการครบ + <strong>ลงนาม DO แล้ว</strong></td></tr>
+  </tbody>
+</table>
+<blockquote>
+  <p><strong>ตีกลับ (Reject):</strong> เจ้าของเฟสกดส่งกลับเฟสก่อนหน้าได้ (ต้องระบุเหตุผล) → บันทึกใน Audit Timeline + แจ้งเตือนกระดิ่ง</p>
+  <p><strong>รับงาน (Ack):</strong> เมื่อมีงานส่งต่อมา ฝ่ายปลายทางกด "รับงาน" เพื่อเคลียร์ badge งานเข้าใหม่</p>
+</blockquote>
+<p style="color:#627d98;font-size:12.5px;margin-top:16px;">ดูภาพรวมไฟล์/วิธี deploy ที่ <code>README.md</code> · งานฝั่ง LIVE (Storage/แจ้งเตือน/smoke test) ที่ <code>LIVE-OPS.md</code></p>
+
+</body>
+</html>
