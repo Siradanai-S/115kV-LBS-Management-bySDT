@@ -191,6 +191,7 @@ CREATE TABLE IF NOT EXISTS service_plans (
   plan_start    DATE,                                     -- แผนดำเนินการเริ่ม
   plan_end      DATE,                                     -- แผนดำเนินการสิ้นสุด
   team_ids      JSONB DEFAULT '[]'::jsonb,                -- ทีมที่ Service เลือก [member_id]
+  sent          BOOLEAN DEFAULT FALSE,                    -- ส่งมอบให้ Service แล้ว (ร่าง=false → ยังไม่ตัดสต็อก/ยังไม่เข้า inbox)
   delivery_date DATE,
   location      VARCHAR(255),
   team_need     VARCHAR(255),
@@ -205,6 +206,8 @@ ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS lines      JSONB DEFAULT '[]'
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS plan_start DATE;
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS plan_end   DATE;
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS team_ids   JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS sent       BOOLEAN DEFAULT FALSE;
+UPDATE service_plans SET sent=TRUE WHERE sent IS NOT TRUE;   -- ข้อมูลเดิมถือว่าส่งแล้ว
 
 -- คลังสินค้าจริง (Inventory) — บันทึกรับเข้า/เบิกออกด้วยมือ · project_id NULL = สต็อกกลาง
 CREATE TABLE IF NOT EXISTS inventory_moves (
@@ -537,7 +540,10 @@ CREATE POLICY p_sched_write ON service_schedule FOR ALL TO authenticated
 ALTER TABLE service_plans ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS p_plans_read ON service_plans;   CREATE POLICY p_plans_read   ON service_plans FOR SELECT TO authenticated USING (TRUE);
 DROP POLICY IF EXISTS p_plans_ins ON service_plans;    CREATE POLICY p_plans_ins    ON service_plans FOR INSERT TO authenticated WITH CHECK (is_developer() OR current_department() = 'project');
-DROP POLICY IF EXISTS p_plans_upd ON service_plans;    CREATE POLICY p_plans_upd    ON service_plans FOR UPDATE TO authenticated USING (is_developer() OR current_department() = 'service') WITH CHECK (is_developer() OR current_department() = 'service');
+-- UPDATE: project (ตั้ง sent ตอนส่งมอบ) + service (กดรับ acked/team) + dev
+DROP POLICY IF EXISTS p_plans_upd ON service_plans;    CREATE POLICY p_plans_upd    ON service_plans FOR UPDATE TO authenticated USING (is_developer() OR current_department() IN ('service','project')) WITH CHECK (is_developer() OR current_department() IN ('service','project'));
+-- DELETE: ฝ่ายโครงการลบร่างใบเบิกได้ + dev
+DROP POLICY IF EXISTS p_plans_del ON service_plans;    CREATE POLICY p_plans_del    ON service_plans FOR DELETE TO authenticated USING (is_developer() OR current_department() = 'project');
 
 -- คลังสินค้า: อ่านได้ทุกฝ่าย · บันทึกรับ/เบิกได้ developer + purchasing/project/service
 ALTER TABLE inventory_moves ENABLE ROW LEVEL SECURITY;

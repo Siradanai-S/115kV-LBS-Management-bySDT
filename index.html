@@ -241,8 +241,8 @@ function seedDemo(){
   // ---- ใบเบิกติดตั้ง + แผนส่งมอบ (Project ออกใบเบิก → Service) ----
   const lineOf = pid => bom.filter(b=>b.project_id===pid).map(b=>({ bom_id:b.id, qty:b.quantity }));
   const plans = [
-    { id:nid(), project_id:1, wd_no:'WD-2026-001', lines:lineOf(1), plan_start:ym+'-05', plan_end:ym+'-12', delivery_date:projects[0].delivery_date, location:'บางปะกง ฉะเชิงเทรา / นิคมอมตะนคร', team_need:'ทีมติดตั้ง 4-5 คน', team_ids:[], note:'ส่งมอบ+ติดตั้ง LBS 10 ชุด ตามแผน PEA', acked:false, created_at:new Date().toISOString() },
-    { id:nid(), project_id:4, wd_no:'WD-2026-002', lines:lineOf(4), plan_start:ym+'-02', plan_end:ym+'-03', delivery_date:projects[3].delivery_date, location:'ศรีราชา ชลบุรี', team_need:'ทีม 2 คน', team_ids:[team[2].id, team[4].id], note:'เปลี่ยน LBS เดิม — ปิดงานแล้ว', acked:true, created_at:new Date().toISOString() },
+    { id:nid(), project_id:1, wd_no:'WD-2026-001', lines:lineOf(1), plan_start:ym+'-05', plan_end:ym+'-12', delivery_date:projects[0].delivery_date, location:'บางปะกง ฉะเชิงเทรา / นิคมอมตะนคร', team_need:'ทีมติดตั้ง 4-5 คน', team_ids:[], note:'ส่งมอบ+ติดตั้ง LBS 10 ชุด ตามแผน PEA', sent:true, acked:false, created_at:new Date().toISOString() },
+    { id:nid(), project_id:4, wd_no:'WD-2026-002', lines:lineOf(4), plan_start:ym+'-02', plan_end:ym+'-03', delivery_date:projects[3].delivery_date, location:'ศรีราชา ชลบุรี', team_need:'ทีม 2 คน', team_ids:[team[2].id, team[4].id], note:'เปลี่ยน LBS เดิม — ปิดงานแล้ว', sent:true, acked:true, created_at:new Date().toISOString() },
   ];
   // ---- handoff_log (ประวัติส่งงาน/ตีกลับ — สำหรับ Audit timeline) ----
   const handoffs=[]; let hid=5000;
@@ -414,7 +414,9 @@ const db = {
   async signDO(projectId){ if(!LIVE){ Object.assign(demo.projects.find(p=>p.id===projectId),{do_signed:true}); return; } ok(await sb.from('projects').update({do_signed:true}).eq('id',projectId)); },
 
   /* ---- ใบแผนส่งมอบ (Project → Service) ---- */
-  async addPlan(row){ if(!LIVE){ const r={id:nid(),acked:false,created_at:new Date().toISOString(),...row}; demo.plans.push(r); return r; } return ok(await sb.from('service_plans').insert(row).select().single()); },
+  async addPlan(row){ if(!LIVE){ const r={id:nid(),sent:false,acked:false,created_at:new Date().toISOString(),...row}; demo.plans.push(r); return r; } return ok(await sb.from('service_plans').insert(row).select().single()); },
+  async updatePlan(id, patch){ if(!LIVE){ Object.assign(demo.plans.find(x=>x.id===id),patch); return; } ok(await sb.from('service_plans').update(patch).eq('id',id)); },
+  async deletePlan(id){ if(!LIVE){ demo.plans=demo.plans.filter(x=>x.id!==id); return; } ok(await sb.from('service_plans').delete().eq('id',id)); },
   async ackPlan(id, teamIds){ const patch={acked:true}; if(teamIds!=null) patch.team_ids=teamIds; if(!LIVE){ Object.assign(demo.plans.find(x=>x.id===id),patch); return; } ok(await sb.from('service_plans').update(patch).eq('id',id)); },
 
   /* ---- Admin (Setting) — จัดการสิทธิ์ผู้ใช้ + ลบข้อมูลทุกฝ่าย ---- */
@@ -619,7 +621,7 @@ function phaseGate(project, state){
 const stockIncoming = (state, dep) => state.projects.filter(p=>p.current_phase===dep && !p.phase_acked).length;
 const srInbox = state => state.srs.filter(s=>!s.stock_id).length;        // SR รอสร้าง Stock
 const custToGather = state => (state.customers||[]).filter(c=>!c.sr_id).length;  // ลูกค้ารอรวบรวม
-const pendingPlans = state => (state.plans||[]).filter(p=>!p.acked).length;
+const pendingPlans = state => (state.plans||[]).filter(p=>p.sent && !p.acked).length;
 const incomingCount = (state, dep) => {
   if(dep==='sales') return custToGather(state);
   if(dep==='project') return stockIncoming(state,'project') + srInbox(state);
@@ -687,7 +689,7 @@ function buildNotifs(state, role){
     state.projects.filter(p=>p.current_phase!=='closed' && !p.phase_acked && (dep?p.current_phase===dep:true)).forEach(p=>list.push({k:'in'+p.id, icon:'📥', color:DEPT[p.current_phase]?.c||'#0ea5e9', text:`งานเข้าใหม่ (${PHASE_LABEL[p.current_phase]}): ${p.project_stock_no}`, page:'workflow'}));
   }
   if(role==='project'||role==='developer') state.srs.filter(s=>!s.stock_id).forEach(s=>list.push({k:'sr'+s.id, icon:'📋', color:DEPT.project.c, text:`SR รอสร้าง Stock: ${s.sr_no}`, page:'project'}));
-  if(role==='service'||role==='developer') (state.plans||[]).filter(pl=>!pl.acked).forEach(pl=>{ const p=state.projects.find(x=>x.id===pl.project_id); list.push({k:'pl'+pl.id, icon:'📦', color:DEPT.service.c, text:`แผนส่งมอบใหม่รอรับ: ${p?.project_stock_no||''}`, page:'service'}); });
+  if(role==='service'||role==='developer') (state.plans||[]).filter(pl=>pl.sent && !pl.acked).forEach(pl=>{ const p=state.projects.find(x=>x.id===pl.project_id); list.push({k:'pl'+pl.id, icon:'📦', color:DEPT.service.c, text:`แผนส่งมอบใหม่รอรับ: ${p?.project_stock_no||''}`, page:'service'}); });
   return list;
 }
 function NotifBell({state, role, onNav}){
@@ -950,16 +952,6 @@ function Dashboard({state, onNav, onSelectProject, onOpenPO}){
               </button>
             ))}</div>
           )}
-        </Card>
-      </div>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card className="p-5 fade-up">
-          <div className="flex items-center justify-between mb-2"><h3 className="text-slate-200 font-semibold">S-Curve ความก้าวหน้าโครงการ</h3><span className="text-[11px] text-slate-500">แผน vs ทำได้ (สะสม % มูลค่า)</span></div>
-          <SCurveChart state={state}/>
-        </Card>
-        <Card className="p-5 fade-up">
-          <div className="flex items-center justify-between mb-2"><h3 className="text-slate-200 font-semibold">การเคลื่อนไหวคลังรายเดือน</h3><span className="text-[11px] text-slate-500">รับเข้า vs เบิกออก (จำนวน)</span></div>
-          <MonthlyBars state={state}/>
         </Card>
       </div>
       <Card className="fade-up overflow-hidden">
@@ -1740,13 +1732,13 @@ function HandoverSlip({project, state, onClose, onSubmit}){
               );})}
             </tbody>
           </table>
-          <p className="px-5 py-2 text-[11px] text-slate-500">⚠ ออกใบเบิกแล้วจะตัดสต็อกของโครงการทันที (สิทธิ์การเบิกอยู่ที่ฝ่ายโครงการ) — เบิกได้ไม่เกินคงเหลือ · ถ้าคงเหลือ 0 ให้โอนจากคลังกลางเข้าโครงการก่อน (เมนูคลังสินค้า)</p>
+          <p className="px-5 py-2 text-[11px] text-slate-500">บันทึกเป็น <b>ร่างใบเบิก</b> ก่อน (ยังไม่ตัดสต็อก/ยังไม่ส่ง) — กด “ส่งมอบ Service” ทีหลังจึงจะตัดสต็อกโครงการ + แจ้งฝ่ายบริการ · สิทธิ์การเบิกอยู่ที่ฝ่ายโครงการ</p>
         </div>
         <div className="px-5 py-3 border-t border-slate-800 flex items-center justify-between">
           <span className="text-[12px] text-slate-400">รวมเบิก <b className="text-slate-100">{totalDraw}</b> ชิ้น</span>
           <div className="flex gap-2">
             <button onClick={onClose} className="text-xs font-medium rounded-lg px-3 py-1.5 border border-slate-700 text-slate-300 hover:bg-slate-800">ยกเลิก</button>
-            <button onClick={submit} disabled={totalDraw<=0} className="text-xs font-semibold rounded-lg px-4 py-1.5 disabled:opacity-40" style={{background:DEPT.project.c,color:'#0b0f17'}}>✓ ออกใบเบิก + ส่งแผน Service</button>
+            <button onClick={submit} disabled={totalDraw<=0} className="text-xs font-semibold rounded-lg px-4 py-1.5 disabled:opacity-40" style={{background:DEPT.project.c,color:'#0b0f17'}}>💾 บันทึกใบเบิก (ร่าง)</button>
           </div>
         </div>
       </div>
@@ -1755,35 +1747,39 @@ function HandoverSlip({project, state, onClose, onSubmit}){
 }
 
 // แท็บกิ่งย่อย Project: เตรียมส่งมอบ Service — ออกใบเบิกติดตั้ง (ผูก BOM/Job No.) + ส่งแผน
-function ProjectHandover({state, role, onSendHandover}){
+function ProjectHandover({state, role, onSaveSlip, onSendSlip, onDeleteSlip}){
   const canEdit = role==='developer' || role==='project';
   const [slipFor,setSlipFor]=useState(null);
   const list = state.projects.filter(p=> state.bom.some(b=>b.project_id===p.id));
   if(!list.length) return <Empty msg="ยังไม่มีโครงการที่มี BOM — สร้าง BOM ในแท็บ Stock No. ก่อน"/>;
   return (
     <div className="space-y-3">
-      <div className="text-[11px] text-slate-500 leading-relaxed">ฝ่ายโครงการเป็นผู้ออก <b>ใบเบิกติดตั้ง</b> (ผูก BOM + Job No. อัตโนมัติ) แล้วส่งให้ฝ่ายบริการพร้อม <b>แผนดำเนินการ (เริ่ม–สิ้นสุด)</b> · ออกใบเบิก = ตัดสต็อกของโครงการทันที (สิทธิ์เบิกอยู่ที่ฝ่ายโครงการ)</div>
+      <div className="text-[11px] text-slate-500 leading-relaxed">ฝ่ายโครงการออก <b>ใบเบิกติดตั้ง</b> (ผูก BOM + Job No. อัตโนมัติ) แยก 2 ขั้น: <b>1) บันทึกใบเบิก (ร่าง)</b> — ยังไม่ตัดสต็อก · <b>2) ส่งมอบ Service</b> — ตัดสต็อกโครงการ + แจ้งฝ่ายบริการ (สิทธิ์เบิกอยู่ที่ฝ่ายโครงการ)</div>
       {list.map(p=>{
         const plans=(state.plans||[]).filter(x=>x.project_id===p.id); const ins=installSummary(state,p.id);
         return (
           <Card key={p.id} className="overflow-hidden">
             <div className="px-5 py-3.5 flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-2 flex-wrap"><span className="mono text-slate-200 font-semibold">{p.project_stock_no}</span><Pill color={DEPT[p.current_phase]?.c||'#64748b'}>{PHASE_LABEL[p.current_phase]}</Pill><span className="text-[12px] text-slate-400">{p.name}</span><span className="text-[11px] text-slate-500 mono">Job {p.job_no||'—'}</span></div>
-              {canEdit && <button onClick={()=>setSlipFor(p)} className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-1.5" style={{background:DEPT.project.c,color:'#0b0f17'}}>{Icon.send} สร้างใบเบิก + ส่งแผน</button>}
+              {canEdit && <button onClick={()=>setSlipFor(p)} className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-1.5" style={{background:DEPT.project.c,color:'#0b0f17'}}>{Icon.plus} บันทึกใบเบิก</button>}
             </div>
             <div className="px-5 pb-2 text-[11px] text-slate-500">เบิกติดตั้งแล้ว {ins.done}/{ins.need} ชิ้น · {ins.full}/{ins.lines} รายการครบ</div>
             {plans.length>0 && <div className="px-5 py-2 border-t border-slate-800 space-y-1.5">
-              {plans.map(pl=>(
+              {plans.map(pl=>{ const st = pl.acked?{t:'✓ Service รับแล้ว',c:'#16a34a'}:pl.sent?{t:'ส่งแล้ว · รอ Service รับ',c:'#f97316'}:{t:'ร่าง (ยังไม่ส่ง)',c:'#64748b'}; return (
                 <div key={pl.id} className="flex items-center justify-between text-[11px] gap-2 flex-wrap">
                   <span className="mono text-slate-300">📋 {pl.wd_no||'แผน'} · {(pl.lines||[]).length} รายการ · แผน {pl.plan_start||pl.delivery_date||'—'}{pl.plan_end?` → ${pl.plan_end}`:''}</span>
-                  <span className="rounded-full px-2 py-0.5 shrink-0" style={pl.acked?{background:'#16a34a22',color:'#16a34a'}:{background:'#f9731622',color:'#f97316'}}>{pl.acked?'✓ Service รับแล้ว':'รอ Service รับ'}</span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="rounded-full px-2 py-0.5" style={{background:st.c+'22',color:st.c}}>{st.t}</span>
+                    {canEdit && !pl.sent && <button onClick={()=>{ if(confirm(`ส่งใบเบิก ${pl.wd_no} ให้ Service? — จะตัดสต็อกโครงการตามรายการ`)) onSendSlip(pl.id); }} className="rounded-md px-2 py-0.5 font-semibold" style={{background:DEPT.service.c,color:'#0b0f17'}}>{Icon.send} ส่งมอบ Service</button>}
+                    {canEdit && !pl.sent && <button onClick={()=>{ if(confirm(`ลบร่างใบเบิก ${pl.wd_no}?`)) onDeleteSlip(pl.id); }} className="text-slate-500 hover:text-rose-600" title="ลบร่าง">{Icon.trash}</button>}
+                  </div>
                 </div>
-              ))}
+              );})}
             </div>}
           </Card>
         );
       })}
-      {slipFor && <HandoverSlip project={slipFor} state={state} onClose={()=>setSlipFor(null)} onSubmit={onSendHandover}/>}
+      {slipFor && <HandoverSlip project={slipFor} state={state} onClose={()=>setSlipFor(null)} onSubmit={onSaveSlip}/>}
     </div>
   );
 }
@@ -1791,7 +1787,7 @@ function ProjectHandover({state, role, onSendHandover}){
 function FieldService({state, role, onTask, onAddTask, onAddMember, onRemoveMember, onAddSchedule, onRemoveSchedule, onSignDO, onAckPlan}){
   const canEdit = role==='developer' || role==='service';
   const ready = state.projects.filter(p => (p.current_phase==='service' || p.current_phase==='closed') && p.delivery_date);
-  const inboxPlans = (state.plans||[]).filter(pl=>!pl.acked);
+  const inboxPlans = (state.plans||[]).filter(pl=>pl.sent && !pl.acked);
   const projOf = pid => state.projects.find(p=>p.id===pid);
   const members = (state.team||[]).filter(m=>m.active);
   const [pick,setPick]=useState({});   // planId -> [memberId]
@@ -2469,14 +2465,21 @@ function App(){
   const handleAddSchedule = run(async (row) => { await db.addSchedule(row); });
   const handleRemoveSchedule = run(async (id) => { await db.removeSchedule(id); });
   const handleSignDO = run(async (projectId) => { await db.signDO(projectId); });
-  // ใบเบิกติดตั้ง (ออกที่ฝ่ายโครงการ) → ตัดสต็อกโครงการ (OUT 'ติดตั้งงาน') + สร้างแผนส่ง Service
-  const handleSendHandover = run(async (projectId, payload) => {
+  // 1) บันทึกใบเบิก (ร่าง) — ยังไม่ตัดสต็อก ยังไม่ส่ง Service
+  const handleSaveSlip = run(async (projectId, payload) => {
     const wd = genWdNo();
     const picked = (payload.lines||[]).filter(l=>num(l.qty)>0);
-    const rows = picked.map(l=>({ epicor_code:l.code, description:l.desc, project_id:projectId, type:'OUT', reason:'ติดตั้งงาน', qty:num(l.qty), note:'ใบเบิก '+wd, by:DEPT[role].en }));
-    if(rows.length) await db.addMovements(rows);
-    await db.addPlan({ project_id:projectId, wd_no:wd, lines:picked.map(l=>({bom_id:l.bom_id, qty:num(l.qty)})), plan_start:payload.plan_start||null, plan_end:payload.plan_end||null, delivery_date:payload.plan_end||payload.plan_start||null, location:payload.location||'', note:payload.note||'', team_need:'', team_ids:[] });
+    await db.addPlan({ project_id:projectId, wd_no:wd, lines:picked.map(l=>({bom_id:l.bom_id, qty:num(l.qty)})), plan_start:payload.plan_start||null, plan_end:payload.plan_end||null, delivery_date:payload.plan_end||payload.plan_start||null, location:payload.location||'', note:payload.note||'', team_need:'', team_ids:[], sent:false, acked:false });
   });
+  // 2) ส่งมอบ Service — ตัดสต็อกโครงการ (OUT 'ติดตั้งงาน') ตามรายการในใบเบิก แล้วตั้ง sent
+  const handleSendSlip = run(async (planId) => {
+    const pl=(state.plans||[]).find(x=>x.id===planId); if(!pl || pl.sent) return;
+    for(const l of (pl.lines||[])){ const b=state.bom.find(x=>x.id===l.bom_id); const onh=invOnhand(state, pl.project_id, b?.epicor_code); if(b && num(l.qty)>onh){ throw new Error(`${b.epicor_code} คงเหลือในคลังโครงการ ${onh} — เบิก ${l.qty} ไม่ได้ (โอนเข้าโครงการเพิ่มก่อน)`); } }
+    const rows=(pl.lines||[]).map(l=>{ const b=state.bom.find(x=>x.id===l.bom_id)||{}; return { epicor_code:b.epicor_code, description:b.description, project_id:pl.project_id, type:'OUT', reason:'ติดตั้งงาน', qty:num(l.qty), note:'ใบเบิก '+(pl.wd_no||''), by:DEPT[role].en }; }).filter(r=>num(r.qty)>0);
+    if(rows.length) await db.addMovements(rows);
+    await db.updatePlan(planId, { sent:true });
+  });
+  const handleDeleteSlip = run(async (planId) => { await db.deletePlan(planId); });
   // Service กดรับงาน + จัดทีม → ack + ลงคิวปฏิทินให้ทีมที่เลือกตามช่วงแผน
   const handleAckPlan = run(async (id, teamIds) => {
     await db.ackPlan(id, teamIds||[]);
@@ -2532,7 +2535,7 @@ function App(){
           {page==='sales-sr'   && <SalesSR state={state} role={role} onUpdateCustomer={handleUpdateCustomer}/>}
           {page==='project'    && <ProjectDept state={state} role={role} onCreateStock={handleCreateStock} genDefaults={genDefaults} onGoStocks={()=>setPage('project-stocks')}/>}
           {page==='project-stocks' && <ProjectStocks state={state} role={role} onAddBom={handleAddBom} onUpdateBom={handleUpdateBom} onDeleteBom={handleDeleteBom} onSendBom={handleSendBom} onUpdateProject={handleUpdateProject} onOpenWorkflow={(id)=>{setActiveId(id);setPage('workflow');}}/>}
-          {page==='project-handover' && <ProjectHandover state={state} role={role} onSendHandover={handleSendHandover}/>}
+          {page==='project-handover' && <ProjectHandover state={state} role={role} onSaveSlip={handleSaveSlip} onSendSlip={handleSendSlip} onDeleteSlip={handleDeleteSlip}/>}
           {page==='purchasing' && <Procurement state={state} role={role} onUpdateBom={handleUpdateBom} onCreatePO={handleCreatePO} onOpenPO={setPoProject} genPoNo={genPoNo}/>}
           {page==='purchasing-done' && <PurchasingDone state={state}/>}
           {page==='service'    && <FieldService state={state} role={role} onTask={handleTask} onAddTask={handleAddTask} onAddMember={handleAddMember} onRemoveMember={handleRemoveMember} onAddSchedule={handleAddSchedule} onRemoveSchedule={handleRemoveSchedule} onSignDO={handleSignDO} onAckPlan={handleAckPlan}/>}
