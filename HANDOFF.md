@@ -38,8 +38,9 @@ service_team · handoff_log(audit) · user_roles · inventory_moves(epicor_code,
 ```
 - **1 SR = หลายลูกค้า · 1 Project Stock = หลาย SR** (รวม 2 ชั้น)
 - **target_lbs** บน projects = จำนวน LBS เป้าหมาย (ถามตอนสร้าง) ใช้ reconcile กับยอด LBS ใน BOM
-- **PO/สัญญา ติดตามราย "ลูกค้า"** — `customers.cust_po_no` + `customers.contract_status` (ย้ายจากระดับ SR เดิม → แก้รายลูกค้าในตารางเส้นเทาที่หน้า Sales Requisition)
+- **PO/สัญญา ติดตามราย "ลูกค้า"** — `customers.cust_po_no` + `customers.contract_status` (ย้ายจากระดับ SR เดิม → แก้รายลูกค้าในตารางเส้นเทาที่หน้า Sales Requisition) · `customers.term_of_payment` (เงื่อนไขชำระเงิน) · ฟอร์มเพิ่มลูกค้า: **สถานที่ติดตั้งกดเพิ่มได้หลายแห่ง** (เก็บใน `location` คั่นด้วย " / ")
 - **BOM หลายครั้ง/รอบต่อ Stock** — `bom_items.round` (int, ครั้งที่) + `bom_items.is_sent` (bool ส่งจัดซื้อแยกรายครั้ง) · ชื่อแสดง = `bom_no (ครั้งN)` · `project.bom_status` เลิกเป็นแหล่งจริง → derive ด้วย `bomSent()`/`bomStatusOf()`; gate project→purchasing = ทุก bom_items.is_sent=true
+- **Serial LVB/OM ของ BOM** — `bom_items.serial_lvb` + `serial_om` (กรอกในฟอร์ม BOM **เฉพาะเมื่อ Category=LBS**)
 
 ## 5) ฟีเจอร์ที่ทำเสร็จแล้ว (ทั้งหมด)
 - Sidebar เมนูแม่ + **กิ่งย่อย**: Sales→[SR & ติดตาม PO] · Project→[Stock No.] · Purchasing→[BOM Delivered completed] · + Inventory + Setting(dev)
@@ -48,7 +49,9 @@ service_team · handoff_log(audit) · user_roles · inventory_moves(epicor_code,
 - **Purchasing:** การ์ด BOM พับได้ แสดงคอลัมน์ครบ → ออก PO **เลือกรายการ+ระบุจำนวน(แยกบางส่วน)**+เลขที่ PO เอง+**แนบ PDF** → po_status แจ้งกลับ · แท็บ Delivered completed
 - **Service:** Inbox แผนส่งมอบ(กดรับ) · เช็กลิสต์+**ลงนาม DO** · ทีม+**Scheduling Calendar** รายเดือน(คลิกดู event)
 - **Inventory (#3):** 2 ระดับ คลังกลาง↔Project Stock · **รับตาม PO**(รับบางส่วน→อัปเดต po_status Delivered) · บันทึกเอง(รับ/เบิกมีประเภท/**โอนกลาง→โครงการ**) · **บล็อกติดลบ**(client + DB trigger `inv_block_negative`)
-- **Setting (เฉพาะ developer):** อนุมัติ/ยกเลิกสิทธิ์ผู้ใช้ (RPC admin_list_users/set_role/revoke) + คอนโซล **ดู / แก้ไข ✎ / ลบ** ข้อมูลทุกฝ่าย — ปุ่มดินสอเปิด `RowEditor` modal (field meta ต่อ entity ใน DATA_ENTITIES → text/num/date/sel/bool) ส่งเฉพาะ field ที่เปลี่ยน ผ่าน `db.updateRow` (generic update ทุกตาราง · LIVE ใช้สิทธิ์ developer ใน RLS เดียวกับ delete)
+- **Branding:** โลโก้ PRECISE (SVG ริบบิ้นสาน `BrandMark`/`Brand`) · ชื่อ "115 kV Load Break Switch / Project Management / Dev Mr. Siradanai Sirisunthorn" (Sidebar + Login)
+- **Inventory↔Service (ไม่ซ้ำซ้อน):** เบิก "ติดตั้งงาน" ทำที่ฝ่ายบริการ (เบิกตามงานติดตั้ง BOM) ที่เดียว — เอา 'ติดตั้งงาน'/'โอนเข้าโครงการ' ออกจาก `OUT_REASONS` ของบันทึกเองในคลัง (เหลือ คืนผู้ขาย/ชำรุด) · โอนใช้ปุ่มโอน · ledger เดียวกัน (`inventory_moves`) install progress นับ reason 'ติดตั้งงาน'
+- **Setting (เฉพาะ developer):** อนุมัติ/ยกเลิกสิทธิ์ผู้ใช้ (RPC admin_list_users/set_role/revoke) + คอนโซล **ดู / แก้ไข ✎ / ลบ** ข้อมูลทุกฝ่าย + **ปุ่ม Reset Data** (DEMO=reseed · LIVE=ป้องกัน ให้ใช้ reset-clean.sql) ผ่าน `db.resetData()` — ปุ่มดินสอเปิด `RowEditor` modal (field meta ต่อ entity ใน DATA_ENTITIES → text/num/date/sel/bool) ส่งเฉพาะ field ที่เปลี่ยน ผ่าน `db.updateRow` (generic update ทุกตาราง · LIVE ใช้สิทธิ์ developer ใน RLS เดียวกับ delete)
 - **Dashboard กราฟ (ใหม่):** **S-Curve** แผนสะสม(ramp ตามกำหนดส่ง) vs ทำได้สะสม(มูลค่า×น้ำหนักเฟสจาก handoff_log) เป็น % ของงบรวม + **กราฟแท่งรายเดือน** รับเข้า/เบิกออก จาก inventory_moves — SVG ล้วน theme-aware (ไม่พึ่ง lib)
 - **เบิกตามงานติดตั้ง (ใหม่):** ปุ่ม "🔧 เบิกตามงานติดตั้ง (BOM)" ในฝ่ายบริการ → modal ดึงรายการจาก BOM แสดง BOM/เบิกแล้ว/คงเหลือคลังโครงการ → ตัดสต็อก OUT reason 'ติดตั้งงาน' (บล็อกเกินคงเหลือ) + แถบความคืบหน้า "ติดตั้งแล้ว X/Y · n/m รายการครบ" บนการ์ด (ครบ→ไฮไลต์เขียว)
 - **อื่น ๆ:** Toggle ธีมสว่าง/มืด(remap slate ramp + CSS var, เก็บ localStorage) · กระดิ่งแจ้งเตือน(งานเข้า/ตีกลับ/ใกล้ครบ) · Export **Excel(.xlsx)** + พิมพ์ PDF · ค้นหา/กรอง · Optimistic update · หน้า "รอผู้ดูแลอนุมัติ" สำหรับผู้ใช้ใหม่ที่ยังไม่มี role

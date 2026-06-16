@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS customers (
   note          TEXT,
   cust_po_no      VARCHAR(80),                             -- เลขที่ PO จากลูกค้า (ติดตามแยก "รายชื่อลูกค้า")
   contract_status VARCHAR(40) NOT NULL DEFAULT 'รอ PO/สัญญา', -- สถานะสัญญาแยกตามลูกค้า
+  term_of_payment VARCHAR(120),                            -- เงื่อนไขชำระเงิน (Term of payment)
   sr_id         BIGINT REFERENCES sales_requisitions(id) ON DELETE SET NULL,  -- อยู่ใน SR ใบไหน
   owner         UUID DEFAULT auth.uid(),
   created_at    TIMESTAMPTZ DEFAULT NOW(),
@@ -52,9 +53,10 @@ CREATE TABLE IF NOT EXISTS customers (
 );
 CREATE INDEX IF NOT EXISTS idx_customers_type ON customers (customer_type);
 CREATE INDEX IF NOT EXISTS idx_customers_sr   ON customers (sr_id);
--- migration (ฐานข้อมูลเดิม): เพิ่มคอลัมน์ติดตาม PO/สัญญา รายลูกค้า
+-- migration (ฐานข้อมูลเดิม): เพิ่มคอลัมน์ติดตาม PO/สัญญา รายลูกค้า + Term of payment
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS cust_po_no      VARCHAR(80);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS contract_status VARCHAR(40) NOT NULL DEFAULT 'รอ PO/สัญญา';
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS term_of_payment VARCHAR(120);
 
 -- ---------- 3) projects (Project Stock — รวมหลาย SR) ----------
 CREATE TABLE IF NOT EXISTS projects (
@@ -91,6 +93,8 @@ CREATE TABLE IF NOT EXISTS bom_items (
   epicor_code   VARCHAR(60),
   description   VARCHAR(255) NOT NULL,
   category      VARCHAR(40)  NOT NULL DEFAULT 'LBS',      -- LBS | Accessory
+  serial_lvb    VARCHAR(80),                              -- Serial LVB (กรอกเมื่อ category=LBS)
+  serial_om     VARCHAR(80),                              -- Serial OM (กรอกเมื่อ category=LBS)
   due_date      DATE,
   ium           VARCHAR(20)  DEFAULT 'EA',                -- Inventory Unit of Measure
   quantity      INT          NOT NULL DEFAULT 0,
@@ -105,9 +109,11 @@ CREATE TABLE IF NOT EXISTS bom_items (
   created_at    TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_bom_project ON bom_items (project_id);
--- migration (ฐานข้อมูลเดิม): เพิ่มคอลัมน์รอบ BOM ถ้ายังไม่มี
-ALTER TABLE bom_items ADD COLUMN IF NOT EXISTS round   INT     NOT NULL DEFAULT 1;
-ALTER TABLE bom_items ADD COLUMN IF NOT EXISTS is_sent BOOLEAN NOT NULL DEFAULT FALSE;
+-- migration (ฐานข้อมูลเดิม): เพิ่มคอลัมน์รอบ BOM + Serial LVB/OM ถ้ายังไม่มี
+ALTER TABLE bom_items ADD COLUMN IF NOT EXISTS round      INT     NOT NULL DEFAULT 1;
+ALTER TABLE bom_items ADD COLUMN IF NOT EXISTS is_sent    BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE bom_items ADD COLUMN IF NOT EXISTS serial_lvb VARCHAR(80);
+ALTER TABLE bom_items ADD COLUMN IF NOT EXISTS serial_om  VARCHAR(80);
 -- ของเดิมที่ Stock เคยส่งจัดซื้อแล้ว (bom_status) → ตั้ง is_sent=TRUE ให้รายการในนั้น
 UPDATE bom_items b SET is_sent=TRUE FROM projects p WHERE b.project_id=p.id AND p.bom_status='Sent to Purchasing' AND b.is_sent=FALSE;
 
