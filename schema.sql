@@ -186,6 +186,11 @@ CREATE INDEX IF NOT EXISTS idx_sched_member ON service_schedule (member_id);
 CREATE TABLE IF NOT EXISTS service_plans (
   id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   project_id    BIGINT REFERENCES projects(id) ON DELETE CASCADE,
+  wd_no         VARCHAR(40),                              -- เลขใบเบิกติดตั้ง (Project ออก) WD-yyyy-000
+  lines         JSONB DEFAULT '[]'::jsonb,                -- รายการเบิก [{bom_id, qty}]
+  plan_start    DATE,                                     -- แผนดำเนินการเริ่ม
+  plan_end      DATE,                                     -- แผนดำเนินการสิ้นสุด
+  team_ids      JSONB DEFAULT '[]'::jsonb,                -- ทีมที่ Service เลือก [member_id]
   delivery_date DATE,
   location      VARCHAR(255),
   team_need     VARCHAR(255),
@@ -194,6 +199,12 @@ CREATE TABLE IF NOT EXISTS service_plans (
   created_at    TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_plans_project ON service_plans (project_id);
+-- migration (ฐานข้อมูลเดิม): ใบเบิกติดตั้ง + แผน start/end + ทีม
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS wd_no      VARCHAR(40);
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS lines      JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS plan_start DATE;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS plan_end   DATE;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS team_ids   JSONB DEFAULT '[]'::jsonb;
 
 -- คลังสินค้าจริง (Inventory) — บันทึกรับเข้า/เบิกออกด้วยมือ · project_id NULL = สต็อกกลาง
 CREATE TABLE IF NOT EXISTS inventory_moves (
