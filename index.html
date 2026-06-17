@@ -39,6 +39,7 @@
   ::-webkit-scrollbar-thumb{background:var(--scroll);border-radius:8px;border:2px solid var(--app-bg)}
   ::-webkit-scrollbar-thumb:hover{background:var(--scroll-hover)}
   @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes spin{to{transform:rotate(360deg)}}
   .fade-up{animation:fadeUp .35s ease both}
   .grain{background-image:radial-gradient(rgba(100,116,139,.18) 1px,transparent 1px);background-size:3px 3px}
   @media print { aside, header, .no-print { display:none !important; } main { overflow:visible !important; padding:0 !important; } body { background:#fff; } }
@@ -87,6 +88,16 @@ const CURRENCY = ['THB','USD'];
 const BOM_CAT = ['LBS','Accessory'];
 const PROJECT_PHASES = ['Phase 1','Phase 2','Phase 3'];
 const MONTHS_TH = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+// เหตุการณ์ที่ส่งแจ้งเตือนได้ (LINE/Email) — key ใช้เป็นชื่อคอลัมน์ ev_<key> ในตั้งค่า
+const NOTIF_EVENTS = [
+  { key:'sr',       label:'Sales ส่ง SR (รอสร้าง Stock)' },
+  { key:'stock',    label:'Project สร้าง Stock No.' },
+  { key:'bom',      label:'Project ส่ง BOM ให้ Purchasing' },
+  { key:'po',       label:'Purchasing อัปเดต PO / Delivered' },
+  { key:'handover', label:'Project ส่งใบเบิก+แผนให้ Service' },
+  { key:'do',       label:'Service ลงนาม DO' },
+];
+const NOTIF_DEFAULT = { line_enabled:false, line_token:'', line_to:'', email_enabled:false, email_to:'', function_url:'', ev_sr:true, ev_stock:true, ev_bom:true, ev_po:true, ev_handover:true, ev_do:true };
 
 /* permission helpers */
 const isDev    = r => r==='developer';
@@ -147,6 +158,7 @@ function exportXLSX(filename, sheetName, rows){
 /* ============================ DATA LAYER (DEMO + LIVE) ============================ */
 let _id = 1000;
 const nid = () => ++_id;
+let notifSeq = 0;   // ตัวนับ id ของ log แจ้งเตือน
 function isoIn(days){ const d=new Date(); d.setDate(d.getDate()+days); return d.toISOString().slice(0,10); }
 function curYM(){ return new Date().toISOString().slice(0,7); }
 
@@ -301,7 +313,7 @@ function seedDemo(){
   mv({ epicor_code:'LBS-115-MOT', description:'LBS 115kV 3-Pole Motorized', project_id:1, type:'OUT', reason:'ติดตั้งงาน', qty:2, note:'ติดตั้ง บางปะกง', created_at:isoIn(-6) });
   mv({ epicor_code:'LBS-115-MAN', description:'LBS 115kV 3-Pole Manual',    project_id:4, type:'OUT', reason:'ติดตั้งงาน', qty:4, note:'ติดตั้ง ศรีราชา', created_at:isoIn(-6) });
   mv({ epicor_code:'ACC-CC-01',   description:'Control Cabinet',             project_id:4, type:'OUT', reason:'ติดตั้งงาน', qty:4, note:'ติดตั้ง ศรีราชา', created_at:isoIn(-6) });
-  return { customers, srs, projects, tasks, bom, pos, team, schedule, plans, handoffs, users, inventory };
+  return { customers, srs, projects, tasks, bom, pos, team, schedule, plans, handoffs, users, inventory, notifSettings:{...NOTIF_DEFAULT} };
 }
 
 let demo = null;
@@ -322,7 +334,8 @@ const db = {
     ]);
     const inventory = await sb.from('inventory_moves').select('*').order('id').then(ok);
     let users=[]; try { users = (await sb.rpc('admin_list_users')).data || []; } catch(e){ users=[]; }   // เฉพาะ developer จะได้ข้อมูล
-    return { customers:customers||[], srs:srs||[], projects:projects||[], tasks:tasks||[], bom:bom||[], pos:pos||[], team:team||[], schedule:schedule||[], plans:plans||[], handoffs:handoffs||[], inventory:inventory||[], users };
+    let notifSettings = {...NOTIF_DEFAULT}; try { const row=(await sb.from('notif_settings').select('*').eq('id',1).maybeSingle()).data; if(row) notifSettings={...NOTIF_DEFAULT, ...row}; } catch(e){}
+    return { customers:customers||[], srs:srs||[], projects:projects||[], tasks:tasks||[], bom:bom||[], pos:pos||[], team:team||[], schedule:schedule||[], plans:plans||[], handoffs:handoffs||[], inventory:inventory||[], users, notifSettings };
   },
 
   /* ---- งาน (tasks) ---- */
@@ -434,6 +447,8 @@ const db = {
   async updateRow(demoKey, table, id, patch){ if(!LIVE){ const r=demo[demoKey].find(x=>x.id===id); if(r) Object.assign(r, patch); return; } ok(await sb.from(table).update(patch).eq('id',id)); },
   // Reset Data (เฉพาะ Developer) — DEMO: คืนค่าข้อมูลตัวอย่างใหม่ · LIVE: ป้องกันไว้ ให้ใช้ reset-clean.sql แทน
   async resetData(){ if(!LIVE){ demo = seedDemo(); return; } throw new Error('Reset Data ใช้ได้เฉพาะโหมด DEMO — สำหรับ LIVE ให้รัน reset-clean.sql บน Supabase'); },
+  // ตั้งค่าการแจ้งเตือน (LINE/Email) — singleton row id=1
+  async saveNotifSettings(patch){ if(!LIVE){ demo.notifSettings={...demo.notifSettings, ...patch}; return; } ok(await sb.from('notif_settings').upsert({ id:1, ...patch, updated_at:new Date().toISOString() })); },
 
   /* ---- คลังสินค้าจริง (Inventory) ---- */
   async addMovement(row){ if(!LIVE){ const r={id:nid(),created_at:new Date().toISOString(),...row}; demo.inventory.push(r); return r; } return ok(await sb.from('inventory_moves').insert(row).select().single()); },
@@ -479,6 +494,7 @@ const Icon = {
   cal:<Ic d={<><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></>}/>,
   trash:<Ic d={<><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></>}/>,
   edit:<Ic d={<><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5Z"/></>}/>,
+  refresh:<Ic d={<><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></>}/>,
   gear:<Ic d={<><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H2a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V2a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H22a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></>}/>,
 };
 
@@ -721,10 +737,12 @@ function NotifBell({state, role, onNav}){
 }
 
 /* ============================ TOPBAR ============================ */
-function TopBar({state, onNav, role, onRole, page, me, onSignOut}){
+function TopBar({state, onNav, role, onRole, page, me, onSignOut, onRefreshAll}){
   const title = page==='workflow' ? 'Workflow Board' : (NAV.find(n=>n.id===page)||{}).label || '';
   const roleLocked = LIVE && me && !me.is_developer;
   const themeIcon = (document.documentElement.dataset.theme==='dark') ? '☀️' : '🌙';
+  const [busy,setBusy]=useState(false);
+  const refresh = async () => { setBusy(true); try{ await onRefreshAll(); } finally { setBusy(false); } };
   return (
     <header className="h-14 shrink-0 border-b border-slate-800/80 bg-[var(--header)] backdrop-blur flex items-center gap-4 px-6">
       <div className="text-slate-200 font-medium">{title}</div>
@@ -737,6 +755,7 @@ function TopBar({state, onNav, role, onRole, page, me, onSignOut}){
               {Object.keys(DEPT).map(k => <option key={k} value={k} className="bg-slate-800 text-slate-100">{DEPT[k].icon} {DEPT[k].label}</option>)}
             </select>}
       </div>
+      <button onClick={refresh} disabled={busy} title="Refresh all — โหลดข้อมูลใหม่ทั้งหมด" className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg border border-slate-700 text-slate-400 hover:text-slate-100 hover:bg-slate-800/60 text-[11px] font-medium disabled:opacity-50"><span style={busy?{display:'inline-block',animation:'spin 0.8s linear infinite'}:undefined}>{Icon.refresh}</span><span className="hidden sm:inline">{busy?'กำลังโหลด…':'Refresh all'}</span></button>
       <NotifBell state={state} role={role} onNav={onNav}/>
       <button onClick={()=>{ const cur=document.documentElement.dataset.theme; localStorage.setItem('theme', cur==='dark'?'light':'dark'); location.reload(); }} title="สลับธีม สว่าง/มืด" className="w-8 h-8 grid place-items-center rounded-lg border border-slate-700 text-slate-400 hover:text-slate-100 hover:bg-slate-800/60">{themeIcon}</button>
       <span className="ml-1 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold" style={ LIVE ? {background:'#16a34a22',color:'#16a34a'} : {background:'#64748b22',color:'#94a3b8'} }>
@@ -2274,7 +2293,60 @@ function RowEditor({en, row, onClose, onSave}){
     </div>
   );
 }
-function Settings({state, role, onSetRole, onRevoke, onDeleteRow, onUpdateRow, onResetData}){
+// ตั้งค่าแจ้งเตือน LINE/Email (Dev) — บันทึกลงตาราง notif_settings + ส่งทดสอบ + log
+function NotifSettings({cfg, log, onSave, onTest}){
+  const [f,setF]=useState(cfg||NOTIF_DEFAULT);
+  const set=(k,v)=>setF(s=>({...s,[k]:v}));
+  const inputCls="w-full bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 px-2.5 py-1.5 focus:outline-none focus:border-amber-500/60";
+  return (
+    <Card className="overflow-hidden">
+      <div className="px-5 py-3.5 border-b border-slate-800 flex items-center gap-2"><span style={{color:'#06c755'}}>🔔</span><h3 className="text-slate-200 font-semibold">การแจ้งเตือน (LINE Messaging API / Email)</h3></div>
+      <div className="px-5 py-4 space-y-4">
+        <div className="text-[11px] text-slate-500 leading-relaxed">ส่งจริงผ่าน <b>Supabase Edge Function</b> (เก็บ token/คีย์ฝั่ง server) — กรอก URL ของฟังก์ชันด้านล่าง · โค้ดฟังก์ชันอยู่ที่ <code>edge-notify.ts</code> (ดูวิธี deploy ใน LIVE-OPS.md) · ถ้ายังไม่ตั้ง URL ระบบจะบันทึกเป็น “จำลอง” ใน log</div>
+        <div><Lbl>Edge Function URL (endpoint ส่งแจ้งเตือน)</Lbl><input value={f.function_url||''} onChange={e=>set('function_url',e.target.value)} placeholder="https://<project>.supabase.co/functions/v1/notify" className={inputCls}/></div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="rounded-lg border border-slate-800 p-3 space-y-2">
+            <label className="flex items-center gap-2 text-[13px] font-medium" style={{color:'#06c755'}}><input type="checkbox" checked={!!f.line_enabled} onChange={e=>set('line_enabled',e.target.checked)} className="accent-green-500"/> LINE Messaging API</label>
+            <div><Lbl>Channel Access Token</Lbl><input value={f.line_token||''} onChange={e=>set('line_token',e.target.value)} type="password" placeholder="LINE channel access token" className={inputCls}/></div>
+            <div><Lbl>ส่งถึง (userId / groupId — คั่นด้วย , )</Lbl><input value={f.line_to||''} onChange={e=>set('line_to',e.target.value)} placeholder="U1234... , C5678..." className={inputCls}/></div>
+          </div>
+          <div className="rounded-lg border border-slate-800 p-3 space-y-2">
+            <label className="flex items-center gap-2 text-[13px] font-medium" style={{color:'#3b82f6'}}><input type="checkbox" checked={!!f.email_enabled} onChange={e=>set('email_enabled',e.target.checked)} className="accent-sky-500"/> Email</label>
+            <div><Lbl>อีเมลผู้รับ (คั่นด้วย , )</Lbl><input value={f.email_to||''} onChange={e=>set('email_to',e.target.value)} placeholder="a@x.com , b@y.com" className={inputCls}/></div>
+            <div className="text-[10px] text-slate-500">คีย์ผู้ให้บริการอีเมล (เช่น Resend) เก็บเป็น secret ใน Edge Function</div>
+          </div>
+        </div>
+        <div>
+          <Lbl>เลือกเหตุการณ์ที่จะแจ้งเตือน</Lbl>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
+            {NOTIF_EVENTS.map(ev=>(
+              <label key={ev.key} className="flex items-center gap-2 text-[12px] text-slate-300 rounded-md border border-slate-800 px-2.5 py-1.5 cursor-pointer hover:bg-slate-800/40">
+                <input type="checkbox" checked={!!f['ev_'+ev.key]} onChange={e=>set('ev_'+ev.key, e.target.checked)} className="accent-sky-500"/> {ev.label}
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="flex items-center justify-end gap-2">
+          <button onClick={onTest} className="text-xs font-medium rounded-lg px-3 py-1.5 border border-slate-700 text-slate-300 hover:bg-slate-800">🔔 ส่งทดสอบ</button>
+          <button onClick={()=>onSave(f)} className="text-xs font-semibold rounded-lg px-4 py-1.5" style={{background:'#0ea5e9',color:'#0b0f17'}}>{Icon.check} บันทึกการตั้งค่า</button>
+        </div>
+        {/* log การส่งล่าสุด (เฉพาะ session) */}
+        <div className="border-t border-slate-800 pt-3">
+          <div className="text-[11px] text-slate-500 mb-1.5">บันทึกการส่งล่าสุด (session นี้)</div>
+          {(!log||log.length===0) ? <div className="text-[12px] text-slate-500">— ยังไม่มี —</div> :
+            <div className="space-y-1 max-h-48 overflow-y-auto">{log.map(x=>(
+              <div key={x.id} className="text-[11px] flex items-start gap-2 border-b border-slate-800/40 pb-1">
+                <span className="text-slate-500 mono shrink-0">{x.at}</span>
+                <span className="flex-1 text-slate-300"><b>{x.subject}</b><br/><span className="text-slate-500 whitespace-pre-line">{x.message}</span></span>
+                <span className="shrink-0 rounded-full px-2 py-0.5" style={{background:/ส่งแล้ว/.test(x.status)?'#16a34a22':/error|ผิดพลาด/.test(x.status)?'#f43f5e22':'#64748b22', color:/ส่งแล้ว/.test(x.status)?'#16a34a':/error|ผิดพลาด/.test(x.status)?'#f43f5e':'#94a3b8'}}>{x.status}</span>
+              </div>
+            ))}</div>}
+        </div>
+      </div>
+    </Card>
+  );
+}
+function Settings({state, role, onSetRole, onRevoke, onDeleteRow, onUpdateRow, onResetData, notifLog, onSaveNotif, onTestNotif}){
   if(role!=='developer') return <Empty msg="เฉพาะผู้ดูแล (Developer) เท่านั้น"/>;
   const users = state.users||[];
   const pending = users.filter(u=>!u.department && !u.is_developer);
@@ -2341,7 +2413,10 @@ function Settings({state, role, onSetRole, onRevoke, onDeleteRow, onUpdateRow, o
           );})}
         </div>
       </Card>
-      {/* C) Danger zone — Reset Data (เฉพาะ Developer) */}
+      {/* C) การแจ้งเตือน LINE/Email */}
+      <NotifSettings key={JSON.stringify(state.notifSettings)} cfg={state.notifSettings} log={notifLog} onSave={onSaveNotif} onTest={onTestNotif}/>
+
+      {/* D) Danger zone — Reset Data (เฉพาะ Developer) */}
       <Card className="overflow-hidden" style={{borderColor:'#f43f5e55'}}>
         <div className="px-5 py-3.5 border-b border-slate-800 flex items-center gap-2" style={{background:'#f43f5e0e'}}><span style={{color:'#f43f5e'}}>{Icon.trash}</span><h3 className="text-slate-200 font-semibold">Reset Data (เขตอันตราย)</h3></div>
         <div className="px-5 py-4 flex items-center justify-between flex-wrap gap-3">
@@ -2371,7 +2446,8 @@ function Pending({email, onSignOut}){
 
 /* ============================ APP ============================ */
 function App(){
-  const [state, setState] = useState({ customers:[], srs:[], projects:[], tasks:[], bom:[], pos:[], team:[], schedule:[], plans:[], handoffs:[], users:[], inventory:[], loading:true });
+  const [state, setState] = useState({ customers:[], srs:[], projects:[], tasks:[], bom:[], pos:[], team:[], schedule:[], plans:[], handoffs:[], users:[], inventory:[], notifSettings:{...NOTIF_DEFAULT}, loading:true });
+  const [notifLog, setNotifLog] = useState([]);   // log การส่งแจ้งเตือน (เฉพาะ session)
   const [page, setPage] = useState('dashboard');
   const [role, setRole] = useState('developer');
   const [activeId, setActiveId] = useState('all');
@@ -2410,6 +2486,27 @@ function App(){
     catch(e){ setErr(e.message||String(e)); await reload(); }
   };
 
+  // ===== แจ้งเตือน (LINE/Email ผ่าน Edge Function) — ยิงแบบ fire-and-forget + เก็บ log ในแอป =====
+  const notify = (event, subject, message, force) => {
+    const cfg = state.notifSettings || {};
+    if(!force && !cfg['ev_'+event]) return;                       // เหตุการณ์นี้ปิดอยู่
+    const id = ++notifSeq;
+    const entry = { id, event, subject, message, at:new Date().toLocaleString('th-TH',{hour12:false}), status:'กำลังส่ง…' };
+    setNotifLog(l=>[entry, ...l].slice(0,40));
+    const fin = status => setNotifLog(l=>l.map(x=>x.id===id?{...x,status}:x));
+    const line  = { enabled:!!cfg.line_enabled,  token:cfg.line_token||'', to:String(cfg.line_to||'').split(/[\s,]+/).filter(Boolean) };
+    const email = { enabled:!!cfg.email_enabled, to:String(cfg.email_to||'').split(/[\s,]+/).filter(Boolean) };
+    if(!line.enabled && !email.enabled){ fin('ข้าม (ไม่ได้เปิดช่องใด)'); return; }
+    if(!cfg.function_url){ fin('จำลอง (ยังไม่ตั้ง Endpoint)'); return; }
+    fetch(cfg.function_url, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ event, subject, message, line, email }) })
+      .then(r=> fin(r.ok ? 'ส่งแล้ว ✓' : ('ผิดพลาด HTTP '+r.status)))
+      .catch(e=> fin('error: '+(e.message||e)));
+  };
+  const handleSaveNotif = run(async (patch) => { await db.saveNotifSettings(patch); },
+    (s, patch) => ({...s, notifSettings:{...s.notifSettings, ...patch}}));
+  const handleTestNotif = () => notify('test', '🔔 ทดสอบการแจ้งเตือน', 'ข้อความทดสอบจากระบบ 115 kV Load Break Switch · '+new Date().toLocaleString('th-TH',{hour12:false}), true);
+  const handleRefreshAll = async () => { setErr(''); await reload(); };
+
   const handleSignOut = async () => { if(LIVE) await sb.auth.signOut(); };
   const activeProject = useMemo(()=> activeId==='all'?null:state.projects.find(p=>p.id===activeId), [activeId, state.projects]);
 
@@ -2434,7 +2531,11 @@ function App(){
   /* Sales */
   const handleAddCustomer = run(async (row) => { await db.addCustomer(row); });
   const handleUpdateCustomer = run(async (id, patch) => { await db.updateCustomer(id, patch); });
-  const handleCreateSR = run(async (customerIds) => { await db.createSR(customerIds, genSrNo()); });
+  const handleCreateSR = run(async (customerIds) => {
+    const custs=(state.customers||[]).filter(c=>customerIds.includes(c.id));
+    const r = await db.createSR(customerIds, genSrNo());
+    notify('sr', '🆕 SR ใหม่ รอฝ่ายโครงการสร้าง Stock', `${r?.sr_no||''}\nลูกค้า: ${custs.map(c=>c.name).join(', ')||'-'}\nLBS รวม: ${custs.reduce((s,c)=>s+num(c.lbs_qty),0)}`);
+  });
   const handleUpdateSR = run(async (id, patch) => { await db.updateSR(id, patch); },
     (s, id, patch) => ({...s, srs:s.srs.map(x=>x.id===id?{...x,...patch}:x)}));
 
@@ -2448,14 +2549,21 @@ function App(){
     const target = (custom && custom.target_lbs!=null) ? custom.target_lbs : custs.reduce((s,c)=>s+num(c.lbs_qty),0);
     if(state.projects.some(p=>p.project_stock_no===stockNo)) throw new Error(`Project Stock No. "${stockNo}" มีอยู่แล้ว — กรุณาใช้เลขอื่น`);
     const r=await db.createStock(srIds, stockNo, jobNo, bomNo, name, target);
+    notify('stock', '📦 สร้าง Project Stock ใหม่', `${stockNo} (Job ${jobNo})\n${name}\nLBS เป้าหมาย: ${target}`);
     await reload();
     if(r) { setActiveId(r.id); setPage('project-stocks'); }
   });
   const handleAddBom = run(async (row) => { await db.addBom(row); });
-  const handleUpdateBom = run(async (id, patch) => { await db.updateBom(id, patch); },
-    (s, id, patch) => ({...s, bom:s.bom.map(b=>b.id===id?{...b,...patch}:b)}));
+  const handleUpdateBom = run(async (id, patch) => { await db.updateBom(id, patch);
+    if(patch.po_status==='Delivered'){ const b=state.bom.find(x=>x.id===id); const p=b&&state.projects.find(pp=>pp.id===b.project_id); notify('po', '📦 ของเข้าครบ (Delivered)', `${b?.epicor_code||''} · ${b?.description||''}\nStock ${p?.project_stock_no||''} · ${p?.bom_no||''} (ครั้ง${b?roundOf(b):1})`); }
+  }, (s, id, patch) => ({...s, bom:s.bom.map(b=>b.id===id?{...b,...patch}:b)}));
   const handleDeleteBom = run(async (id) => { await db.deleteBom(id); });
-  const handleSendBom = run(async (projectId, roundN) => { await db.sendBom(projectId, roundN); });
+  const handleSendBom = run(async (projectId, roundN) => {
+    await db.sendBom(projectId, roundN);
+    const p=state.projects.find(x=>x.id===projectId);
+    const items = roundN==null ? state.bom.filter(b=>b.project_id===projectId) : roundItems(state, projectId, num(roundN));
+    notify('bom', '🛒 ส่ง BOM ให้ฝ่ายจัดซื้อ', `${p?.bom_no||''}${roundN?` (ครั้ง${roundN})`:''}\nStock: ${p?.project_stock_no||''} · ${p?.name||''}\n${items.length} รายการ`);
+  });
   const handleUpdateProject = run(async (id, patch) => { await db.updateProject(id, patch); },
     (s, id, patch) => ({...s, projects:s.projects.map(p=>p.id===id?{...p,...patch}:p)}));
 
@@ -2463,6 +2571,8 @@ function App(){
   const handleCreatePO = run(async (projectId, row, lines) => {
     if(state.pos.some(o=>o.po_no===row.po_no)) throw new Error(`เลขที่ PO "${row.po_no}" มีอยู่แล้ว — กรุณาใช้เลขอื่น`);
     await db.createPO(projectId, row, lines);
+    const p=state.projects.find(x=>x.id===projectId);
+    notify('po', '🧾 ออก PO ใหม่', `PO ${row.po_no}\nStock ${p?.project_stock_no||''} · ${p?.bom_no||''}\n${(lines||[]).length} รายการ · ${baht(row.amount)}`);
   });
   const handleUpdatePO = run(async (id, patch) => { await db.updatePO(id, patch); });
 
@@ -2471,7 +2581,7 @@ function App(){
   const handleRemoveMember = run(async (id) => { await db.removeMember(id); });
   const handleAddSchedule = run(async (row) => { await db.addSchedule(row); });
   const handleRemoveSchedule = run(async (id) => { await db.removeSchedule(id); });
-  const handleSignDO = run(async (projectId) => { await db.signDO(projectId); });
+  const handleSignDO = run(async (projectId) => { await db.signDO(projectId); const p=state.projects.find(x=>x.id===projectId); notify('do', '✅ ลงนาม DO (ส่งมอบเสร็จ)', `${p?.project_stock_no||''} (Job ${p?.job_no||''})\n${p?.name||''}`); });
   // 1) บันทึกใบเบิก (ร่าง) — ยังไม่ตัดสต็อก ยังไม่ส่ง Service
   const handleSaveSlip = run(async (projectId, payload) => {
     const wd = genWdNo();
@@ -2485,6 +2595,8 @@ function App(){
     const rows=(pl.lines||[]).map(l=>{ const b=state.bom.find(x=>x.id===l.bom_id)||{}; return { epicor_code:b.epicor_code, description:b.description, project_id:pl.project_id, type:'OUT', reason:'ติดตั้งงาน', qty:num(l.qty), note:'ใบเบิก '+(pl.wd_no||''), by:DEPT[role].en }; }).filter(r=>num(r.qty)>0);
     if(rows.length) await db.addMovements(rows);
     await db.updatePlan(planId, { sent:true });
+    const p=state.projects.find(x=>x.id===pl.project_id);
+    notify('handover', '🔧 ส่งใบเบิก + แผนงานให้ Service', `${pl.wd_no||''}\nStock ${p?.project_stock_no||''} (Job ${p?.job_no||''})\nแผน ${pl.plan_start||'-'} → ${pl.plan_end||'-'}\n${(pl.lines||[]).length} รายการ`);
   });
   const handleDeleteSlip = run(async (planId) => { await db.deletePlan(planId); });
   // Service กดรับงาน + จัดทีม → ack + ลงคิวปฏิทินให้ทีมที่เลือกตามช่วงแผน
@@ -2508,7 +2620,9 @@ function App(){
 
   /* Inventory (#3) */
   const handleAddMovement = run(async (row) => { await db.addMovement({...row, by:DEPT[role].en}); });
-  const handleReceivePO = run(async (rows, deliveredIds) => { await db.addMovements(rows.map(r=>({...r, by:DEPT[role].en}))); await db.markBomDelivered(deliveredIds||[]); });
+  const handleReceivePO = run(async (rows, deliveredIds) => { await db.addMovements(rows.map(r=>({...r, by:DEPT[role].en}))); await db.markBomDelivered(deliveredIds||[]);
+    if((deliveredIds||[]).length){ const b=state.bom.find(x=>(deliveredIds||[]).includes(x.id)); const p=b&&state.projects.find(pp=>pp.id===b.project_id); notify('po', '📦 รับของตาม PO ครบ (Delivered)', `Stock ${p?.project_stock_no||''} · ${p?.bom_no||''}\nปิดรับครบ ${deliveredIds.length} รายการ`); }
+  });
   const handleTransfer = run(async (code, desc, toProject, qty, note) => { await db.addMovements([
     { epicor_code:code, description:desc, project_id:null, type:'OUT', reason:'โอนเข้าโครงการ', qty, note:note||('โอนเข้า '+(state.projects.find(p=>p.id===toProject)?.project_stock_no||'')), by:DEPT[role].en },
     { epicor_code:code, description:desc, project_id:toProject, type:'IN', reason:'รับโอน', qty, note:'รับโอนจากคลังกลาง', by:DEPT[role].en },
@@ -2531,7 +2645,7 @@ function App(){
     <div className="h-screen flex bg-[var(--app-bg)] text-slate-200">
       <Sidebar page={page} onNav={p=>setPage(p)} state={state} isDev={role==='developer'}/>
       <div className="flex-1 flex flex-col min-w-0">
-        <TopBar state={state} onNav={setPage} role={role} onRole={setRole} page={page} me={me} onSignOut={handleSignOut}/>
+        <TopBar state={state} onNav={setPage} role={role} onRole={setRole} page={page} me={me} onSignOut={handleSignOut} onRefreshAll={handleRefreshAll}/>
         {err && <div className="px-6 py-2 bg-rose-500/15 border-b border-rose-500/30 text-rose-700 text-xs flex items-center justify-between"><span>⚠ {err}</span><button onClick={()=>setErr('')} className="text-rose-600 hover:text-rose-800">✕</button></div>}
         {PAGE_DEP[page] && !canDept(role, PAGE_DEP[page]) && (
           <div className="px-6 py-2 text-[12px] flex items-center gap-2" style={{background:DEPT[PAGE_DEP[page]].c+'14', color:DEPT[PAGE_DEP[page]].c}}>👁 โหมดดูอย่างเดียว — คุณคือ <b>{DEPT[role].label}</b> · ข้อมูลของ <b>{DEPT[PAGE_DEP[page]].label}</b> แก้ไขไม่ได้</div>
@@ -2548,7 +2662,7 @@ function App(){
           {page==='service'    && <FieldService state={state} role={role} onTask={handleTask} onAddTask={handleAddTask} onAddMember={handleAddMember} onRemoveMember={handleRemoveMember} onAddSchedule={handleAddSchedule} onRemoveSchedule={handleRemoveSchedule} onSignDO={handleSignDO} onAckPlan={handleAckPlan}/>}
           {page==='workflow'   && <WorkflowBoard state={state} project={activeProject} role={role} onTask={handleTask} onAddTask={handleAddTask} onHandoff={handleHandoff} onReject={handleReject} onAck={handleAck} onPickStock={(id)=>setActiveId(id)}/>}
           {page==='inventory'  && <Inventory state={state} role={role} onAddMovement={handleAddMovement} onReceivePO={handleReceivePO} onTransfer={handleTransfer} onDeleteMovement={handleDeleteMovement}/>}
-          {page==='settings'   && role==='developer' && <Settings state={state} role={role} onSetRole={handleSetRole} onRevoke={handleRevoke} onDeleteRow={handleDeleteRow} onUpdateRow={handleUpdateRow} onResetData={handleResetData}/>}
+          {page==='settings'   && role==='developer' && <Settings state={state} role={role} onSetRole={handleSetRole} onRevoke={handleRevoke} onDeleteRow={handleDeleteRow} onUpdateRow={handleUpdateRow} onResetData={handleResetData} notifLog={notifLog} onSaveNotif={handleSaveNotif} onTestNotif={handleTestNotif}/>}
         </main>
       </div>
       {poProj && <PoModal project={poProj} pos={state.pos} onClose={()=>setPoProject(null)}/>}

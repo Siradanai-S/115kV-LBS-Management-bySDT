@@ -545,6 +545,25 @@ DROP POLICY IF EXISTS p_plans_upd ON service_plans;    CREATE POLICY p_plans_upd
 -- DELETE: ฝ่ายโครงการลบร่างใบเบิกได้ + dev
 DROP POLICY IF EXISTS p_plans_del ON service_plans;    CREATE POLICY p_plans_del    ON service_plans FOR DELETE TO authenticated USING (is_developer() OR current_department() = 'project');
 
+-- ---------- ตั้งค่าการแจ้งเตือน (LINE/Email) — แถวเดียว (id=1) จัดการโดย Developer ----------
+CREATE TABLE IF NOT EXISTS notif_settings (
+  id            INT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  line_enabled  BOOLEAN DEFAULT FALSE,
+  line_token    TEXT,                                     -- LINE channel access token (อ่านได้เฉพาะ developer)
+  line_to       TEXT,                                     -- userId/groupId คั่นด้วย ,
+  email_enabled BOOLEAN DEFAULT FALSE,
+  email_to      TEXT,                                     -- อีเมลผู้รับ คั่นด้วย ,
+  function_url  TEXT,                                     -- Edge Function endpoint
+  ev_sr BOOLEAN DEFAULT TRUE, ev_stock BOOLEAN DEFAULT TRUE, ev_bom BOOLEAN DEFAULT TRUE,
+  ev_po BOOLEAN DEFAULT TRUE, ev_handover BOOLEAN DEFAULT TRUE, ev_do BOOLEAN DEFAULT TRUE,
+  updated_at    TIMESTAMPTZ DEFAULT NOW()
+);
+INSERT INTO notif_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+-- เฉพาะ Developer เท่านั้นที่อ่าน/แก้ได้ (มี token อยู่ในตาราง)
+ALTER TABLE notif_settings ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS p_notif_all ON notif_settings;
+CREATE POLICY p_notif_all ON notif_settings FOR ALL TO authenticated USING (is_developer()) WITH CHECK (is_developer());
+
 -- คลังสินค้า: อ่านได้ทุกฝ่าย · บันทึกรับ/เบิกได้ developer + purchasing/project/service
 ALTER TABLE inventory_moves ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS p_inv_read ON inventory_moves;   CREATE POLICY p_inv_read  ON inventory_moves FOR SELECT TO authenticated USING (TRUE);
