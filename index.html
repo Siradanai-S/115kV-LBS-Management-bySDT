@@ -20,6 +20,13 @@
 <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script>
+  /* บังคับใช้ JSX runtime แบบ classic (React.createElement) — กัน @babel/standalone เวอร์ชันใหม่
+     ที่ default เป็น automatic แล้ว emit `import ... from "react/jsx-runtime"` ทำให้ <script> ธรรมดารันไม่ได้ (จอขาว) */
+  if (window.Babel && Babel.registerPreset && Babel.availablePresets) {
+    Babel.registerPreset('react-classic', { presets: [ [Babel.availablePresets.react, { runtime: 'classic' }] ] });
+  }
+</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <style>
@@ -39,7 +46,7 @@
 </head>
 <body>
 <div id="root"></div>
-<script type="text/babel" data-presets="react">
+<script type="text/babel" data-presets="react-classic">
 const { useState, useEffect, useMemo } = React;
 
 /* ============================ CONFIG ============================ */
