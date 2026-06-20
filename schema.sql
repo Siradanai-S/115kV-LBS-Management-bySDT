@@ -166,12 +166,14 @@ CREATE INDEX IF NOT EXISTS idx_tasks_project  ON department_tasks (project_id);
 
 -- ---------- 7) service_team + service_schedule (ทีมงาน + คิวงานรายเดือน) ----------
 CREATE TABLE IF NOT EXISTS service_team (
-  id      BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  name    VARCHAR(120) NOT NULL,
-  role    VARCHAR(60)  DEFAULT 'Technician',
-  phone   VARCHAR(40),
-  active  BOOLEAN DEFAULT TRUE
+  id       BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  emp_code VARCHAR(40),                                 -- รหัสพนักงาน
+  name     VARCHAR(120) NOT NULL,
+  role     VARCHAR(60),                                 -- ตำแหน่ง (กรอกเอง)
+  phone    VARCHAR(40),
+  active   BOOLEAN DEFAULT TRUE
 );
+ALTER TABLE service_team ADD COLUMN IF NOT EXISTS emp_code VARCHAR(40);   -- migration
 CREATE TABLE IF NOT EXISTS service_schedule (
   id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   project_id  BIGINT REFERENCES projects(id)    ON DELETE CASCADE,
@@ -208,6 +210,12 @@ ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS plan_end   DATE;
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS team_ids   JSONB DEFAULT '[]'::jsonb;
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS sent       BOOLEAN DEFAULT FALSE;
 UPDATE service_plans SET sent=TRUE WHERE sent IS NOT TRUE;   -- ข้อมูลเดิมถือว่าส่งแล้ว
+-- Service flow: เวลาปฏิบัติงานจริง + เอกสารส่งมอบ + สถานะส่งมอบ
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS actual_start DATE;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS actual_end   DATE;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS proof_name   TEXT;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS proof_url    TEXT;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS delivered    BOOLEAN DEFAULT FALSE;
 
 -- คลังสินค้าจริง (Inventory) — บันทึกรับเข้า/เบิกออกด้วยมือ · project_id NULL = สต็อกกลาง
 CREATE TABLE IF NOT EXISTS inventory_moves (
