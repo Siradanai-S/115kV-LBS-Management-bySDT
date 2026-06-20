@@ -44,7 +44,7 @@
 <div class="cover">
   <h1>คู่มือการใช้งาน<br>115 kV Load Break Switch — Project Management</h1>
   <div class="sub">ระบบบริหารโครงการขาย/ติดตั้ง LBS 115kV — แยกตามฝ่าย (Department) พร้อม Flow เชื่อมโยงข้ามฝ่าย</div>
-  <div class="meta">PRECISE · Dev: Mr. Siradanai Sirisunthorn · ปรับปรุง 17 มิถุนายน 2569</div>
+  <div class="meta">PRECISE · Dev: Mr. Siradanai Sirisunthorn · ปรับปรุง 18 มิถุนายน 2569</div>
 </div>
 
 <h2>🔑 พื้นฐานที่ต้องรู้ก่อน</h2>
@@ -54,6 +54,7 @@
   <li><strong>Developer (Mr. Siradanai)</strong> ทำได้ทุกอย่าง + มีแท็บ <strong>Setting</strong></li>
   <li><strong>🔔 กระดิ่ง (มุมขวาบน):</strong> รวมงานเข้าใหม่ / ตีกลับ / ใกล้ครบกำหนด ≤15 วัน — คลิกเพื่อกระโดดไปงานนั้น</li>
   <li><strong>🌙/☀️ สลับธีม</strong> สว่าง/มืด · เมนูแม่มี <strong>กิ่งย่อย</strong> (แท็บลูก) ใต้แต่ละฝ่าย</li>
+  <li><strong>🔄 Refresh all (มุมขวาบน):</strong> โหลดข้อมูลใหม่ทั้งหมดจากฐานข้อมูล</li>
   <li><strong>Executive Dashboard:</strong> สรุป KPI (งบ/กำไร/ความคืบหน้า/จำนวน Stock) + คอขวดระหว่างฝ่าย + เตือนส่งมอบ ≤15 วัน + ตารางภาพรวม Project Stock · Export Excel / พิมพ์ PDF</li>
 </ul>
 
@@ -117,15 +118,15 @@
 <hr>
 
 <h2>🛠️ Service Department (ฝ่ายบริการ)</h2>
-<p><strong>หน้าที่:</strong> รับใบเบิก/แผนส่งมอบ → เลือก Job &amp; จัดทีม → ปริ้นใบเบิกไปตรวจรับที่คลัง → ส่งมอบ &amp; ลงนาม DO</p>
+<p><strong>หน้าที่:</strong> รับงานตามใบเบิก → จัดทีม + เวลาจริง → ส่งมอบงาน · แต่ละใบเบิกเป็น “การ์ดงาน” มี <strong>3 ขั้นตอน กดแล้วเลื่อนขั้นถัดไปอัตโนมัติ</strong></p>
+<p><strong>การ์ดงานบริการ (ต่อ 1 ใบเบิก) — ทำตามขั้น:</strong></p>
 <ol>
-  <li><strong>📥 Inbox แผนส่งมอบใหม่</strong> (ใบเบิกที่ฝ่ายโครงการกด “ส่งมอบ Service” แล้ว) — แต่ละใบแสดง <strong>Job No.</strong>, รายการในใบเบิก, แผนเริ่ม–สิ้นสุด</li>
-  <li><strong>เลือกทีมงานที่ว่าง</strong> (สมาชิกที่ติดคิวช่วงนั้นจะขึ้น ⚠) → กด <strong>รับงาน + จัดทีม</strong> → ระบบ <strong>ลงคิวให้ทีมในปฏิทินอัตโนมัติ</strong> ตามช่วงแผน</li>
-  <li>กด <strong>🖨️ ปริ้นใบเบิก</strong> เพื่อพิมพ์ใบเบิก (A4) นำไป <strong>ตรวจรับสินค้าที่คลัง (WH)</strong></li>
-  <li>การ์ดโครงการพร้อมส่งมอบ: เช็กลิสต์งาน + แถบความคืบหน้าการเบิกติดตั้งตาม BOM + <strong>ส่งมอบ &amp; ลงนาม DO</strong></li>
-  <li><strong>ทีมงาน &amp; Scheduling Calendar:</strong> เพิ่ม/ลบสมาชิก · ปฏิทินรายเดือน (คลิกวันที่มีงานดู Event)</li>
+  <li><strong>ขั้น 1 — รับงาน (เอกสาร):</strong> ดูรายการในใบเบิก + แผนงาน → ปริ้นเอกสาร <strong>ใบเบิก / Delivery Order (D/O) / Handover Doc</strong> ไปตรวจรับสินค้าที่คลัง (WH) → กด <strong>✓ รับงาน</strong> (ไปขั้นถัดไปอัตโนมัติ)</li>
+  <li><strong>ขั้น 2 — จัดทีม + เวลาจริง:</strong> เลือกทีมงาน <strong>1–2 คน</strong> (สมาชิกที่ติดคิวช่วงนั้นขึ้น ⚠) + กรอก <strong>actual Start / actual End</strong> → กด <strong>✓ บันทึกทีม+เวลา &amp; เริ่มงาน</strong> → ระบบ <strong>ลงคิวปฏิทินให้ทีมตามวันจริงอัตโนมัติ</strong></li>
+  <li><strong>ขั้น 3 — ส่งมอบงาน:</strong> <strong>แนบไฟล์ PDF / รูปถ่าย</strong> หลักฐานส่งมอบ → กด <strong>✓ ส่งมอบงาน + ลงนาม DO</strong> → ปิดงานบริการ (เก็บไฟล์ + ลงนาม DO ให้โครงการ)</li>
 </ol>
-<blockquote><p>🔗 <strong>Flow:</strong> การ <strong>เบิกวัสดุติดตั้ง</strong> ทำที่ฝ่ายโครงการ (ออกใบเบิก) — ฝ่ายบริการเป็นผู้ <strong>รับงาน / ตรวจรับที่ WH / ส่งมอบ</strong> · ต้อง <strong>ลงนาม DO</strong> ก่อน จึง “ส่งงานต่อ” เป็น <strong>ปิดงาน (Closed)</strong> ใน Workflow ได้</p></blockquote>
+<p><strong>ทีมงาน &amp; Scheduling Calendar:</strong> เพิ่ม/ลบสมาชิก (กรอก <strong>รหัสพนักงาน</strong> + <strong>ตำแหน่ง (พิมพ์เอง)</strong> + โทร) · ปฏิทินรายเดือน/Roster (คลิกวันที่มีงานดู Event)</p>
+<blockquote><p>🔗 <strong>Flow:</strong> การ <strong>เบิกวัสดุติดตั้ง</strong> ทำที่ฝ่ายโครงการ (ออกใบเบิก = ตัดสต็อก) — ฝ่ายบริการเป็นผู้ <strong>รับงาน → ตรวจรับ WH → ปฏิบัติงาน → ส่งมอบ</strong> · เมื่อกดส่งมอบงาน (ลงนาม DO) ครบ จึง “ส่งงานต่อ” เป็น <strong>ปิดงาน (Closed)</strong> ใน Workflow ได้ (ระบบ tick งานฝ่ายบริการให้ตามขั้นอัตโนมัติ)</p></blockquote>
 
 <hr>
 
@@ -146,6 +147,7 @@
 <ol>
   <li><strong>ผู้ใช้งาน &amp; สิทธิ์:</strong> อนุมัติผู้สมัครใหม่ (เลือกฝ่าย) · เลื่อนเป็น Developer · ยกเลิกสิทธิ์</li>
   <li><strong>จัดการข้อมูลทุกฝ่าย (CRUD):</strong> <strong>ดู / แก้ไข ✎ / ลบ</strong> ข้อมูลข้ามฝ่ายได้ทุกตาราง (ลูกค้า/SR/Stock/BOM/PO/ทีม/แผน) ผ่านหน้าต่างแก้ไข</li>
+  <li><strong>การแจ้งเตือน (LINE Messaging API / Email):</strong> ตั้งค่า token/ผู้รับ + <strong>Edge Function URL</strong> + เปิด/ปิด <strong>6 เหตุการณ์</strong> (Sales ส่ง SR · Project สร้าง Stock · Project ส่ง BOM · Purchasing PO/Delivered · Project ส่งใบเบิก+แผน · Service ลงนาม DO) · มีปุ่ม <strong>ส่งทดสอบ</strong> + log การส่ง · ส่งจริงผ่าน Supabase Edge Function (โค้ด <code>edge-notify.ts</code>)</li>
   <li><strong>Reset Data (เขตอันตราย):</strong> โหมด DEMO = คืนค่าข้อมูลตัวอย่างทั้งหมด · โหมด LIVE = ป้องกันไว้ ให้ใช้ <code>reset-clean.sql</code> บน Supabase แทน</li>
 </ol>
 <blockquote><p>ผู้สมัครใหม่ที่ยังไม่ถูกกำหนดสิทธิ์จะเห็นหน้า <strong>⏳ รอผู้ดูแลอนุมัติ</strong> จนกว่าจะได้รับฝ่าย</p></blockquote>
@@ -159,8 +161,8 @@
    (Project เลือกหลาย SR + ถาม LBS) ──▶ Project Stock + BOM (ได้หลายครั้ง)
               │ ส่ง BOM (รายครั้ง)                    │ ออกใบเบิก: บันทึกร่าง → ส่งมอบ
               ▼                                        ▼  (ตัดสต็อกโครงการ)
-        Purchasing (ออก PO)                      Service (รับงาน + จัดทีม + ปริ้นใบเบิก)
-              │ Delivered ครบ                         │ ตรวจรับที่ WH → ลงนาม DO
+        Purchasing (ออก PO)              Service (3 ขั้น: รับงาน → จัดทีม+เวลาจริง → ส่งมอบ+แนบไฟล์)
+              │ Delivered ครบ                         │ ตรวจรับ WH · ลงนาม DO
               ▼                                        ▼
    คลัง: รับตาม PO ─▶ โอนเข้า Project Stock ───────────▶  ปิดงาน (Closed)</code></pre>
 <p><strong>เฟสของ Project Stock (Workflow):</strong> <code>project → purchasing → service → closed</code></p>
