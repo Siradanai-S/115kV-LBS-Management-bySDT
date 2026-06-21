@@ -1716,7 +1716,7 @@ function HandoverSlip({project, state, onClose, onSubmit}){
     const remaining=Math.max(0, need-installed);
     return { id:b.id, code, desc:b.description, need, installed, onhand, remaining, cat:b.category };
   }), [state, project.id]);
-  const [qty, setQty] = useState(()=>{ const m={}; lines.forEach(l=>{ m[l.id]=Math.min(l.remaining, l.onhand); }); return m; });
+  const [qty, setQty] = useState(()=>{ const m={}; lines.forEach(l=>{ m[l.id]=l.remaining; }); return m; });   // ตั้งต้น = คงเหลือตาม BOM (ร่าง: ไม่อิง onhand)
   const [ps,setPs]=useState(project.delivery_date||''); const [pe,setPe]=useState(project.delivery_date||'');
   const [note,setNote]=useState(''); const [location,setLocation]=useState(stockCustomers(state,project.id).map(c=>c.location).filter(Boolean).join(' / '));
   const setQ = (id, v, cap) => setQty(m=>({...m, [id]:Math.max(0, Math.min(cap, Math.floor(num(v))))}));
@@ -1749,13 +1749,13 @@ function HandoverSlip({project, state, onClose, onSubmit}){
             </tr></thead>
             <tbody>
               {lines.length===0 && <tr><td colSpan="6" className="px-5 py-8 text-center text-slate-500">โครงการนี้ยังไม่มีรายการ BOM</td></tr>}
-              {lines.map(l=>{ const cap=l.onhand; const full=l.installed>=l.need && l.need>0; return (
+              {lines.map(l=>{ const cap=l.remaining; const full=l.installed>=l.need && l.need>0; const short=num(qty[l.id])>l.onhand; return (
                 <tr key={l.id} className="border-b border-slate-800/60">
                   <td className="px-5 py-2.5 mono text-slate-300">{l.code} {l.cat==='LBS'&&<Pill color="#3b82f6">LBS</Pill>}</td>
                   <td className="px-3 py-2.5 text-slate-300">{l.desc}</td>
                   <td className="px-3 py-2.5 text-right mono text-slate-300">{l.need}</td>
                   <td className="px-3 py-2.5 text-right mono">{full ? <span className="text-emerald-500">✓ {l.installed}</span> : <span className="text-slate-400">{l.installed}</span>}</td>
-                  <td className="px-3 py-2.5 text-right mono" style={{color:l.onhand>0?'#cbd5e1':'#f43f5e'}}>{l.onhand}</td>
+                  <td className="px-3 py-2.5 text-right mono" style={{color:l.onhand>0?'#cbd5e1':'#94a3b8'}}>{l.onhand}{short&&num(qty[l.id])>0&&<span title="คลังโครงการไม่พอ — ต้องโอนเข้าก่อนกดส่งมอบ" className="text-[10px] text-amber-600"> ⚠</span>}</td>
                   <td className="px-3 py-2.5 text-right">
                     <input type="number" min="0" max={cap} value={qty[l.id]} disabled={cap<=0}
                       onChange={e=>setQ(l.id, e.target.value, cap)}
@@ -1765,7 +1765,7 @@ function HandoverSlip({project, state, onClose, onSubmit}){
               );})}
             </tbody>
           </table>
-          <p className="px-5 py-2 text-[11px] text-slate-500">บันทึกเป็น <b>ร่างใบเบิก</b> ก่อน (ยังไม่ตัดสต็อก/ยังไม่ส่ง) — กด “ส่งมอบ Service” ทีหลังจึงจะตัดสต็อกโครงการ + แจ้งฝ่ายบริการ · สิทธิ์การเบิกอยู่ที่ฝ่ายโครงการ</p>
+          <p className="px-5 py-2 text-[11px] text-slate-500">ระบุจำนวนได้สูงสุดตาม <b>BOM</b> (ยังไม่อิงสต็อกในคลัง) · บันทึกเป็น <b>ร่างใบเบิก</b> ก่อน <b>ไม่ตัดสต็อก</b> — เมื่อกด “ส่งมอบ Service” ทีหลัง ระบบจะตรวจ <b>คงเหลือคลังโครงการ</b> แล้วจึงตัดสต็อก (⚠ = คลังไม่พอ ต้องโอนเข้าจากคลังกลางก่อนส่ง)</p>
         </div>
         <div className="px-5 py-3 border-t border-slate-800 flex items-center justify-between">
           <span className="text-[12px] text-slate-400">รวมเบิก <b className="text-slate-100">{totalDraw}</b> ชิ้น</span>
