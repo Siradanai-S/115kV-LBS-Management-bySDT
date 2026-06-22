@@ -234,7 +234,12 @@ CREATE TABLE IF NOT EXISTS inventory_moves (
 );
 CREATE INDEX IF NOT EXISTS idx_inv_code    ON inventory_moves (epicor_code);
 CREATE INDEX IF NOT EXISTS idx_inv_project ON inventory_moves (project_id);
-ALTER TABLE inventory_moves ADD COLUMN IF NOT EXISTS "by" VARCHAR(60);   -- migration (ฐานข้อมูลเดิม)
+-- migration (ฐานข้อมูลเดิมที่สร้างก่อนคอลัมน์เหล่านี้จะถูกเพิ่ม — CREATE IF NOT EXISTS ไม่เพิ่มให้ตารางเดิม)
+ALTER TABLE inventory_moves ADD COLUMN IF NOT EXISTS description VARCHAR(255);
+ALTER TABLE inventory_moves ADD COLUMN IF NOT EXISTS reason      VARCHAR(40);
+ALTER TABLE inventory_moves ADD COLUMN IF NOT EXISTS po_no       VARCHAR(40);
+ALTER TABLE inventory_moves ADD COLUMN IF NOT EXISTS note        TEXT;
+ALTER TABLE inventory_moves ADD COLUMN IF NOT EXISTS "by"        VARCHAR(60);
 
 -- บล็อกการเบิก/โอนออกเกินยอดคงเหลือ ณ ที่ตั้งนั้น (สต็อกห้ามติดลบ)
 CREATE OR REPLACE FUNCTION inv_block_negative()
