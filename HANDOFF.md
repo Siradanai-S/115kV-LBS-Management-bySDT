@@ -132,7 +132,7 @@ service_team · handoff_log(audit) · user_roles · inventory_moves(epicor_code,
 | ~1299/1353 | `ProjectBom`/**`BomRoundCard`** | page `project-stocks` — **BOM หลายครั้ง** · helper `roundOf`/`roundName`/`projBomRounds`/`roundItems`/`roundIsSent`/`bomSent`/`bomStatusOf` (ก่อน `phaseGate`) · `db.sendBom(projectId, roundN)` |
 | (ใกล้ InstallSummary) | `HandoverSlip`/`ProjectHandover` | page `project-handover` — ออกใบเบิก+แผน · helper `memberBusy`/`printWithdrawal` · `genWdNo` · `handleSendHandover`/`handleAckPlan(id,teamIds)` |
 | ~1231/1248 | `HandoffTimeline`/`ProjectStocks` | timeline + การ์ดพับ Stock |
-| ~1307/1416 | `Procurement`/`PurchasingDone` | page `purchasing` + `purchasing-done` |
+| ~1307/1416 | `Procurement`/`PurchasingDone` | page `purchasing` + `purchasing-done` (PurchasingDone = **กลุ่มตาม Stock No. · การ์ดพับซ่อนได้ · badge ครบทุกรายการ · ยอดรวมราย Stock + ค้นหา/ย่อทั้งหมด**) |
 | ~1449/~1510 | `InstallDraw`/`FieldService`/`ServiceTeam` | page `service` (Inbox แผน, **เบิกตามงานติดตั้ง BOM modal**, DO, ปฏิทินคิว) · helper `installedQty`/`installSummary` (~516) · handler `handleInstallDraw` ใน App |
 | ~1670 | `Login` | LIVE ยังไม่ล็อกอิน |
 | ~1706 | `Inventory` | page `inventory` (รับตาม PO/บันทึกเอง/โอน/บล็อกติดลบ) |
