@@ -96,8 +96,9 @@ const NOTIF_EVENTS = [
   { key:'po',       label:'Purchasing อัปเดต PO / Delivered' },
   { key:'handover', label:'Project ส่งใบเบิก+แผนให้ Service' },
   { key:'do',       label:'Service ลงนาม DO' },
+  { key:'warranty', label:'Service ออกใบรับประกัน' },
 ];
-const NOTIF_DEFAULT = { line_enabled:false, line_token:'', line_to:'', email_enabled:false, email_to:'', function_url:'', ev_sr:true, ev_stock:true, ev_bom:true, ev_po:true, ev_handover:true, ev_do:true };
+const NOTIF_DEFAULT = { line_enabled:false, line_token:'', line_to:'', email_enabled:false, email_to:'', function_url:'', ev_sr:true, ev_stock:true, ev_bom:true, ev_po:true, ev_handover:true, ev_do:true, ev_warranty:true };
 
 /* permission helpers */
 const isDev    = r => r==='developer';
@@ -598,18 +599,23 @@ const SVC_DOC = {
   wd:       { title:'ใบเบิกติดตั้ง (Installation Withdrawal Slip)', col:'ตรวจรับ (WH)', sign:['ผู้ขอเบิก (Project)','ผู้จ่าย/ตรวจ (WH)','ผู้รับ (Service)'] },
   do:       { title:'ใบส่งมอบสินค้า (Delivery Order — D/O)',        col:'ส่งมอบ',        sign:['ผู้ส่งมอบ (Service)','ผู้รับสินค้า (หน้างาน/ลูกค้า)'] },
   handover: { title:'เอกสารส่งมอบงาน (Handover Document)',          col:'ติดตั้งแล้ว',   sign:['ผู้ส่งมอบงาน (Service)','ผู้รับมอบงาน (ลูกค้า)','พยาน'] },
+  warranty: { title:'ใบรับประกัน (Warranty Certificate)',           col:'รับประกัน',     sign:['ผู้ออกใบรับประกัน (Service)','ลูกค้า'] },
 };
 function printServiceDoc(kind, pl, project, state){
   const d=SVC_DOC[kind]||SVC_DOC.wd; const w=window.open('', '_blank', 'width=820,height=900'); if(!w) return;
   const rows=(pl.lines||[]).map(l=>{ const b=(state.bom||[]).find(x=>x.id===l.bom_id)||{}; const sn=b.category==='LBS'&&(b.serial_lvb||b.serial_om)?`<div style="font-size:10px;color:#667">S/N LVB: ${b.serial_lvb||'-'} · S/N OM: ${b.serial_om||'-'}</div>`:''; return `<tr><td>${b.epicor_code||'-'}</td><td>${b.description||'-'}${sn}</td><td style="text-align:center">${b.category||''}</td><td style="text-align:right">${l.qty}</td><td style="text-align:center">${b.ium||'EA'}</td><td></td></tr>`; }).join('');
   const team=(pl.team_ids||[]).map(id=>{ const m=(state.team||[]).find(x=>x.id===id)||{}; return m.name?`${m.name}${m.emp_code?` (${m.emp_code})`:''}`:''; }).filter(Boolean).join(', ')||'-';
+  const custs=(state.customers||[]).filter(c=>c.sr_id===pl.sr_id); const srNo=(state.srs.find(s=>s.id===pl.sr_id)||{}).sr_no||'';
+  const custLine = custs.length ? custs.map(c=>`${c.name} (LBS ${c.lbs_qty}${c.location?` · ${c.location}`:''})`).join('<br>') : '-';
   const actual = (pl.actual_start||pl.actual_end) ? `${pl.actual_start||'-'} → ${pl.actual_end||'-'}` : '— ยังไม่ระบุ —';
+  const warrantyBlock = kind==='warranty' ? `<table><tr><td><b>เลขที่รับประกัน</b><br>${pl.warranty_no||'-'}</td><td><b>รับประกันถึง</b><br>${pl.warranty_until||'-'}</td><td><b>ผู้รับมอบ</b><br>${pl.received_by||'-'} (${pl.received_date||'-'})</td></tr></table><p class="muted">เงื่อนไข: รับประกันการติดตั้ง/อุปกรณ์ตามรายการด้านล่าง ภายใต้การใช้งานปกติ จนถึงวันที่ระบุ</p>` : '';
   w.document.write(`<!doctype html><html lang="th"><head><meta charset="utf-8"><title>${d.title} · ${pl.wd_no||''}</title>
     <style>body{font-family:'Tahoma',sans-serif;color:#111;padding:28px;font-size:13px}h1{font-size:18px;margin:0}table{width:100%;border-collapse:collapse;margin-top:14px}th,td{border:1px solid #999;padding:6px 8px;text-align:left}th{background:#eef}.h{display:flex;justify-content:space-between;border-bottom:2px solid #1c75bc;padding-bottom:8px}.muted{color:#555;font-size:12px}.sign{margin-top:54px;display:flex;justify-content:space-around}.sign div{width:28%;text-align:center;border-top:1px solid #333;padding-top:6px}</style>
     </head><body>
-    <div class="h"><div><h1>${d.title}</h1><div class="muted">115 kV Load Break Switch · Project Management</div></div><div style="text-align:right"><div><b>${pl.wd_no||'-'}</b></div><div class="muted">Job No: ${project.job_no||'-'}</div></div></div>
+    <div class="h"><div><h1>${d.title}</h1><div class="muted">115 kV Load Break Switch · Project Management</div></div><div style="text-align:right"><div><b>${pl.wd_no||'-'}</b></div><div class="muted">Job No: ${project.job_no||'-'}${srNo?` · ${srNo}`:''}</div></div></div>
     <table><tr><td><b>Project Stock</b><br>${project.project_stock_no||'-'}</td><td><b>โครงการ</b><br>${project.name||'-'}</td><td><b>${kind==='wd'?'แผนดำเนินการ':'วันปฏิบัติงานจริง'}</b><br>${kind==='wd'?`${pl.plan_start||'-'} → ${pl.plan_end||'-'}`:actual}</td></tr>
-    <tr><td><b>สถานที่</b><br>${pl.location||'-'}</td><td colspan="2"><b>ทีมงาน</b><br>${team}</td></tr></table>
+    <tr><td><b>สถานที่</b><br>${pl.location||'-'}</td><td><b>ลูกค้า (${srNo||'SR'})</b><br>${custLine}</td><td><b>ทีมงาน</b><br>${team}</td></tr></table>
+    ${warrantyBlock}
     <table><thead><tr><th>Epicor Code</th><th>รายการ</th><th style="text-align:center">หมวด</th><th style="text-align:right">จำนวน</th><th style="text-align:center">หน่วย</th><th>${d.col}</th></tr></thead><tbody>${rows||'<tr><td colspan=6 style="text-align:center">— ไม่มีรายการ —</td></tr>'}</tbody></table>
     ${pl.note?`<p class="muted">หมายเหตุ: ${pl.note}</p>`:''}
     <div class="sign">${d.sign.map(s=>`<div>${s}</div>`).join('')}</div>
@@ -1928,7 +1934,7 @@ function ProjectInventory({state, role, onWithdraw}){
   );
 }
 
-function FieldService({state, role, onAddMember, onRemoveMember, onAddSchedule, onRemoveSchedule, onReceive, onAssign, onDeliver}){
+function FieldService({state, role, onAddMember, onRemoveMember, onAddSchedule, onRemoveSchedule, onReceive, onAssign, onDeliver, onWarranty}){
   const canEdit = role==='developer' || role==='service';
   const jobs = (state.plans||[]).filter(pl=>pl.sent);   // ใบเบิกที่ฝ่ายโครงการส่งมา = งานบริการ
   const sorted = [...jobs].sort((a,b)=> (a.delivered?1:0)-(b.delivered?1:0) || String(a.plan_end||'').localeCompare(String(b.plan_end||'')));
@@ -1939,27 +1945,35 @@ function FieldService({state, role, onAddMember, onRemoveMember, onAddSchedule, 
           <span style={{color:DEPT.service.c}}>🛠️</span><h3 className="text-slate-200 font-semibold">งานบริการ (ตามใบเบิก) — ทำตามขั้นตอน</h3><span className="text-[11px] text-slate-500">({jobs.filter(j=>!j.delivered).length} ค้าง / {jobs.length} ทั้งหมด)</span>
         </div>
         {jobs.length===0 ? <div className="p-8 text-center text-slate-500 text-sm">ยังไม่มีงาน — รอฝ่ายโครงการส่งใบเบิก+แผนงานเข้ามา</div> :
-          <div className="p-3 space-y-3">{sorted.map(pl=> <ServiceJob key={pl.id} pl={pl} project={state.projects.find(p=>p.id===pl.project_id)} state={state} canEdit={canEdit} onReceive={onReceive} onAssign={onAssign} onDeliver={onDeliver}/>)}</div>}
+          <div className="p-3 space-y-3">{sorted.map(pl=> <ServiceJob key={pl.id} pl={pl} project={state.projects.find(p=>p.id===pl.project_id)} state={state} canEdit={canEdit} onReceive={onReceive} onAssign={onAssign} onDeliver={onDeliver} onWarranty={onWarranty}/>)}</div>}
       </Card>
       <ServiceTeam state={state} canEdit={canEdit} onAddMember={onAddMember} onRemoveMember={onRemoveMember} onAddSchedule={onAddSchedule} onRemoveSchedule={onRemoveSchedule}/>
     </div>
   );
 }
 // การ์ดงานบริการ 1 ใบ — flow 3 ขั้น กดแล้วเลื่อนขั้นอัตโนมัติ: รับงาน → จัดทีม+เวลาจริง → ส่งมอบ+แนบไฟล์
-const SVC_STEPS = ['รับงาน (เอกสาร)','จัดทีม + เวลาจริง','ส่งมอบงาน'];
-function ServiceJob({pl, project, state, canEdit, onReceive, onAssign, onDeliver}){
+const SVC_STEPS = ['รับงาน','ปฏิบัติงาน (ทีม+เช็กลิสต์)','ส่งมอบ & เซ็นรับ'];
+const SVC_CHECK = [['recv','ตรวจรับวัสดุหน้างาน'],['install','ติดตั้ง'],['commission','ทดสอบ (Commissioning)']];
+function ServiceJob({pl, project, state, canEdit, onReceive, onAssign, onDeliver, onWarranty}){
   const members = (state.team||[]).filter(m=>m.active);
+  const custs = (state.customers||[]).filter(c=>c.sr_id===pl.sr_id);
+  const srNo = (state.srs.find(s=>s.id===pl.sr_id)||{}).sr_no;
+  const chkOk = c => SVC_CHECK.every(([k])=>c&&c[k]);
   const recvDone = !!pl.acked;
-  const assignDone = recvDone && (pl.team_ids||[]).length>=1 && pl.actual_start && pl.actual_end;
+  const workDone = recvDone && (pl.team_ids||[]).length>=1 && pl.actual_start && pl.actual_end && chkOk(pl.checklist);
   const delivered = !!pl.delivered;
-  const stage = !recvDone ? 1 : !assignDone ? 2 : !delivered ? 3 : 4;   // 4 = เสร็จ
+  const stage = !recvDone ? 1 : !workDone ? 2 : !delivered ? 3 : 4;   // 4 = เสร็จ
   const [team,setTeam]=useState(pl.team_ids||[]);
   const [aStart,setAStart]=useState(pl.actual_start||pl.plan_start||'');
   const [aEnd,setAEnd]=useState(pl.actual_end||pl.plan_end||'');
+  const [chk,setChk]=useState(pl.checklist||{});
+  const [recvBy,setRecvBy]=useState(pl.received_by||''); const [recvDate,setRecvDate]=useState(pl.received_date||isoIn(0));
   const [proof,setProof]=useState({ name:pl.proof_name||'', url:pl.proof_url||'' });
+  const [wNo,setWNo]=useState(pl.warranty_no||''); const [wUntil,setWUntil]=useState(pl.warranty_until||'');
   const toggleTeam = mid => setTeam(t=> t.includes(mid) ? t.filter(x=>x!==mid) : (t.length>=2 ? t : [...t,mid]));   // จำกัด 1-2 คน
   const onFile = file => { if(!file) return; const r=new FileReader(); r.onload=()=>setProof({name:file.name,url:r.result}); r.readAsDataURL(file); };
   const memName = id => { const m=(state.team||[]).find(x=>x.id===id)||{}; return m.name?`${m.name}${m.emp_code?` (${m.emp_code})`:''}`:'?'; };
+  const allChk = chkOk(chk);
   const docBtns = (
     <div className="flex flex-wrap gap-1.5">
       <button onClick={()=>printServiceDoc('wd',pl,project,state)} className="text-[11px] rounded-md px-2.5 py-1 border" style={{borderColor:'#0ea5e966',color:'#0ea5e9'}}>🖨️ ใบเบิก</button>
@@ -1971,7 +1985,7 @@ function ServiceJob({pl, project, state, canEdit, onReceive, onAssign, onDeliver
     <div className="rounded-lg border p-3" style={{borderColor:delivered?'#16a34a44':DEPT.service.c+'44',background:delivered?'#16a34a08':DEPT.service.c+'08'}}>
       <div className="flex items-start justify-between gap-2 flex-wrap">
         <div><div className="text-[13px] text-slate-100 font-medium">{project?.name||'—'} {delivered&&<Pill color="#16a34a">ส่งมอบแล้ว</Pill>}</div>
-          <div className="text-[11px] text-slate-500 mono">{project?.project_stock_no} · Job {project?.job_no} · ใบเบิก {pl.wd_no||'—'} · {(pl.lines||[]).length} รายการ</div></div>
+          <div className="text-[11px] text-slate-500 mono">{project?.project_stock_no} · Job {project?.job_no} · ใบเบิก {pl.wd_no||'—'}{srNo?` · ${srNo}`:''} · {(pl.lines||[]).length} รายการ</div></div>
         <div className="text-[11px] text-slate-400">📅 แผน {pl.plan_start||'—'} → {pl.plan_end||'—'} · 📍 {pl.location||'—'}</div>
       </div>
       {/* Stepper */}
@@ -1984,17 +1998,20 @@ function ServiceJob({pl, project, state, canEdit, onReceive, onAssign, onDeliver
         );})}
       </div>
 
+      {/* ลูกค้าใน SR (ผู้รับมอบ) */}
+      {custs.length>0 && <div className="mb-2 text-[11px] text-slate-400 bg-slate-900/40 rounded-md p-2">👤 ลูกค้าใน {srNo||'SR'}: {custs.map(c=>`${c.name} (LBS ${c.lbs_qty})`).join(' · ')}</div>}
+
       {/* ===== STEP 1: รับงาน + เอกสาร ===== */}
       {stage===1 && (
         <div className="rounded-md bg-slate-900/40 p-2.5 space-y-2">
           {(pl.lines||[]).length>0 && <div className="text-[11px] text-slate-400 space-y-0.5">{(pl.lines||[]).map((l,i)=>{ const b=(state.bom||[]).find(x=>x.id===l.bom_id)||{}; return <div key={i} className="flex justify-between"><span className="mono">{b.epicor_code||'—'} · {b.description||''}</span><span className="mono">×{l.qty}</span></div>; })}</div>}
-          <div className="text-[10px] text-slate-500">รับ: ใบเบิก + แผนงาน + Delivery Order (D/O) + Handover Doc</div>
+          <div className="text-[10px] text-slate-500">รับ: ใบเบิก + แผนงาน + Delivery Order (D/O) + Handover Doc · ปริ้นไปตรวจรับที่ WH</div>
           {docBtns}
           {canEdit && <button onClick={()=>onReceive(pl.id)} className="w-full text-xs font-semibold rounded-md px-3 py-1.5" style={{background:DEPT.service.c,color:'#0b0f17'}}>✓ รับงาน (ขั้นต่อไป)</button>}
         </div>
       )}
 
-      {/* ===== STEP 2: จัดทีม 1-2 คน + เวลาจริง ===== */}
+      {/* ===== STEP 2: ทีม + เวลาจริง + เช็กลิสต์ปฏิบัติงาน ===== */}
       {stage===2 && (
         <div className="rounded-md bg-slate-900/40 p-2.5 space-y-2.5">
           <div><div className="text-[10px] text-slate-500 mb-1">เลือกทีมงาน 1–2 คน {team.length>=2&&<span className="text-amber-600">(ครบ 2 คนแล้ว)</span>}</div>
@@ -2009,28 +2026,48 @@ function ServiceJob({pl, project, state, canEdit, onReceive, onAssign, onDeliver
             <div><Lbl>actual Start</Lbl><Inp type="date" value={aStart} onChange={setAStart}/></div>
             <div><Lbl>actual End</Lbl><Inp type="date" value={aEnd} onChange={setAEnd}/></div>
           </div>
+          <div><div className="text-[10px] text-slate-500 mb-1">เช็กลิสต์หน้างาน (ติ๊กครบจึงส่งมอบได้)</div>
+            <div className="flex flex-wrap gap-2">{SVC_CHECK.map(([k,label])=>(
+              <label key={k} className="flex items-center gap-1.5 text-[11px] text-slate-300 rounded-md border border-slate-700 px-2 py-1 cursor-pointer"><input type="checkbox" checked={!!chk[k]} onChange={e=>setChk(s=>({...s,[k]:e.target.checked}))} className="accent-emerald-500"/>{label}</label>
+            ))}</div>
+          </div>
           {docBtns}
-          {canEdit && <button onClick={()=>onAssign(pl.id, team, aStart, aEnd)} disabled={team.length<1||team.length>2||!aStart||!aEnd} className="w-full text-xs font-semibold rounded-md px-3 py-1.5 disabled:opacity-40" style={{background:DEPT.service.c,color:'#0b0f17'}}>✓ บันทึกทีม+เวลา & เริ่มงาน (ขั้นต่อไป)</button>}
+          {canEdit && <button onClick={()=>onAssign(pl.id, team, aStart, aEnd, chk)} disabled={team.length<1||team.length>2||!aStart||!aEnd||!allChk} title={!allChk?'ติ๊กเช็กลิสต์ให้ครบก่อน':''} className="w-full text-xs font-semibold rounded-md px-3 py-1.5 disabled:opacity-40" style={{background:DEPT.service.c,color:'#0b0f17'}}>✓ บันทึกทีม+เวลา+เช็กลิสต์ → ส่งมอบ</button>}
         </div>
       )}
 
-      {/* ===== STEP 3: ส่งมอบงาน + แนบไฟล์ ===== */}
+      {/* ===== STEP 3: ส่งมอบ + ลูกค้าเซ็นรับ + แนบไฟล์ ===== */}
       {stage===3 && (
         <div className="rounded-md bg-slate-900/40 p-2.5 space-y-2.5">
-          <div className="text-[11px] text-slate-400">ทีม: {(pl.team_ids||[]).map(memName).join(', ')||'-'} · ปฏิบัติงาน {pl.actual_start||'-'} → {pl.actual_end||'-'}</div>
+          <div className="text-[11px] text-slate-400">ทีม: {(pl.team_ids||[]).map(memName).join(', ')||'-'} · ปฏิบัติงาน {pl.actual_start||'-'} → {pl.actual_end||'-'} · ✓ เช็กลิสต์ครบ</div>
+          <div className="grid grid-cols-2 gap-2">
+            <div><Lbl>ผู้รับมอบ (ลูกค้าเซ็นรับ)</Lbl><Inp value={recvBy} onChange={setRecvBy} placeholder="ชื่อผู้รับมอบ"/></div>
+            <div><Lbl>วันที่รับมอบ</Lbl><Inp type="date" value={recvDate} onChange={setRecvDate}/></div>
+          </div>
           <div><Lbl>แนบไฟล์ส่งมอบ (PDF / รูปถ่าย)</Lbl><input type="file" accept="application/pdf,image/*" onChange={e=>onFile(e.target.files[0])} className="w-full text-[11px] text-slate-400 file:mr-2 file:rounded file:border-0 file:bg-slate-700 file:text-slate-200 file:px-2 file:py-1"/>{proof.name && <span className="text-[10px] text-emerald-600">✓ {proof.name}</span>}</div>
           {docBtns}
-          {canEdit && <button onClick={()=>onDeliver(pl.id, pl.project_id, proof)} className="w-full text-xs font-semibold rounded-md px-3 py-1.5 inline-flex items-center justify-center gap-1.5" style={{background:DEPT.service.c,color:'#0b0f17'}}>{Icon.doc} ✓ ส่งมอบงาน + ลงนาม DO</button>}
+          {canEdit && <button onClick={()=>onDeliver(pl.id, pl.project_id, { received_by:recvBy, received_date:recvDate, proof })} disabled={!recvBy.trim()} title={!recvBy.trim()?'ระบุชื่อผู้รับมอบก่อน':''} className="w-full text-xs font-semibold rounded-md px-3 py-1.5 inline-flex items-center justify-center gap-1.5 disabled:opacity-40" style={{background:DEPT.service.c,color:'#0b0f17'}}>{Icon.doc} ✓ ส่งมอบงาน + ลงนาม DO + ปิดงาน</button>}
         </div>
       )}
 
-      {/* ===== DONE ===== */}
+      {/* ===== DONE + ใบรับประกัน (optional) ===== */}
       {stage===4 && (
-        <div className="rounded-md p-2.5 space-y-1.5" style={{background:'#16a34a0e'}}>
+        <div className="rounded-md p-2.5 space-y-2" style={{background:'#16a34a0e'}}>
           <div className="text-[12px] text-emerald-600 font-medium">✓ ส่งมอบงานเรียบร้อย</div>
-          <div className="text-[11px] text-slate-400">ทีม: {(pl.team_ids||[]).map(memName).join(', ')||'-'} · ปฏิบัติงานจริง {pl.actual_start||'-'} → {pl.actual_end||'-'}</div>
+          <div className="text-[11px] text-slate-400">ทีม: {(pl.team_ids||[]).map(memName).join(', ')||'-'} · ปฏิบัติงานจริง {pl.actual_start||'-'} → {pl.actual_end||'-'}{pl.received_by?` · ผู้รับมอบ ${pl.received_by} (${pl.received_date||'-'})`:''}</div>
           {pl.proof_url && <a href={pl.proof_url} target="_blank" rel="noreferrer" className="text-[11px] text-sky-600 hover:underline">📎 {pl.proof_name||'ไฟล์ส่งมอบ'}</a>}
           {docBtns}
+          {/* ใบรับประกัน */}
+          <div className="border-t border-slate-700/40 pt-2">
+            {pl.warranty_no ? (
+              <div className="flex items-center justify-between gap-2 flex-wrap text-[11px]"><span className="text-slate-300">🛡️ รับประกันเลขที่ <b className="mono">{pl.warranty_no}</b>{pl.warranty_until?` · ถึง ${pl.warranty_until}`:''}</span><button onClick={()=>printServiceDoc('warranty',pl,project,state)} className="text-[11px] rounded-md px-2.5 py-1 border" style={{borderColor:'#8b5cf666',color:'#8b5cf6'}}>🖨️ ใบรับประกัน</button></div>
+            ) : canEdit ? (
+              <div className="space-y-2"><div className="text-[10px] text-slate-500">ออกใบรับประกัน (ถ้ามี)</div>
+                <div className="grid grid-cols-2 gap-2"><div><Lbl>เลขที่รับประกัน</Lbl><Inp value={wNo} onChange={setWNo} placeholder="WR-YYYY-..."/></div><div><Lbl>รับประกันถึง</Lbl><Inp type="date" value={wUntil} onChange={setWUntil}/></div></div>
+                <button onClick={()=>onWarranty(pl.id, { warranty_no:wNo.trim(), warranty_until:wUntil||null })} disabled={!wNo.trim()} className="text-[11px] font-semibold rounded-md px-3 py-1.5 disabled:opacity-40" style={{background:'#8b5cf6',color:'#fff'}}>🛡️ ออกใบรับประกัน + แจ้งเตือน</button>
+              </div>
+            ) : null}
+          </div>
         </div>
       )}
     </div>
@@ -2745,20 +2782,27 @@ function App(){
   /* Service flow — 3 ขั้น กดแล้วเลื่อนอัตโนมัติ */
   // ขั้น 1: รับงาน (รับใบเบิก+แผน+D/O+Handover)
   const handleSvcReceive = run(async (planId) => { await db.ackPlan(planId); await completeSvcTask(planId, 0); });
-  // ขั้น 2: จัดทีม 1-2 คน + actual Start/End → ลงคิวปฏิทินตามเวลาจริง
-  const handleSvcAssign = run(async (planId, teamIds, aStart, aEnd) => {
-    await db.updatePlan(planId, { team_ids:teamIds, actual_start:aStart||null, actual_end:aEnd||null });
+  // ขั้น 2: จัดทีม 1-2 คน + actual Start/End + เช็กลิสต์ → ลงคิวปฏิทินตามเวลาจริง
+  const handleSvcAssign = run(async (planId, teamIds, aStart, aEnd, checklist) => {
+    await db.updatePlan(planId, { team_ids:teamIds, actual_start:aStart||null, actual_end:aEnd||null, checklist:checklist||{} });
     const pl=(state.plans||[]).find(x=>x.id===planId);
     if(pl){ for(const mid of (teamIds||[])){ await db.addSchedule({ project_id:pl.project_id, member_id:mid, start_date:aStart||pl.plan_start, end_date:aEnd||pl.plan_end, note:'ปฏิบัติงานจริง '+(pl.wd_no||'') }); } }
     await completeSvcTask(planId, 1);
   });
-  // ขั้น 3: ส่งมอบงาน + แนบไฟล์ → ลงนาม DO + ปิดงานบริการ
-  const handleSvcDeliver = run(async (planId, projectId, proof) => {
-    await db.updatePlan(planId, { delivered:true, proof_name:(proof&&proof.name)||null, proof_url:(proof&&proof.url)||null });
+  // ขั้น 3: ส่งมอบ + ลูกค้าเซ็นรับ + แนบไฟล์ → ลงนาม DO + ปิดงานบริการ
+  const handleSvcDeliver = run(async (planId, projectId, info) => {
+    info=info||{};
+    await db.updatePlan(planId, { delivered:true, received_by:info.received_by||null, received_date:info.received_date||null, proof_name:(info.proof&&info.proof.name)||null, proof_url:(info.proof&&info.proof.url)||null });
     await db.signDO(projectId);
     await completeSvcTask(planId, 2);
-    const p=state.projects.find(x=>x.id===projectId);
-    notify('do', '✅ ลงนาม DO (ส่งมอบเสร็จ)', `${p?.project_stock_no||''} (Job ${p?.job_no||''})\n${p?.name||''}`);
+    const p=state.projects.find(x=>x.id===projectId); const pl=(state.plans||[]).find(x=>x.id===planId);
+    notify('do', '✅ ลงนาม DO (ส่งมอบเสร็จ)', `${p?.project_stock_no||''} (Job ${p?.job_no||''})\n${p?.name||''}\nผู้รับมอบ: ${info.received_by||'-'} (${info.received_date||'-'})`);
+  });
+  // (optional) ออกใบรับประกัน
+  const handleSvcWarranty = run(async (planId, payload) => {
+    await db.updatePlan(planId, { warranty_no:payload.warranty_no||null, warranty_until:payload.warranty_until||null });
+    const pl=(state.plans||[]).find(x=>x.id===planId); const p=pl&&state.projects.find(x=>x.id===pl.project_id);
+    notify('warranty', '🛡️ ออกใบรับประกัน', `${payload.warranty_no||''}\n${p?.project_stock_no||''} (Job ${p?.job_no||''})\nรับประกันถึง ${payload.warranty_until||'-'}`);
   });
 
   /* Admin (Setting) */
@@ -2812,7 +2856,7 @@ function App(){
           {page==='project-inventory' && <ProjectInventory state={state} role={role} onWithdraw={handleWithdrawSR}/>}
           {page==='purchasing' && <Procurement state={state} role={role} onUpdateBom={handleUpdateBom} onCreatePO={handleCreatePO} onOpenPO={setPoProject} genPoNo={genPoNo}/>}
           {page==='purchasing-done' && <PurchasingDone state={state}/>}
-          {page==='service'    && <FieldService state={state} role={role} onAddMember={handleAddMember} onRemoveMember={handleRemoveMember} onAddSchedule={handleAddSchedule} onRemoveSchedule={handleRemoveSchedule} onReceive={handleSvcReceive} onAssign={handleSvcAssign} onDeliver={handleSvcDeliver}/>}
+          {page==='service'    && <FieldService state={state} role={role} onAddMember={handleAddMember} onRemoveMember={handleRemoveMember} onAddSchedule={handleAddSchedule} onRemoveSchedule={handleRemoveSchedule} onReceive={handleSvcReceive} onAssign={handleSvcAssign} onDeliver={handleSvcDeliver} onWarranty={handleSvcWarranty}/>}
           {page==='workflow'   && <WorkflowBoard state={state} project={activeProject} role={role} onTask={handleTask} onAddTask={handleAddTask} onHandoff={handleHandoff} onReject={handleReject} onAck={handleAck} onPickStock={(id)=>setActiveId(id)}/>}
           {page==='settings'   && role==='developer' && <Settings state={state} role={role} onSetRole={handleSetRole} onRevoke={handleRevoke} onDeleteRow={handleDeleteRow} onUpdateRow={handleUpdateRow} onResetData={handleResetData} notifLog={notifLog} onSaveNotif={handleSaveNotif} onTestNotif={handleTestNotif}/>}
         </main>

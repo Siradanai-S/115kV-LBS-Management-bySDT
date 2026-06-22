@@ -217,6 +217,14 @@ ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS proof_name   TEXT;
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS proof_url    TEXT;
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS delivered    BOOLEAN DEFAULT FALSE;
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS sr_id        BIGINT REFERENCES sales_requisitions(id) ON DELETE SET NULL;   -- เบิกอ้าง SR-No.
+-- Service flow: เช็กลิสต์หน้างาน + ลูกค้าเซ็นรับ + ใบรับประกัน
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS checklist      JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS received_by    VARCHAR(120);
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS received_date  DATE;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS warranty_no    VARCHAR(60);
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS warranty_until DATE;
+-- เพิ่มสวิตช์แจ้งเตือน event ใบรับประกัน
+ALTER TABLE notif_settings ADD COLUMN IF NOT EXISTS ev_warranty BOOLEAN DEFAULT TRUE;
 
 -- คลังสินค้าจริง (Inventory) — บันทึกรับเข้า/เบิกออกด้วยมือ · project_id NULL = สต็อกกลาง
 CREATE TABLE IF NOT EXISTS inventory_moves (
@@ -571,7 +579,7 @@ CREATE TABLE IF NOT EXISTS notif_settings (
   email_to      TEXT,                                     -- อีเมลผู้รับ คั่นด้วย ,
   function_url  TEXT,                                     -- Edge Function endpoint
   ev_sr BOOLEAN DEFAULT TRUE, ev_stock BOOLEAN DEFAULT TRUE, ev_bom BOOLEAN DEFAULT TRUE,
-  ev_po BOOLEAN DEFAULT TRUE, ev_handover BOOLEAN DEFAULT TRUE, ev_do BOOLEAN DEFAULT TRUE,
+  ev_po BOOLEAN DEFAULT TRUE, ev_handover BOOLEAN DEFAULT TRUE, ev_do BOOLEAN DEFAULT TRUE, ev_warranty BOOLEAN DEFAULT TRUE,
   updated_at    TIMESTAMPTZ DEFAULT NOW()
 );
 INSERT INTO notif_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
