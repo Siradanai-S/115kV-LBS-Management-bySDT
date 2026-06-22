@@ -228,11 +228,13 @@ CREATE TABLE IF NOT EXISTS inventory_moves (
   po_no       VARCHAR(40),                                          -- อ้างอิง PO (กรณีรับตาม PO)
   qty         INT NOT NULL DEFAULT 0,
   note        TEXT,
+  "by"        VARCHAR(60),                                          -- ฝ่ายที่บันทึก (label เช่น Project/Service) ที่แอปส่งมา
   by_user     UUID DEFAULT auth.uid(),
   created_at  TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_inv_code    ON inventory_moves (epicor_code);
 CREATE INDEX IF NOT EXISTS idx_inv_project ON inventory_moves (project_id);
+ALTER TABLE inventory_moves ADD COLUMN IF NOT EXISTS "by" VARCHAR(60);   -- migration (ฐานข้อมูลเดิม)
 
 -- บล็อกการเบิก/โอนออกเกินยอดคงเหลือ ณ ที่ตั้งนั้น (สต็อกห้ามติดลบ)
 CREATE OR REPLACE FUNCTION inv_block_negative()
