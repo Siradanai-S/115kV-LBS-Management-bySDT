@@ -216,6 +216,7 @@ ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS actual_end   DATE;
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS proof_name   TEXT;
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS proof_url    TEXT;
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS delivered    BOOLEAN DEFAULT FALSE;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS sr_id        BIGINT REFERENCES sales_requisitions(id) ON DELETE SET NULL;   -- เบิกอ้าง SR-No.
 
 -- คลังสินค้าจริง (Inventory) — บันทึกรับเข้า/เบิกออกด้วยมือ · project_id NULL = สต็อกกลาง
 CREATE TABLE IF NOT EXISTS inventory_moves (
