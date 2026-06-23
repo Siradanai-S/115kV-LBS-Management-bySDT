@@ -463,6 +463,14 @@ const db = {
       demo.handoffs.push({ id:nid(), project_id:projectId, from_phase:fromPhase, to_phase:toPhase, action:'forward', by_dept:byDept, created_at:new Date().toISOString() }); return; }
     ok(await sb.rpc('handoff_project', { p_id:projectId }));
   },
+  // ปุ่มเดียวจบ: ปิดงานที่เหลือของเฟสปัจจุบัน + ส่งต่อ (atomic ฝั่ง server)
+  async completeAndHandoff(projectId, fromPhase, toPhase, byDept){
+    if(!LIVE){
+      demo.tasks.forEach(t=>{ if(t.project_id===projectId && t.department===fromPhase && t.status!=='Completed'){ t.status='Completed'; t.updated_at=new Date().toISOString(); } });
+      Object.assign(demo.projects.find(p=>p.id===projectId), { current_phase:toPhase, phase_acked:false, updated_at:new Date().toISOString() });
+      demo.handoffs.push({ id:nid(), project_id:projectId, from_phase:fromPhase, to_phase:toPhase, action:'forward', by_dept:byDept, created_at:new Date().toISOString() }); return; }
+    ok(await sb.rpc('complete_and_handoff', { p_id:projectId }));
+  },
   async reject(projectId, fromPhase, toPhase, byDept, note){
     if(!LIVE){ Object.assign(demo.projects.find(p=>p.id===projectId), { current_phase:toPhase, phase_acked:false, updated_at:new Date().toISOString() });
       demo.handoffs.push({ id:nid(), project_id:projectId, from_phase:fromPhase, to_phase:toPhase, action:'reject', by_dept:byDept, note, created_at:new Date().toISOString() }); return; }
@@ -633,10 +641,10 @@ function roundIsSent(state, pid, n){ const it=roundItems(state,pid,n); return it
 function bomSent(state, p){ const it=state.bom.filter(b=>b.project_id===p.id); return it.length>0 && it.every(b=>b.is_sent); }
 const bomStatusOf = (state,p) => bomSent(state,p) ? 'Sent to Purchasing' : 'Draft';
 
-function phaseGate(project, state){
+// เงื่อนไข "ข้อมูล" ของเฟส (ไม่รวมความครบของ task) — ใช้เปิดปุ่ม "เสร็จ & ส่งต่อ" (งานที่เหลือ auto-complete)
+function phaseDataGate(project, state){
   const pid=project.id, ph=project.current_phase;
   if(ph==='closed') return { ok:false, reason:'โครงการปิดงานแล้ว' };
-  if(!phaseDeptDone(state, pid, ph)) return { ok:false, reason:'งานในเฟสนี้ยังไม่ครบทุกข้อ' };
   if(ph==='project'){
     if(!project.job_no) return { ok:false, reason:'ยังไม่มี Job No.' };
     const items=state.bom.filter(b=>b.project_id===pid);
@@ -651,6 +659,12 @@ function phaseGate(project, state){
   if(ph==='service'){
     if(!project.do_signed) return { ok:false, reason:'ยังไม่ได้ลงนาม DO' };
   }
+  return { ok:true, reason:'' };
+}
+// gate เต็ม (ข้อมูล + งานครบทุกข้อ) — ใช้ตรวจสถานะรวม
+function phaseGate(project, state){
+  const d=phaseDataGate(project, state); if(!d.ok) return d;
+  if(!phaseDeptDone(state, project.id, project.current_phase)) return { ok:false, reason:'งานในเฟสนี้ยังไม่ครบทุกข้อ' };
   return { ok:true, reason:'' };
 }
 // งานเข้าใหม่ของแต่ละฝ่าย
@@ -1091,9 +1105,11 @@ function PhaseRibbon({project, state, role, onHandoff, onReject, onAck}){
   const cur = phaseIndex(project.current_phase); const pr = projProgress(state.tasks, project.id);
   const ph = project.current_phase;
   const owner = canDept(role, ph) && ph!=='closed';
-  const gate = phaseGate(project, state);
+  const gate = phaseDataGate(project, state);          // ปุ่มเปิดด้วยเงื่อนไข "ข้อมูล" — งาน task ที่เหลือจะถูกปิดอัตโนมัติตอนกด
   const nxt = nextPhase(ph), prev = prevPhase(ph);
-  const nxtLabel = nxt==='closed' ? 'ปิดงาน' : (DEPT[nxt]?DEPT[nxt].label:'');
+  const toClose = nxt==='closed';
+  const pendingTasks = state.tasks.filter(t=>t.project_id===project.id && t.department===ph && t.status!=='Completed').length;
+  const btnLabel = toClose ? 'ปิดงานโครงการ' : `เสร็จ & ส่งต่อ → ${DEPT[nxt]?DEPT[nxt].label:''}`;
   const needAck = owner && !project.phase_acked;
   const [rejOpen,setRejOpen]=useState(false); const [reason,setReason]=useState('');
   return (
@@ -1117,11 +1133,12 @@ function PhaseRibbon({project, state, role, onHandoff, onReject, onAck}){
         <div className="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between gap-2">
           <div>{prev && <button onClick={()=>setRejOpen(o=>!o)} className="text-xs font-medium rounded-md px-3 py-1.5 border border-slate-700 text-slate-300 hover:bg-slate-800/60">← ตีกลับ</button>}</div>
           <div className="flex items-center gap-2.5">
-            {!gate.ok && <span className="text-[11px] text-slate-500">⚠ {gate.reason}</span>}
-            <button onClick={()=>onHandoff(project)} disabled={!gate.ok} title={gate.ok?'':gate.reason}
+            {!gate.ok ? <span className="text-[11px] text-slate-500">⚠ {gate.reason}</span>
+              : pendingTasks>0 && <span className="text-[11px] text-slate-500">ปิดงานที่เหลือ {pendingTasks} ข้อให้อัตโนมัติ</span>}
+            <button onClick={()=>onHandoff(project)} disabled={!gate.ok} title={gate.ok?(toClose?'ปิดงานโครงการ':'ปิดงานที่เหลือทั้งหมด แล้วส่งต่อฝ่ายถัดไป'):gate.reason}
               className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-4 py-1.5 transition"
               style={ gate.ok ? {background:DEPT[ph].c,color:'#0b0f17'} : {background:'#e2e8f0',color:'#94a3b8',cursor:'not-allowed'} }>
-              {Icon.send} ส่งงานต่อ → {nxtLabel}
+              {toClose ? '🏁' : Icon.send} {btnLabel}
             </button>
           </div>
         </div>
@@ -1934,7 +1951,7 @@ function ProjectInventory({state, role, onWithdraw}){
   );
 }
 
-function FieldService({state, role, onAddMember, onRemoveMember, onAddSchedule, onRemoveSchedule, onReceive, onAssign, onDeliver, onWarranty}){
+function FieldService({state, role, onAddMember, onRemoveMember, onAddSchedule, onRemoveSchedule, onReceive, onAssign, onDeliver, onWarranty, onClose}){
   const canEdit = role==='developer' || role==='service';
   const jobs = (state.plans||[]).filter(pl=>pl.sent);   // ใบเบิกที่ฝ่ายโครงการส่งมา = งานบริการ
   const sorted = [...jobs].sort((a,b)=> (a.delivered?1:0)-(b.delivered?1:0) || String(a.plan_end||'').localeCompare(String(b.plan_end||'')));
@@ -1945,7 +1962,7 @@ function FieldService({state, role, onAddMember, onRemoveMember, onAddSchedule, 
           <span style={{color:DEPT.service.c}}>🛠️</span><h3 className="text-slate-200 font-semibold">งานบริการ (ตามใบเบิก) — ทำตามขั้นตอน</h3><span className="text-[11px] text-slate-500">({jobs.filter(j=>!j.delivered).length} ค้าง / {jobs.length} ทั้งหมด)</span>
         </div>
         {jobs.length===0 ? <div className="p-8 text-center text-slate-500 text-sm">ยังไม่มีงาน — รอฝ่ายโครงการส่งใบเบิก+แผนงานเข้ามา</div> :
-          <div className="p-3 space-y-3">{sorted.map(pl=> <ServiceJob key={pl.id} pl={pl} project={state.projects.find(p=>p.id===pl.project_id)} state={state} canEdit={canEdit} onReceive={onReceive} onAssign={onAssign} onDeliver={onDeliver} onWarranty={onWarranty}/>)}</div>}
+          <div className="p-3 space-y-3">{sorted.map(pl=> <ServiceJob key={pl.id} pl={pl} project={state.projects.find(p=>p.id===pl.project_id)} state={state} canEdit={canEdit} onReceive={onReceive} onAssign={onAssign} onDeliver={onDeliver} onWarranty={onWarranty} onClose={onClose}/>)}</div>}
       </Card>
       <ServiceTeam state={state} canEdit={canEdit} onAddMember={onAddMember} onRemoveMember={onRemoveMember} onAddSchedule={onAddSchedule} onRemoveSchedule={onRemoveSchedule}/>
     </div>
@@ -1954,7 +1971,7 @@ function FieldService({state, role, onAddMember, onRemoveMember, onAddSchedule, 
 // การ์ดงานบริการ 1 ใบ — flow 3 ขั้น กดแล้วเลื่อนขั้นอัตโนมัติ: รับงาน → จัดทีม+เวลาจริง → ส่งมอบ+แนบไฟล์
 const SVC_STEPS = ['รับงาน','ปฏิบัติงาน (ทีม+เช็กลิสต์)','ส่งมอบ & เซ็นรับ'];
 const SVC_CHECK = [['recv','ตรวจรับวัสดุหน้างาน'],['install','ติดตั้ง'],['commission','ทดสอบ (Commissioning)']];
-function ServiceJob({pl, project, state, canEdit, onReceive, onAssign, onDeliver, onWarranty}){
+function ServiceJob({pl, project, state, canEdit, onReceive, onAssign, onDeliver, onWarranty, onClose}){
   const members = (state.team||[]).filter(m=>m.active);
   const custs = (state.customers||[]).filter(c=>c.sr_id===pl.sr_id);
   const srNo = (state.srs.find(s=>s.id===pl.sr_id)||{}).sr_no;
@@ -2068,6 +2085,13 @@ function ServiceJob({pl, project, state, canEdit, onReceive, onAssign, onDeliver
               </div>
             ) : null}
           </div>
+          {/* ปิดงานโครงการ — เมื่อยังอยู่เฟส service และเซ็น DO แล้ว (ปิดได้จบในหน้านี้ ไม่ต้องไปหน้า Workflow) */}
+          {canEdit && onClose && project && project.current_phase==='service' && project.do_signed && (
+            <div className="border-t border-slate-700/40 pt-2">
+              <button onClick={()=>onClose(project)} className="w-full text-xs font-semibold rounded-md px-3 py-1.5 inline-flex items-center justify-center gap-1.5" style={{background:'#16a34a',color:'#fff'}}>🏁 ปิดงานโครงการ (Closed)</button>
+              <div className="text-[10px] text-slate-500 mt-1 text-center">ปิดงานฝ่ายบริการที่เหลือให้อัตโนมัติ แล้วเปลี่ยนสถานะโครงการเป็น "ปิดงาน"</div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -2827,7 +2851,7 @@ function App(){
   const handleDeleteMovement = run(async (id) => { await db.deleteMovement(id); });
 
   /* Linkage */
-  const handleHandoff = run(async (project) => { const g=phaseGate(project,state); if(!g.ok) return; const nxt=nextPhase(project.current_phase); if(!nxt) return; await db.handoff(project.id, project.current_phase, nxt, role); });
+  const handleHandoff = run(async (project) => { const g=phaseDataGate(project,state); if(!g.ok) throw new Error(g.reason); const nxt=nextPhase(project.current_phase); if(!nxt) return; await db.completeAndHandoff(project.id, project.current_phase, nxt, role); });
   const handleReject = run(async (project, note) => { const prev=prevPhase(project.current_phase); if(!prev) return; await db.reject(project.id, project.current_phase, prev, role, note); });
   const handleAck = run(async (projectId) => { await db.ackPhase(projectId); });
   const goProject = (id) => { setActiveId(id); setPage('workflow'); };
@@ -2856,7 +2880,7 @@ function App(){
           {page==='project-inventory' && <ProjectInventory state={state} role={role} onWithdraw={handleWithdrawSR}/>}
           {page==='purchasing' && <Procurement state={state} role={role} onUpdateBom={handleUpdateBom} onCreatePO={handleCreatePO} onOpenPO={setPoProject} genPoNo={genPoNo}/>}
           {page==='purchasing-done' && <PurchasingDone state={state}/>}
-          {page==='service'    && <FieldService state={state} role={role} onAddMember={handleAddMember} onRemoveMember={handleRemoveMember} onAddSchedule={handleAddSchedule} onRemoveSchedule={handleRemoveSchedule} onReceive={handleSvcReceive} onAssign={handleSvcAssign} onDeliver={handleSvcDeliver} onWarranty={handleSvcWarranty}/>}
+          {page==='service'    && <FieldService state={state} role={role} onAddMember={handleAddMember} onRemoveMember={handleRemoveMember} onAddSchedule={handleAddSchedule} onRemoveSchedule={handleRemoveSchedule} onReceive={handleSvcReceive} onAssign={handleSvcAssign} onDeliver={handleSvcDeliver} onWarranty={handleSvcWarranty} onClose={handleHandoff}/>}
           {page==='workflow'   && <WorkflowBoard state={state} project={activeProject} role={role} onTask={handleTask} onAddTask={handleAddTask} onHandoff={handleHandoff} onReject={handleReject} onAck={handleAck} onPickStock={(id)=>setActiveId(id)}/>}
           {page==='settings'   && role==='developer' && <Settings state={state} role={role} onSetRole={handleSetRole} onRevoke={handleRevoke} onDeleteRow={handleDeleteRow} onUpdateRow={handleUpdateRow} onResetData={handleResetData} notifLog={notifLog} onSaveNotif={handleSaveNotif} onTestNotif={handleTestNotif}/>}
         </main>
