@@ -39,7 +39,13 @@ service_team · handoff_log(audit) · user_roles · inventory_moves(epicor_code,
 - **1 SR = หลายลูกค้า · 1 Project Stock = หลาย SR** (รวม 2 ชั้น)
 - **target_lbs** บน projects = จำนวน LBS เป้าหมาย (ถามตอนสร้าง) ใช้ reconcile กับยอด LBS ใน BOM
 - **PO/สัญญา ติดตามราย "ลูกค้า"** — `customers.cust_po_no` + `customers.contract_status` (ย้ายจากระดับ SR เดิม → แก้รายลูกค้าในตารางเส้นเทาที่หน้า Sales Requisition) · `customers.term_of_payment` (เงื่อนไขชำระเงิน) · ฟอร์มเพิ่มลูกค้า: **สถานที่ติดตั้งกดเพิ่มได้หลายแห่ง** (เก็บใน `location` คั่นด้วย " / ")
-- **BOM หลายครั้ง/รอบต่อ Stock** — `bom_items.round` (int, ครั้งที่) + `bom_items.is_sent` (bool ส่งจัดซื้อแยกรายครั้ง) · ชื่อแสดง = `bom_no (ครั้งN)` · `project.bom_status` เลิกเป็นแหล่งจริง → derive ด้วย `bomSent()`/`bomStatusOf()`; gate project→purchasing = ทุก bom_items.is_sent=true
+- **BOM หลายครั้ง/รอบต่อ Stock** — `bom_items.round` (int, ครั้งที่) + `bom_items.is_sent` (bool ส่งจัดซื้อแยกรายครั้ง) · ชื่อแสดง (review v3) = `BOM-{project_stock_no} (ครั้งN)` (`roundName`) · การ์ด `BomRoundCard` **พับได้ เริ่มต้นซ่อน** (state `show`) · `project.bom_status` เลิกเป็นแหล่งจริง → derive ด้วย `bomSent()`/`bomStatusOf()`; gate project→purchasing = ทุก bom_items.is_sent=true
+- **Currency BOM (review v3):** `CURRENCY=['THB','USD','EUR']` · `lineTHB`/แสดงผลรองรับ EUR (`curSym`) · เลือก USD/EUR → **auto-fetch เรตปัจจุบัน** `fetchFxToTHB()` (open.er-api.com, ไม่ใช้ key) เติมช่อง FX + ปุ่ม 🔄 ดึงซ้ำ + แก้มือทับได้ · ล่ม/CORS → `FX_FALLBACK`
+- **Budget card (review v3):** หัวข้อ = `Project Budget {stock_no}` · ลบช่อง Margin%/กำไรเป็นเงิน/กระแสเงินสด (คอลัมน์ DB ยังอยู่) เหลือ งบประมาณรวม + มูลค่าวัสดุ BOM
+- **Sales SR (review v3):** 2 กล่อง (รอสร้าง/สร้างแล้ว) พับได้ เริ่มต้นซ่อน · **ProjectInventory** การ์ดคลังต่อ Stock เริ่มต้นซ่อน
+- **Purchasing PO (review v3):** ฟอร์มออก PO เริ่มเลข PO **ว่าง** (เลิก auto-gen) → บังคับกรอกเลข PO เองก่อนบันทึก (ปุ่ม disabled ถ้าว่าง)
+- **(fix) จอขาวตอนเบิก SR:** commit ลบ dead code เผลอลบ `WithdrawSR`+`PLAN_STATUS` (ProjectInventory ใช้อยู่) → กู้กลับแล้ว
+- **LINE webhook (review v3):** `line-webhook.ts` ยกเลิกการตอบ groupId กลับเข้าแชท (ได้ id แล้ว: `C30dde10e5b1d4ce984a85016b79204cd`) เหลือ log เงียบ ๆ + ตอบ 200
 - **Serial LVB/OM ของ BOM** — `bom_items.serial_lvb` + `serial_om` (กรอกในฟอร์ม BOM **เฉพาะเมื่อ Category=LBS**)
 
 ## 5) ฟีเจอร์ที่ทำเสร็จแล้ว (ทั้งหมด)
@@ -74,6 +80,7 @@ service_team · handoff_log(audit) · user_roles · inventory_moves(epicor_code,
 - service→closed: **do_signed** · ปุ่ม **"🏁 ปิดงานโครงการ"** โผล่ทั้งใน PhaseRibbon และในการ์ด Service (`ServiceJob` stage 4 เมื่อ phase=service + do_signed) — `onClose=handleHandoff`
 - ใบเบิก (Project→Service): **ไม่มี reject plan** — แก้ส่วนต่างที่ Service ตอนจัดทีม (Actual: เวลาจริง start/end + เช็กลิสต์)
 - reject (ตีกลับเฟส): ต้องมีเหตุผล · ack (รับงาน): **คงปุ่มไว้** เคลียร์ badge · ทุกอย่างลง `handoff_log`
+- **(review v3) ย้าย handoff มาบนการ์ด Stock:** ลบปุ่ม "Workflow →" ออกจากการ์ด `ProjectStocks` → ฝัง `<PhaseRibbon>` (ปุ่มเสร็จ&ส่งต่อ/ปิดงาน/ตีกลับ/รับงาน) ในส่วนกางของการ์ดโดยตรง · หน้า Workflow Board (`page==='workflow'`) ยังเข้าได้ผ่านกระดิ่งแจ้งเตือน (secondary)
 
 ## 8) Deploy (สรุป)
 1. Supabase: รัน `schema.sql` → เปิด Email Auth (ปิด Confirm email) → (แนะนำ) สร้าง bucket `po-pdfs` public (ดู LIVE-OPS.md #2)

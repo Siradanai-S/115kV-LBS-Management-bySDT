@@ -37,22 +37,9 @@ Deno.serve(async (req) => {
     const label = src.groupId ? "groupId" : src.roomId ? "roomId" : "userId";
     console.log(`[LINE ${ev.type}] ${kind} → ${label}: ${id}`);
 
-    // ตอบ id กลับเข้าแชท (ต้องมี replyToken + token) — เห็นใน LINE ทันที
-    const replyToken = ev.replyToken;
-    if (replyToken && TOKEN) {
-      const text = src.groupId
-        ? `✅ groupId ของกลุ่มนี้คือ:\n${src.groupId}\n\nนำไปวางในช่อง “ส่งถึง” ที่หน้า Setting → การแจ้งเตือน`
-        : src.roomId
-        ? `roomId: ${src.roomId}`
-        : `userId: ${src.userId}`;
-      try {
-        await fetch("https://api.line.me/v2/bot/message/reply", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${TOKEN}` },
-          body: JSON.stringify({ replyToken, messages: [{ type: "text", text }] }),
-        });
-      } catch (e) { console.log("reply error:", String(e)); }
-    }
+    // ── ยกเลิกการตอบ id กลับเข้าแชทแล้ว ──
+    // ได้ groupId ของกลุ่มเป้าหมายเรียบร้อย: C30dde10e5b1d4ce984a85016b79204cd
+    // (วางไว้ในช่อง "ส่งถึง" ที่ Setting → การแจ้งเตือน) · ฟังก์ชันนี้เหลือแค่ log เงียบ ๆ ตอบ 200
   }
 
   // LINE ต้องการ HTTP 200 เสมอ
