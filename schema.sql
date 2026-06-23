@@ -418,6 +418,24 @@ BEGIN
   RETURN nxt;
 END $$;
 
+-- เสร็จ & ส่งต่อ (ปุ่มเดียวจบ) — ปิดงานที่เหลือของเฟสปัจจุบันให้อัตโนมัติ แล้วส่งต่อผ่าน gate เดิม
+-- atomic: ถ้า gate ข้อมูลไม่ผ่าน (เช่น LBS/Delivered/DO) → ทั้งธุรกรรม rollback (งานไม่ถูก mark เสร็จค้าง)
+CREATE OR REPLACE FUNCTION complete_and_handoff(p_id BIGINT)
+RETURNS phase_t LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE cur phase_t; mydept department_t;
+BEGIN
+  SELECT current_phase INTO cur FROM projects WHERE id = p_id;
+  mydept := current_department();
+  IF NOT (is_developer() OR mydept::text = cur::text) THEN
+    RAISE EXCEPTION 'ฝ่ายของคุณไม่ใช่เจ้าของเฟสปัจจุบัน (%)', cur;
+  END IF;
+  -- ปิดงานที่เหลือของเฟสนี้ให้เสร็จทั้งหมด (แทนการติ๊กทีละข้อ)
+  UPDATE department_tasks SET status='Completed'
+    WHERE project_id = p_id AND department::text = cur::text AND status <> 'Completed';
+  -- ส่งต่อด้วย logic+gate เดิม (ตรวจ Job/BOM/LBS/Delivered/DO ครบ)
+  RETURN handoff_project(p_id);
+END $$;
+
 CREATE OR REPLACE FUNCTION reject_project(p_id BIGINT, p_note TEXT)
 RETURNS phase_t LANGUAGE plpgsql SECURITY DEFINER AS $$
 DECLARE cur phase_t; prv phase_t; mydept department_t;
@@ -729,5 +747,6 @@ ON CONFLICT (user_id) DO UPDATE SET is_developer = TRUE, department = 'developer
 --  การเชื่อมกับ client (index.html):
 --    - createStock → RPC create_stock_multi(sr_ids[], stock_no, job_no, bom_no, name)
 --    - ส่งงาน/ตีกลับ/รับงาน → RPC handoff_project / reject_project / ack_phase (มี gate ครบฝั่ง server)
+--    - ปุ่มเดียวจบ "เสร็จ & ส่งต่อ" / "ปิดงานโครงการ" → RPC complete_and_handoff (ปิดงานเฟส auto + ส่งต่อ atomic)
 --    - createSR / sendBom / PO / team / schedule → table ops (RLS ครอบคลุม)
 -- =====================================================================

@@ -65,12 +65,15 @@ service_team · handoff_log(audit) · user_roles · inventory_moves(epicor_code,
 - LIVE: บังคับจริงด้วย RLS + RPC SECURITY DEFINER · role ล็อกตาม `user_roles` · DEMO: สลับ role อิสระเพื่อทดสอบ
 - ผู้ใช้ใหม่ไม่มี role → หน้า Pending จนกว่า dev อนุมัติในแท็บ Setting
 
-## 7) Workflow เฟส + Gate (บังคับฝั่ง server ใน RPC handoff_project)
+## 7) Workflow เฟส + Gate (บังคับฝั่ง server ใน RPC)
 `project → purchasing → service → closed`
-- project→purchasing: งานครบ + Job No. + มี BOM + **bom_status='Sent to Purchasing'** + **bomLBS = target_lbs**
-- purchasing→service: งานครบ + ทุก bom_items.po_status='Delivered'
-- service→closed: งานครบ + **do_signed**
-- reject (ตีกลับ): ต้องมีเหตุผล · ack (รับงาน): เคลียร์ badge · ทุกอย่างลง `handoff_log`
+- **ปุ่มเดียวจบ "เสร็จ & ส่งต่อ" / "ปิดงานโครงการ"** (review v2): กดครั้งเดียว → ระบบ **ปิดงาน task ที่เหลือของเฟสให้อัตโนมัติ** + ตรวจ gate ข้อมูล + ส่งต่อ ใน RPC `complete_and_handoff` (atomic; gate ไม่ผ่าน → rollback ทั้งหมด ไม่ค้างงานที่ mark เสร็จ)
+- ปุ่มเปิด/ปิดด้วย **`phaseDataGate`** (เงื่อนไขข้อมูลล้วน ไม่นับ task) · `phaseGate` = ข้อมูล+งานครบ (ใช้ตรวจสถานะรวม)
+- project→purchasing: Job No. + มี BOM + ทุก bom_items.is_sent + **bomLBS = target_lbs**
+- purchasing→service: ทุก bom_items.po_status='Delivered'
+- service→closed: **do_signed** · ปุ่ม **"🏁 ปิดงานโครงการ"** โผล่ทั้งใน PhaseRibbon และในการ์ด Service (`ServiceJob` stage 4 เมื่อ phase=service + do_signed) — `onClose=handleHandoff`
+- ใบเบิก (Project→Service): **ไม่มี reject plan** — แก้ส่วนต่างที่ Service ตอนจัดทีม (Actual: เวลาจริง start/end + เช็กลิสต์)
+- reject (ตีกลับเฟส): ต้องมีเหตุผล · ack (รับงาน): **คงปุ่มไว้** เคลียร์ badge · ทุกอย่างลง `handoff_log`
 
 ## 8) Deploy (สรุป)
 1. Supabase: รัน `schema.sql` → เปิด Email Auth (ปิด Confirm email) → (แนะนำ) สร้าง bucket `po-pdfs` public (ดู LIVE-OPS.md #2)
@@ -107,7 +110,7 @@ service_team · handoff_log(audit) · user_roles · inventory_moves(epicor_code,
 | ~62 | CONSTANTS — DEPT(สี/ป้ายฝ่าย), PHASES, TASK_TEMPLATE, CURRENCY, OUT_REASONS ฯลฯ |
 | ~114 | HELPERS — `baht/bahtShort/daysUntil/num/nextSeq`, `downloadCSV`(128), `exportXLSX`(134, SheetJS) |
 | ~146 | `seedDemo()` — ข้อมูลจำลองทั้งหมด (customers/srs/projects/tasks/bom/pos/team/schedule/plans/handoffs/users/inventory) |
-| ~299 | `const db = {…}` — **data layer DEMO/LIVE ทุก method** (loadAll 300, createSR 337, createStock 354, createPO 379, addMovements 413, markBomDelivered 415, setUserRole 407, handoff/reject/ackPhase 418-428 ฯลฯ) |
+| ~299 | `const db = {…}` — **data layer DEMO/LIVE ทุก method** (loadAll 300, createSR 337, createStock 354, createPO 379, addMovements 413, markBomDelivered 415, setUserRole 407, handoff/completeAndHandoff/reject/ackPhase 418-440 ฯลฯ) |
 
 **Atoms / Logic helpers**
 | บรรทัด | สิ่งที่อยู่ |
