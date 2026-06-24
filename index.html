@@ -1040,17 +1040,19 @@ const SALES_BLANK = { name:'', customer_type:'ราชการ', work_type:'Su
 const contractColor = s => s==='ทำสัญญาแล้ว'?'#16a34a':s==='ได้รับ PO แล้ว'?'#3b82f6':'#f97316';
 // ตาราง SR + ลูกค้าในใบ (เส้นกริดสีเทา) — เลขที่ PO ลูกค้า / สถานะสัญญา แก้ไขแยก "รายชื่อลูกค้า"
 function SrTrackTable({list, state, canEdit, onUpdateCustomer, emptyMsg}){
+  const [show,setShow]=useState({});                 // sr.id -> กาง (เริ่มต้นซ่อน)
   if(list.length===0) return <div className="px-5 py-6 text-center text-slate-500 text-sm">{emptyMsg||'—'}</div>;
   const cellTh = "border border-slate-700/70 px-2.5 py-2 font-medium text-[11px] uppercase tracking-wide text-slate-500 text-left";
   const cell   = "border border-slate-700/70 px-2.5 py-2 align-top";
   return (
     <div className="p-4 space-y-4">
       {list.map(sr => { const custs=(state.customers||[]).filter(c=>c.sr_id===sr.id); const lbs=custs.reduce((s,c)=>s+num(c.lbs_qty),0);
-        const stock=state.projects.find(p=>p.id===sr.stock_id); const doneCt=custs.filter(c=>c.contract_status==='ทำสัญญาแล้ว').length; return (
+        const stock=state.projects.find(p=>p.id===sr.stock_id); const doneCt=custs.filter(c=>c.contract_status==='ทำสัญญาแล้ว').length; const isOpen=!!show[sr.id]; return (
         <div key={sr.id} className="rounded-lg border border-slate-700/70 overflow-hidden">
-          {/* หัวใบ SR */}
-          <div className="px-4 py-2.5 bg-slate-800/30 border-b border-slate-700/70 flex items-center justify-between flex-wrap gap-2">
+          {/* หัวใบ SR — คลิกเพื่อกาง/ยุบ */}
+          <div className="px-4 py-2.5 bg-slate-800/30 border-b border-slate-700/70 flex items-center justify-between flex-wrap gap-2 cursor-pointer hover:bg-slate-800/40" onClick={()=>setShow(s=>({...s,[sr.id]:!isOpen}))}>
             <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-slate-500">{isOpen?'▼':'▶'}</span>
               <span className="mono font-semibold text-slate-100">{sr.sr_no}</span>
               {stock ? <Pill color="#16a34a">✓ {stock.project_stock_no}</Pill> : <Pill color="#64748b">รอสร้าง Stock</Pill>}
               {sr.note && <span className="text-[11px] text-slate-500">· {sr.note}</span>}
@@ -1058,7 +1060,7 @@ function SrTrackTable({list, state, canEdit, onUpdateCustomer, emptyMsg}){
             <div className="text-[11px] text-slate-400">{custs.length} ลูกค้า · LBS รวม <b style={{color:'#f97316'}}>{lbs}</b> · ทำสัญญาแล้ว {doneCt}/{custs.length}</div>
           </div>
           {/* ตารางลูกค้า เส้นกริดเทา */}
-          <div className="overflow-x-auto">
+          {isOpen && <div className="overflow-x-auto">
             <table className="w-full text-sm border-collapse" style={{borderColor:'#94a3b855'}}>
               <thead><tr className="bg-slate-800/15">
                 <th className={cellTh}>ชื่อลูกค้า</th><th className={cellTh}>ประเภท</th><th className={cellTh}>งาน</th>
@@ -1080,7 +1082,7 @@ function SrTrackTable({list, state, canEdit, onUpdateCustomer, emptyMsg}){
                 ))}
               </tbody>
             </table>
-          </div>
+          </div>}
         </div>
       );})}
     </div>
@@ -1287,30 +1289,34 @@ function ProjectBom({state, project, canEdit, onAddBom, onUpdateBom, onDeleteBom
   const [extra, setExtra] = useState([]);   // รอบ BOM ใหม่ที่เพิ่งกด "ครั้งใหม่" (ยังไม่มีรายการ)
   const rounds = [...new Set([...projBomRounds(state, project.id), ...extra])].sort((a,b)=>a-b);
   const custs = stockCustomers(state, project.id);
+  const budgetLeft = num(project.total_budget) - matValue;   // งบคงเหลือ = งบรวม − มูลค่าวัสดุ BOM (ตัดอัตโนมัติ)
   return (
     <div className="space-y-4">
-      {/* Budget & Flow */}
+      {/* Budget (กว้าง) + ตรวจ LBS (compact) — เรียงตาม Flow */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card className="p-5 lg:col-span-2">
           <h3 className="text-slate-200 font-semibold mb-4 flex items-center gap-2">{Icon.layers} Project Budget <span className="mono text-[13px] text-slate-400">{project.project_stock_no}</span></h3>
           {canEdit && <div className="mb-4"><Lbl>ชื่อโครงการ (แก้ไขได้)</Lbl><EditText value={project.name} onCommit={v=>onUpdateProject(project.id,{name:v.trim()||project.name})}/></div>}
-          <div><Lbl>งบประมาณรวม (฿)</Lbl>{canEdit ? <Inp type="number" value={project.total_budget} onChange={v=>onUpdateProject(project.id,{total_budget:num(v)})}/> : <div className="text-lg font-semibold" style={{color:'#3b82f6'}}>{baht(project.total_budget)}</div>}</div>
-          <div className="mt-4 pt-4 border-t border-slate-800 grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <Field label="Project Stock No." value={project.project_stock_no} mono/><Field label="Job No." value={project.job_no||'—'} mono/>
-            <Field label="BOM No." value={project.bom_no} mono/><Field label="มูลค่าวัสดุ BOM (฿)" value={baht(matValue)} color="#f97316"/>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div><Lbl>งบประมาณรวม (฿)</Lbl>{canEdit ? <Inp type="number" value={project.total_budget} onChange={v=>onUpdateProject(project.id,{total_budget:num(v)})}/> : <div className="text-lg font-semibold" style={{color:'#3b82f6'}}>{baht(project.total_budget)}</div>}</div>
+            <Field label="มูลค่าวัสดุ BOM (฿)" value={baht(matValue)} color="#f97316"/>
+            <Field label="งบประมาณคงเหลือ (฿)" value={baht(budgetLeft)} color={budgetLeft<0?'#f43f5e':'#16a34a'}/>
+          </div>
+          <div className="mt-4 pt-4 border-t border-slate-800 grid grid-cols-3 gap-4">
+            <Field label="Project Stock No." value={project.project_stock_no} mono/><Field label="Job No." value={project.job_no||'—'} mono/><Field label="BOM No." value={project.bom_no} mono/>
           </div>
         </Card>
-        {/* LBS reconcile — เทียบ BOM กับเป้าหมาย Stock */}
-        <Card className="p-5" style={{borderColor:lbsOK?'#16a34a55':'#f43f5e55'}}>
-          <h3 className="text-slate-200 font-semibold mb-3">ตรวจสอบจำนวน LBS</h3>
-          <div className="grid grid-cols-2 gap-3 text-center items-end">
-            <div><div className="text-[11px] text-slate-500">เป้าหมาย Stock</div>{canEdit ? <EditText type="number" value={targetVal} onCommit={v=>onUpdateProject(project.id,{target_lbs:num(v)})} className="w-full text-center bg-slate-900 border border-indigo-500/50 rounded-lg text-2xl font-bold text-indigo-600 px-2 py-1 focus:outline-none"/> : <div className="text-3xl font-bold" style={{color:'#3b82f6'}}>{targetVal}</div>}</div>
-            <div><div className="text-[11px] text-slate-500">ใน BOM</div><div className="text-3xl font-bold" style={{color:'#f97316'}}>{curLBS}</div></div>
+        {/* LBS reconcile — compact */}
+        <Card className="p-3.5" style={{borderColor:lbsOK?'#16a34a55':'#f43f5e55'}}>
+          <h3 className="text-[13px] text-slate-300 font-semibold mb-2">ตรวจสอบจำนวน LBS</h3>
+          <div className="grid grid-cols-2 gap-2 text-center items-end">
+            <div><div className="text-[10px] text-slate-500">เป้าหมาย</div>{canEdit ? <EditText type="number" value={targetVal} onCommit={v=>onUpdateProject(project.id,{target_lbs:num(v)})} className="w-full text-center bg-slate-900 border border-indigo-500/50 rounded-md text-lg font-bold text-indigo-600 px-1 py-0.5 focus:outline-none"/> : <div className="text-xl font-bold" style={{color:'#3b82f6'}}>{targetVal}</div>}</div>
+            <div><div className="text-[10px] text-slate-500">ใน BOM</div><div className="text-xl font-bold" style={{color:'#f97316'}}>{curLBS}</div></div>
           </div>
-          <div className="mt-3 text-center text-sm font-medium rounded-lg py-2" style={lbsOK?{background:'#16a34a18',color:'#16a34a'}:{background:'#f43f5e18',color:'#f43f5e'}}>
-            {lbsOK ? '✓ จำนวนตรงเป้าหมาย' : (curLBS<targetVal ? `⚠ ขาดอีก ${targetVal-curLBS} ชุด` : `⚠ เกิน ${curLBS-targetVal} ชุด`)}
+          <div className="mt-2 text-center text-[12px] font-medium rounded-md py-1" style={lbsOK?{background:'#16a34a18',color:'#16a34a'}:{background:'#f43f5e18',color:'#f43f5e'}}>
+            {lbsOK ? '✓ ตรงเป้าหมาย' : (curLBS<targetVal ? `⚠ ขาด ${targetVal-curLBS}` : `⚠ เกิน ${curLBS-targetVal}`)}
           </div>
-          <div className="text-[10px] text-slate-500 mt-2 leading-relaxed border-t border-slate-800 pt-2">ยอดลูกค้าต้องการรวม {reqLBS} LBS · ลูกค้า: {custs.map(c=>c.name).join(', ')||'—'}</div>
+          <div className="text-[10px] text-slate-500 mt-1.5 leading-relaxed border-t border-slate-800 pt-1.5">ลูกค้าต้องการ {reqLBS} LBS · {custs.map(c=>c.name).join(', ')||'—'}</div>
         </Card>
       </div>
 
@@ -1574,7 +1580,7 @@ function Procurement({state, role, onUpdateBom, onCreatePO, onOpenPO, genPoNo}){
 }
 // แท็บกิ่งย่อย: BOM Delivered completed — รวมรายการที่ส่งมอบครบทุก PO
 function PurchasingDone({state}){
-  const [open,setOpen]=useState({});        // pid -> false=ซ่อน (ค่าเริ่มต้น=กาง)
+  const [open,setOpen]=useState({});        // pid -> true=กาง (ค่าเริ่มต้น=ซ่อน)
   const [q,setQ]=useState('');
   const delivered = state.bom.filter(b=>b.po_status==='Delivered');
   // จัดกลุ่มตาม Stock No. (project)
@@ -1588,8 +1594,8 @@ function PurchasingDone({state}){
   }).sort((a,b)=>String(a.p?.project_stock_no).localeCompare(String(b.p?.project_stock_no)));
   if(q) groups=groups.filter(g=> (g.p?.project_stock_no+' '+g.p?.bom_no+' '+g.p?.name).toLowerCase().includes(q.toLowerCase()));
   const grandItems=delivered.length, grandTHB=delivered.reduce((s,b)=>s+lineTHB(b),0);
-  const allCollapsed = groups.length>0 && groups.every(g=>open[g.pid]===false);
-  const toggleAll = () => { const v=!allCollapsed; const m={}; groups.forEach(g=>m[g.pid]=v?false:true); setOpen(m); };
+  const allCollapsed = groups.length>0 && groups.every(g=>!open[g.pid]);   // เริ่มต้นซ่อนทั้งหมด
+  const toggleAll = () => { const m={}; groups.forEach(g=>m[g.pid]=allCollapsed); setOpen(m); };
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -1600,7 +1606,7 @@ function PurchasingDone({state}){
         </div>
       </div>
       {groups.length===0 && <Empty msg="ยังไม่มีรายการที่ Delivered"/>}
-      {groups.map(g=>{ const isOpen=open[g.pid]!==false; return (
+      {groups.map(g=>{ const isOpen=!!open[g.pid]; return (
         <Card key={g.pid} className="overflow-hidden">
           <div className="px-5 py-3 flex items-center justify-between flex-wrap gap-2 cursor-pointer hover:bg-slate-800/20" onClick={()=>setOpen(o=>({...o,[g.pid]:!isOpen}))}>
             <div className="flex items-center gap-2 flex-wrap"><span className="text-slate-500">{isOpen?'▼':'▶'}</span><span className="mono text-slate-100 font-semibold">{g.p?.project_stock_no||'—'}</span><span className="text-[11px] text-slate-500 mono">{g.p?.bom_no}</span><span className="text-[12px] text-slate-400">{g.p?.name}</span>
