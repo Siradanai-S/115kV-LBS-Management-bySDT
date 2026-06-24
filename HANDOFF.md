@@ -19,7 +19,8 @@
 | ไฟล์ | หน้าที่ |
 |---|---|
 | `index.html` | ทั้งแอป (UI+logic+data layer DEMO/LIVE) — ~205KB |
-| `schema.sql` | สคีมา Supabase: ตาราง/enum/trigger/RPC(SECURITY DEFINER)/RLS/seed/bootstrap dev |
+| `schema.sql` | สคีมา Supabase **โครงสร้างล้วน**: ตาราง/enum/trigger/RPC/RLS/bootstrap dev — **idempotent, ไม่แตะ/ไม่สร้างข้อมูล** (รันซ้ำตอนอัปเดตได้ปลอดภัย) |
+| `seed-demo.sql` | **ข้อมูลตัวอย่าง (DEMO เท่านั้น)** — แยกออกจาก schema · รันเฉพาะบน DB เปล่าเพื่อสาธิต · **ห้ามรันบน production** |
 | `reset-clean.sql` | TRUNCATE ข้อมูลตัวอย่างก่อน go-live (เก็บโครงสร้าง+user_roles+สิทธิ์ dev) |
 | `README.md` | สรุป + วิธี deploy |
 | `USER-GUIDE.md` | คู่มือใช้งานแยกฝ่าย + Flow เชื่อมโยง |
@@ -85,10 +86,11 @@ service_team · handoff_log(audit) · user_roles · inventory_moves(epicor_code,
 - **(review v3) ย้าย handoff มาบนการ์ด Stock:** ลบปุ่ม "Workflow →" ออกจากการ์ด `ProjectStocks` → ฝัง `<PhaseRibbon>` (ปุ่มเสร็จ&ส่งต่อ/ปิดงาน/ตีกลับ/รับงาน) ในส่วนกางของการ์ดโดยตรง · หน้า Workflow Board (`page==='workflow'`) ยังเข้าได้ผ่านกระดิ่งแจ้งเตือน (secondary)
 
 ## 8) Deploy (สรุป)
-1. Supabase: รัน `schema.sql` → เปิด Email Auth (ปิด Confirm email) → (แนะนำ) สร้าง bucket `po-pdfs` public (ดู LIVE-OPS.md #2)
+1. Supabase: รัน `schema.sql` (โครงสร้างล้วน) → เปิด Email Auth (ปิด Confirm email) → (แนะนำ) สร้าง bucket `po-pdfs` public (ดู LIVE-OPS.md #2)
 2. สมัคร `siradanai.s@precise.co.th` → รัน `schema.sql` ซ้ำ (ได้ dev)
-3. **go-live สะอาด:** รัน `reset-clean.sql` ลบข้อมูลตัวอย่าง
-4. GitHub Pages: push `index.html`+`schema.sql`+เอกสาร → Settings→Pages→branch main/root
+3. (ออปชัน) อยากได้ข้อมูลสาธิตบน DB เปล่า → รัน `seed-demo.sql` · **production ข้ามขั้นนี้**
+4. **อัปเดต schema ภายหลัง:** รัน `schema.sql` ซ้ำได้เลย — idempotent, **ไม่แตะข้อมูลจริง, ไม่สร้าง sample** (ห้ามรัน seed-demo.sql)
+5. GitHub Pages: push `index.html`+`schema.sql`+เอกสาร → Settings→Pages→branch main/root
 - คีย์ publishable commit ได้ · ห้าม service_role
 
 ## 9) คำตอบดีไซน์ที่ผู้ใช้ยืนยันแล้ว (อย่าถามซ้ำ)
