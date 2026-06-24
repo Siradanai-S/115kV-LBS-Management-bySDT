@@ -45,6 +45,8 @@ service_team · handoff_log(audit) · user_roles · inventory_moves(epicor_code,
 - **Sales SR (review v3):** 2 กล่อง (รอสร้าง/สร้างแล้ว) พับได้ เริ่มต้นซ่อน · **ProjectInventory** การ์ดคลังต่อ Stock เริ่มต้นซ่อน
 - **Purchasing PO (review v3):** ฟอร์มออก PO เริ่มเลข PO **ว่าง** (เลิก auto-gen) → บังคับกรอกเลข PO เองก่อนบันทึก (ปุ่ม disabled ถ้าว่าง)
 - **(fix) จอขาวตอนเบิก SR:** commit ลบ dead code เผลอลบ `WithdrawSR`+`PLAN_STATUS` (ProjectInventory ใช้อยู่) → กู้กลับแล้ว
+- **WithdrawSR แยกต่อลูกค้า (review v4):** popup ใหญ่ (max-w-5xl) · เลือกลูกค้าใน SR ได้หลายเจ้า → กรอกจำนวนเบิกแยกต่อลูกค้า (cap = onhand − ที่ลูกค้าอื่นจอง) → กดบันทึก = สร้างใบเบิก **1 ใบ/ลูกค้า** (`service_plans.cust_id` ใหม่ใน schema) wd_no = `WD-...-i` ถ้าหลายเจ้า · `handleWithdrawSR` รับ `payload.allocations[]` · `ServiceJob` โชว์ลูกค้าเฉพาะใบ (`pl.cust_id`)
+- **UI อื่น (review v4):** BomRoundCard คอลัมน์ PO โชว์ PO No. จาก `posCovering` · ทุก modal ใหญ่ขึ้น (PoModal 4xl · create-stock/RowEditor 2xl · day-view xl)
 - **LINE webhook (review v3):** `line-webhook.ts` ยกเลิกการตอบ groupId กลับเข้าแชท (ได้ id แล้ว: `C30dde10e5b1d4ce984a85016b79204cd`) เหลือ log เงียบ ๆ + ตอบ 200
 - **Serial LVB/OM ของ BOM** — `bom_items.serial_lvb` + `serial_om` (กรอกในฟอร์ม BOM **เฉพาะเมื่อ Category=LBS**)
 
