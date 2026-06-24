@@ -84,7 +84,15 @@ const WORK_TYPE = ['Supply','Supply & Construction'];
 const CONTRACT_STATUS = ['รอ PO/สัญญา','ได้รับ PO แล้ว','ทำสัญญาแล้ว'];
 const TASK_STATUS = ['Pending','In Progress','Completed'];
 const TASK_TH = { Pending:'รอดำเนินการ', 'In Progress':'กำลังทำ', Completed:'เสร็จแล้ว' };
-const CURRENCY = ['THB','USD'];
+const CURRENCY = ['THB','USD','EUR'];
+const FX_FALLBACK = { USD:36.5, EUR:39.5 };                       // เรตสำรองเมื่อ API ล่ม/บล็อก
+const curSym = c => c==='USD' ? '$' : c==='EUR' ? '€' : '฿';
+// ดึงอัตราแลกเปลี่ยนปัจจุบัน (บาทต่อ 1 หน่วยสกุลเงิน) จาก free API (ไม่ต้องใช้ key) + fallback
+async function fetchFxToTHB(cur){
+  if(!cur || cur==='THB') return 1;
+  try{ const r=await fetch(`https://open.er-api.com/v6/latest/${cur}`); const j=await r.json(); const rate=j&&j.rates&&j.rates.THB; return rate?Math.round(rate*100)/100:(FX_FALLBACK[cur]||1); }
+  catch(e){ return FX_FALLBACK[cur]||1; }
+}
 const BOM_CAT = ['LBS','Accessory'];
 const PROJECT_PHASES = ['Phase 1','Phase 2','Phase 3'];
 const MONTHS_TH = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
@@ -140,7 +148,7 @@ const pad3 = n => String(n).padStart(3,'0');
 const pad4 = n => String(n).padStart(4,'0');
 const num = v => { const n=Number(v); return isNaN(n)?0:n; };
 // บรรทัด BOM → มูลค่ารวมเป็นบาท (USD คูณอัตราแลกเปลี่ยน)
-const lineTHB = b => num(b.quantity) * num(b.unit_cost) * (b.currency==='USD' ? num(b.fx_rate)||1 : 1);
+const lineTHB = b => num(b.quantity) * num(b.unit_cost) * (b.currency && b.currency!=='THB' ? num(b.fx_rate)||1 : 1);
 // ออกเลขถัดไปจากเลขมากสุดที่มีอยู่ (กัน gap/ลบแล้วชน — แก้บั๊กการนับจาก length)
 const nextSeq = (arr, field) => { let mx=0; (arr||[]).forEach(x=>{ const m=String(x[field]||'').match(/(\d+)\s*$/); if(m) mx=Math.max(mx, parseInt(m[1],10)); }); return mx; };
 // ส่งออก CSV (รองรับภาษาไทยใน Excel ด้วย BOM ufeff)
@@ -622,7 +630,7 @@ function printServiceDoc(kind, pl, project, state){
 
 /* ===== BOM rounds (สร้าง Material List หลายครั้งต่อ Stock) ===== */
 const roundOf = b => num(b.round)||1;
-const roundName = (p, n) => `${p.bom_no} (ครั้ง${n})`;
+const roundName = (p, n) => `BOM-${p.project_stock_no||p.bom_no} (ครั้ง${n})`;
 function projBomRounds(state, pid){ const ns=[...new Set(state.bom.filter(b=>b.project_id===pid).map(roundOf))]; return ns.length?ns.sort((a,b)=>a-b):[1]; }
 function roundItems(state, pid, n){ return state.bom.filter(b=>b.project_id===pid && roundOf(b)===n); }
 function roundIsSent(state, pid, n){ const it=roundItems(state,pid,n); return it.length>0 && it.every(b=>b.is_sent); }
@@ -1167,16 +1175,17 @@ function SalesSR({state, role, onUpdateCustomer}){
   const canEdit = role==='developer' || role==='sales';
   const pendingSrs = state.srs.filter(s=>!s.stock_id);
   const stockedSrs = state.srs.filter(s=>s.stock_id);
+  const [show,setShow]=useState({ pending:false, stocked:false });   // เริ่มต้นซ่อนทั้งสองกล่อง
   return (
     <div className="space-y-4">
       <div className="text-[11px] text-slate-500">ติดตาม <b>เลขที่ PO ลูกค้า</b> และ <b>สถานะสัญญา</b> แยกตามรายชื่อลูกค้าในแต่ละใบ SR (1 ใบมีหลายลูกค้า — อัปเดตได้รายราย)</div>
       <Card className="overflow-hidden" style={{borderColor:'#f9731655'}}>
-        <div className="px-5 py-2.5 bg-amber-500/10 border-b border-slate-800 text-[13px] font-semibold text-amber-700 flex items-center gap-2">⏳ รอฝ่ายโครงการสร้าง Stock <span className="text-slate-500 text-[11px]">({pendingSrs.length})</span></div>
-        <SrTrackTable list={pendingSrs} state={state} canEdit={canEdit} onUpdateCustomer={onUpdateCustomer} emptyMsg="ไม่มี SR ที่รอสร้าง Stock"/>
+        <div className="px-5 py-2.5 bg-amber-500/10 border-b border-slate-800 text-[13px] font-semibold text-amber-700 flex items-center gap-2 cursor-pointer hover:bg-amber-500/15" onClick={()=>setShow(s=>({...s,pending:!s.pending}))}><span className="text-amber-700/70">{show.pending?'▼':'▶'}</span>⏳ รอฝ่ายโครงการสร้าง Stock <span className="text-slate-500 text-[11px]">({pendingSrs.length})</span></div>
+        {show.pending && <SrTrackTable list={pendingSrs} state={state} canEdit={canEdit} onUpdateCustomer={onUpdateCustomer} emptyMsg="ไม่มี SR ที่รอสร้าง Stock"/>}
       </Card>
       <Card className="overflow-hidden" style={{borderColor:'#16a34a55'}}>
-        <div className="px-5 py-2.5 bg-emerald-500/10 border-b border-slate-800 text-[13px] font-semibold text-emerald-300 flex items-center gap-2">✓ สร้าง Project Stock แล้ว <span className="text-slate-500 text-[11px]">({stockedSrs.length})</span></div>
-        <SrTrackTable list={stockedSrs} state={state} canEdit={canEdit} onUpdateCustomer={onUpdateCustomer} emptyMsg="ยังไม่มี SR ที่สร้าง Stock"/>
+        <div className="px-5 py-2.5 bg-emerald-500/10 border-b border-slate-800 text-[13px] font-semibold text-emerald-300 flex items-center gap-2 cursor-pointer hover:bg-emerald-500/15" onClick={()=>setShow(s=>({...s,stocked:!s.stocked}))}><span className="text-emerald-300/70">{show.stocked?'▼':'▶'}</span>✓ สร้าง Project Stock แล้ว <span className="text-slate-500 text-[11px]">({stockedSrs.length})</span></div>
+        {show.stocked && <SrTrackTable list={stockedSrs} state={state} canEdit={canEdit} onUpdateCustomer={onUpdateCustomer} emptyMsg="ยังไม่มี SR ที่สร้าง Stock"/>}
       </Card>
     </div>
   );
@@ -1283,14 +1292,9 @@ function ProjectBom({state, project, canEdit, onAddBom, onUpdateBom, onDeleteBom
       {/* Budget & Flow */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card className="p-5 lg:col-span-2">
-          <h3 className="text-slate-200 font-semibold mb-4 flex items-center gap-2">{Icon.layers} Project Budget & Flow</h3>
+          <h3 className="text-slate-200 font-semibold mb-4 flex items-center gap-2">{Icon.layers} Project Budget <span className="mono text-[13px] text-slate-400">{project.project_stock_no}</span></h3>
           {canEdit && <div className="mb-4"><Lbl>ชื่อโครงการ (แก้ไขได้)</Lbl><EditText value={project.name} onCommit={v=>onUpdateProject(project.id,{name:v.trim()||project.name})}/></div>}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div><Lbl>งบประมาณรวม (฿)</Lbl>{canEdit ? <Inp type="number" value={project.total_budget} onChange={v=>onUpdateProject(project.id,{total_budget:num(v)})}/> : <div className="text-lg font-semibold" style={{color:'#3b82f6'}}>{baht(project.total_budget)}</div>}</div>
-            <div><Lbl>กำไร Margin (%)</Lbl>{canEdit ? <Inp type="number" value={project.margin} onChange={v=>onUpdateProject(project.id,{margin:num(v)})}/> : <div className="text-lg font-semibold" style={{color:'#16a34a'}}>{project.margin}%</div>}</div>
-            <Field label="กำไรเป็นเงิน" value={baht(project.total_budget*project.margin/100)} color="#8b5cf6"/>
-            <div><Lbl>กระแสเงินสด</Lbl>{canEdit ? <Sel value={project.cash_flow_status} onChange={v=>onUpdateProject(project.id,{cash_flow_status:v})} options={['ปกติ','เฝ้าระวัง','วิกฤติ']}/> : <div className="text-lg font-semibold" style={{color:project.cash_flow_status==='ปกติ'?'#16a34a':'#f97316'}}>{project.cash_flow_status}</div>}</div>
-          </div>
+          <div><Lbl>งบประมาณรวม (฿)</Lbl>{canEdit ? <Inp type="number" value={project.total_budget} onChange={v=>onUpdateProject(project.id,{total_budget:num(v)})}/> : <div className="text-lg font-semibold" style={{color:'#3b82f6'}}>{baht(project.total_budget)}</div>}</div>
           <div className="mt-4 pt-4 border-t border-slate-800 grid grid-cols-2 sm:grid-cols-4 gap-4">
             <Field label="Project Stock No." value={project.project_stock_no} mono/><Field label="Job No." value={project.job_no||'—'} mono/>
             <Field label="BOM No." value={project.bom_no} mono/><Field label="มูลค่าวัสดุ BOM (฿)" value={baht(matValue)} color="#f97316"/>
@@ -1329,17 +1333,21 @@ function BomRoundCard({state, project, n, canEdit, onAddBom, onUpdateBom, onDele
   const name = roundName(project, n);
   const [form, setForm] = useState(BOM_BLANK);
   const [open, setOpen] = useState(false);
+  const [show, setShow] = useState(false);              // พับ/กางรายการของครั้งนี้ (เริ่มต้นซ่อน)
   const editable = canEdit && !sent;
+  // เปลี่ยนสกุลเงิน → ดึงเรตปัจจุบันมาเติมช่อง FX อัตโนมัติ (แก้มือทับได้)
+  const onCurrency = async v => { setForm(f=>({...f, currency:v, fx_rate:v==='THB'?1:(FX_FALLBACK[v]||f.fx_rate||1)})); if(v!=='THB'){ const rate=await fetchFxToTHB(v); setForm(f=> f.currency===v ? {...f, fx_rate:rate} : f); } };
   return (
     <Card className="overflow-hidden">
       <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between flex-wrap gap-2" style={{background:sent?'#16a34a0e':'#f973160a'}}>
-        <h3 className="text-slate-200 font-semibold flex items-center gap-2">{Icon.box} {name} <Pill color={sent?'#16a34a':'#64748b'}>{sent?'ส่งจัดซื้อแล้ว':'ร่าง'}</Pill><span className="text-[11px] text-slate-500 font-normal">{items.length} รายการ · {baht(matValue)}</span></h3>
+        <h3 className="text-slate-200 font-semibold flex items-center gap-2 cursor-pointer" onClick={()=>setShow(s=>!s)}><span className="text-slate-500">{show?'▼':'▶'}</span>{Icon.box} {name} <Pill color={sent?'#16a34a':'#64748b'}>{sent?'ส่งจัดซื้อแล้ว':'ร่าง'}</Pill><span className="text-[11px] text-slate-500 font-normal">{items.length} รายการ · {baht(matValue)}</span></h3>
         <div className="flex items-center gap-2">
           {items.length>0 && <button onClick={()=>exportXLSX(`${name}.xlsx`, `ครั้ง${n}`, [['Epicor Code','Description','Category','Due Date','IUM','Qty','Currency','Cost/unit','FX','Total THB','Project Phase','PO Status'], ...items.map(b=>[b.epicor_code,b.description,b.category,b.due_date,b.ium,b.quantity,b.currency,b.unit_cost,b.fx_rate,Math.round(lineTHB(b)),b.project_phase,b.po_status])])} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:'#16a34a22',color:'#16a34a'}}>⬇ Excel</button>}
           {editable && items.length>0 && <button onClick={()=>{ if(confirm(`ส่ง ${name} (${items.length} รายการ) ให้จัดซื้อ?`)) onSendBom(project.id, n); }} className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-1.5" style={{background:'#16a34a',color:'#0b0f17'}}>{Icon.send} ส่ง BOM (ครั้ง{n}) ให้จัดซื้อ</button>}
-          {editable && <button onClick={()=>setOpen(o=>!o)} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:'#f9731622',color:'#f97316'}}>{Icon.plus} เพิ่มรายการ</button>}
+          {editable && <button onClick={()=>{ setShow(true); setOpen(o=>!o); }} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:'#f9731622',color:'#f97316'}}>{Icon.plus} เพิ่มรายการ</button>}
         </div>
       </div>
+      {show && <>
       {open && editable && (
         <div className="px-5 py-4 bg-slate-800/30 border-b border-slate-800 grid grid-cols-2 md:grid-cols-6 gap-3 items-end">
           <div><Lbl>Epicor Code</Lbl><Inp value={form.epicor_code} onChange={v=>setForm({...form,epicor_code:v})}/></div>
@@ -1350,13 +1358,13 @@ function BomRoundCard({state, project, n, canEdit, onAddBom, onUpdateBom, onDele
           <div><Lbl>Due Date</Lbl><Inp type="date" value={form.due_date} onChange={v=>setForm({...form,due_date:v})}/></div>
           <div><Lbl>IUM</Lbl><Inp value={form.ium} onChange={v=>setForm({...form,ium:v})}/></div>
           <div><Lbl>Qty</Lbl><Inp type="number" value={form.quantity} onChange={v=>setForm({...form,quantity:num(v)})}/></div>
-          <div><Lbl>Currency</Lbl><Sel value={form.currency} onChange={v=>setForm({...form,currency:v})} options={CURRENCY}/></div>
+          <div><Lbl>Currency</Lbl><Sel value={form.currency} onChange={onCurrency} options={CURRENCY}/></div>
           <div><Lbl>Cost/unit</Lbl><Inp type="number" value={form.unit_cost} onChange={v=>setForm({...form,unit_cost:num(v)})}/></div>
-          {form.currency==='USD' && <div><Lbl>FX (฿/USD)</Lbl><Inp type="number" value={form.fx_rate} onChange={v=>setForm({...form,fx_rate:num(v)})}/></div>}
+          {form.currency!=='THB' && <div><div className="flex items-center gap-1 mb-1"><span className="text-[11px] text-slate-500">FX (฿/{form.currency})</span><button type="button" onClick={()=>onCurrency(form.currency)} title="ดึงเรตปัจจุบัน" className="text-[10px] text-sky-500 hover:text-sky-400">🔄</button></div><Inp type="number" value={form.fx_rate} onChange={v=>setForm({...form,fx_rate:num(v)})}/></div>}
           <div><Lbl>Project Phase</Lbl><Inp value={form.project_phase} onChange={v=>setForm({...form,project_phase:v})} placeholder="เช่น Phase 1 / งวดที่ 1"/></div>
           <div className="col-span-2 md:col-span-6 flex justify-end gap-2">
             <button onClick={()=>setOpen(false)} className="text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300">ยกเลิก</button>
-            <button onClick={()=>{ if(!form.description)return; onAddBom({project_id:project.id, round:n, is_sent:false, ...form, fx_rate:form.currency==='USD'?(num(form.fx_rate)||1):1, po_status:'Awaiting PO'}); setForm(BOM_BLANK); setOpen(false); }} className="text-xs px-3 py-1.5 rounded-lg font-medium" style={{background:'#f97316',color:'#0b0f17'}}>บันทึกเข้า ครั้ง{n}</button>
+            <button onClick={()=>{ if(!form.description)return; onAddBom({project_id:project.id, round:n, is_sent:false, ...form, fx_rate:form.currency!=='THB'?(num(form.fx_rate)||1):1, po_status:'Awaiting PO'}); setForm(BOM_BLANK); setOpen(false); }} className="text-xs px-3 py-1.5 rounded-lg font-medium" style={{background:'#f97316',color:'#0b0f17'}}>บันทึกเข้า ครั้ง{n}</button>
           </div>
         </div>
       )}
@@ -1378,7 +1386,7 @@ function BomRoundCard({state, project, n, canEdit, onAddBom, onUpdateBom, onDele
               <td className="px-3 py-3 mono text-slate-400">{b.due_date||'—'}</td>
               <td className="px-3 py-3 text-slate-400">{b.ium}</td>
               <td className="px-3 py-3 text-right mono text-slate-300">{b.quantity}</td>
-              <td className="px-3 py-3 text-right mono text-slate-400">{b.currency==='USD'?'$':'฿'}{num(b.unit_cost).toLocaleString()}{b.currency==='USD'?<span className="text-[10px] text-slate-600"> @{b.fx_rate}</span>:''}</td>
+              <td className="px-3 py-3 text-right mono text-slate-400">{curSym(b.currency)}{num(b.unit_cost).toLocaleString()}{b.currency!=='THB'?<span className="text-[10px] text-slate-600"> @{b.fx_rate}</span>:''}</td>
               <td className="px-3 py-3 text-right mono text-slate-200">{baht(lineTHB(b))}</td>
               <td className="px-3 py-3 text-slate-400 text-[12px]">{editable ? <EditText value={b.project_phase||''} onCommit={v=>onUpdateBom(b.id,{project_phase:v})} className="w-28 bg-slate-900 border border-slate-700 rounded px-1.5 py-1 text-[12px] text-slate-200 focus:outline-none focus:border-amber-500/60"/> : (b.project_phase||'—')}</td>
               <td className="px-3 py-3"><Pill color={poColor(b.po_status)}>{b.po_status}</Pill></td>
@@ -1390,6 +1398,7 @@ function BomRoundCard({state, project, n, canEdit, onAddBom, onUpdateBom, onDele
       </table>
       </div>
       {sent && canEdit && <p className="px-5 py-2.5 text-[11px] text-emerald-700/80 border-t border-slate-800">ครั้งนี้ส่งให้จัดซื้อแล้ว — แก้ไขรายการไม่ได้ (ฝ่ายจัดซื้อจะอัปเดตสถานะ PO กลับมา)</p>}
+      </>}
     </Card>
   );
 }
@@ -1413,7 +1422,7 @@ function HandoffTimeline({list}){
   );
 }
 // แท็บกิ่งย่อย: Stock No. — กล่องข้อมูลรายโครงการ (พับได้, เริ่มต้นซ่อน) + ส่งแผนส่งมอบให้ Service
-function ProjectStocks({state, role, onAddBom, onUpdateBom, onDeleteBom, onSendBom, onUpdateProject, onOpenWorkflow}){
+function ProjectStocks({state, role, onAddBom, onUpdateBom, onDeleteBom, onSendBom, onUpdateProject, onHandoff, onReject, onAck}){
   const canEdit = role==='developer' || role==='project';
   const [open,setOpen]=useState({});
   const [q,setQ]=useState('');
@@ -1437,11 +1446,11 @@ function ProjectStocks({state, role, onAddBom, onUpdateBom, onDeleteBom, onSendB
               <div className="flex items-center gap-2"><span className="text-slate-500">{isOpen?'▼':'▶'}</span><span className="mono text-slate-200 font-semibold">{p.project_stock_no}</span><Pill color={DEPT[p.current_phase]?.c||'#64748b'}>{PHASE_LABEL[p.current_phase]}</Pill><Pill color={bomStatusColor(bomStatusOf(state,p))}>{p.bom_no}{projBomRounds(state,p.id).length>1?` ·${projBomRounds(state,p.id).length} ครั้ง`:''}</Pill><span className="text-[12px] text-slate-400">{p.name}</span></div>
               <div className="flex items-center gap-2" onClick={e=>e.stopPropagation()}>
                 <span className="text-[11px] text-slate-500">{pr}% · {stockCustomers(state,p.id).length} ลูกค้า</span>
-                <button onClick={()=>onOpenWorkflow(p.id)} className="text-xs font-medium rounded-md px-2.5 py-1" style={{background:'#0ea5e922',color:'#0ea5e9'}}>Workflow →</button>
               </div>
             </div>
             {plans.length>0 && <div className="px-5 py-2 border-t border-slate-800 flex flex-wrap gap-2">{plans.map(pl=><span key={pl.id} className="text-[11px] rounded-full px-2.5 py-1" style={pl.acked?{background:'#16a34a22',color:'#16a34a'}:{background:'#f9731622',color:'#f97316'}}>📋 {pl.wd_no||'แผนส่ง'} · {pl.acked?'Service รับแล้ว':'รอ Service รับ'}</span>)}</div>}
             {isOpen && <div className="border-t border-slate-800 p-4 space-y-4">
+              <PhaseRibbon project={p} state={state} role={role} onHandoff={onHandoff} onReject={onReject} onAck={onAck}/>
               <ProjectBom state={state} project={p} canEdit={canEdit} onAddBom={onAddBom} onUpdateBom={onUpdateBom} onDeleteBom={onDeleteBom} onSendBom={onSendBom} onUpdateProject={onUpdateProject}/>
               <Card className="p-4"><h3 className="text-slate-200 font-semibold mb-3 flex items-center gap-2">📜 ประวัติการส่งงาน (Audit Timeline)</h3><HandoffTimeline list={(state.handoffs||[]).filter(h=>h.project_id===p.id)}/></Card>
             </div>}
@@ -1462,7 +1471,7 @@ function Procurement({state, role, onUpdateBom, onCreatePO, onOpenPO, genPoNo}){
   const [poForm,setPoForm]=useState(PO_FORM_BLANK); const [poOpen,setPoOpen]=useState(null);
   const poCount = pid => state.pos.filter(o=>o.project_id===pid).length;
   const toggleCard = id => setExpanded(e=>({...e,[id]:!e[id]}));
-  const startPO = (pid) => { setExpanded(e=>({...e,[pid]:true})); setPoForm({...PO_FORM_BLANK, qtys:{}, po_no:genPoNo()}); setPoOpen(pid); };
+  const startPO = (pid) => { setExpanded(e=>({...e,[pid]:true})); setPoForm({...PO_FORM_BLANK, qtys:{}, po_no:''}); setPoOpen(pid); };   // เริ่มว่าง — บังคับกรอกเลข PO เอง
   const onPdf = (file) => { if(!file) return; const reader=new FileReader(); reader.onload=()=>setPoForm(f=>({...f, pdf_name:file.name, pdf_url:reader.result})); reader.readAsDataURL(file); };
   const toggleQty = (id, remaining) => setPoForm(f=>{ const q={...f.qtys}; if(q[id]!=null) delete q[id]; else q[id]=remaining; return {...f,qtys:q}; });
   const setQty = (id, v, remaining) => setPoForm(f=>({...f, qtys:{...f.qtys, [id]: Math.max(1, Math.min(remaining, num(v)))}}));
@@ -1480,7 +1489,7 @@ function Procurement({state, role, onUpdateBom, onCreatePO, onOpenPO, genPoNo}){
         const isExp = !!expanded[p.id];
         const formOpen = poOpen===p.id && canEdit;
         const lines = Object.entries(poForm.qtys).map(([id,qty])=>({bom_id:Number(id), qty:num(qty)})).filter(l=>l.qty>0);
-        const selTHB = formOpen ? lines.reduce((s,l)=>{ const b=items.find(x=>x.id===l.bom_id); return s + (b? num(l.qty)*num(b.unit_cost)*(b.currency==='USD'?(num(b.fx_rate)||1):1) : 0); },0) : 0;
+        const selTHB = formOpen ? lines.reduce((s,l)=>{ const b=items.find(x=>x.id===l.bom_id); return s + (b? num(l.qty)*num(b.unit_cost)*(b.currency&&b.currency!=='THB'?(num(b.fx_rate)||1):1) : 0); },0) : 0;
         return (
           <Card key={p.id} className="overflow-hidden">
             {/* หัวการ์ด — คลิกเพื่อกาง/ยุบ */}
@@ -1510,7 +1519,7 @@ function Procurement({state, role, onUpdateBom, onCreatePO, onOpenPO, genPoNo}){
                     );})}
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-5 gap-3 items-end pt-1">
-                    <div><Lbl>เลขที่ PO</Lbl><Inp value={poForm.po_no} onChange={v=>setPoForm({...poForm,po_no:v})}/></div>
+                    <div><Lbl>เลขที่ PO *</Lbl><Inp value={poForm.po_no} onChange={v=>setPoForm({...poForm,po_no:v})} placeholder="ระบุเลขที่ PO (จำเป็น)"/></div>
                     <div className="col-span-2"><Lbl>ผู้ขาย (Supplier)</Lbl><Inp value={poForm.supplier} onChange={v=>setPoForm({...poForm,supplier:v})}/></div>
                     <div><Lbl>กำหนดรับ</Lbl><Inp type="date" value={poForm.expected_date} onChange={v=>setPoForm({...poForm,expected_date:v})}/></div>
                     <div><Lbl>สถานะ</Lbl><Sel value={poForm.status} onChange={v=>setPoForm({...poForm,status:v})} options={['รอออก','ออกแล้ว','กำลังส่ง','รับครบ']}/></div>
@@ -1541,7 +1550,7 @@ function Procurement({state, role, onUpdateBom, onCreatePO, onOpenPO, genPoNo}){
                       <td className="px-3 py-3 mono text-slate-400">{b.due_date||'—'}</td>
                       <td className="px-3 py-3 text-slate-400">{b.ium}</td>
                       <td className="px-3 py-3 text-right mono text-slate-300">{b.quantity}{rem>0&&rem<b.quantity?<span className="text-[10px] text-rose-600"> (เหลือ {rem})</span>:''}</td>
-                      <td className="px-3 py-3 text-right mono text-slate-400">{b.currency==='USD'?'$':'฿'}{num(b.unit_cost).toLocaleString()}{b.currency==='USD'?<span className="text-[10px] text-slate-600"> @{b.fx_rate}</span>:''}</td>
+                      <td className="px-3 py-3 text-right mono text-slate-400">{curSym(b.currency)}{num(b.unit_cost).toLocaleString()}{b.currency!=='THB'?<span className="text-[10px] text-slate-600"> @{b.fx_rate}</span>:''}</td>
                       <td className="px-3 py-3 text-right mono text-slate-200">{baht(lineTHB(b))}</td>
                       <td className="px-3 py-3 text-slate-400 text-[12px]">{b.project_phase}</td>
                       <td className="px-3 py-3">
@@ -1627,6 +1636,76 @@ function PurchasingDone({state}){
 }
 
 /* ============================ SERVICE DEPARTMENT ============================ */
+const PLAN_STATUS = pl => pl.delivered ? {t:'✓ ส่งมอบแล้ว',c:'#16a34a'} : pl.acked ? {t:'Service รับงานแล้ว',c:'#3b82f6'} : pl.sent ? {t:'รอส่งมอบ Service',c:'#f97316'} : {t:'ร่าง',c:'#64748b'};
+// ฟอร์มเบิกสินค้าอ้าง SR-No. — เลือก SR (โชว์ลูกค้าทั้งใบ) + เลือกรายการ/จำนวนจาก onhand + วันเริ่ม-สิ้นสุด → ตัดสต็อก + รอส่งมอบ Service
+function WithdrawSR({project, state, onClose, onSubmit}){
+  const srs = (state.srs||[]).filter(s=>s.stock_id===project.id);
+  const [srId,setSrId]=useState(srs[0]?String(srs[0].id):'');
+  const custs = (state.customers||[]).filter(c=>String(c.sr_id)===String(srId));
+  const lines = useMemo(()=> (state.bom||[]).filter(b=>b.project_id===project.id).map(b=>({ id:b.id, code:b.epicor_code, desc:b.description, cat:b.category, need:num(b.quantity), onhand:invOnhand(state,project.id,b.epicor_code) })), [state, project.id]);
+  const [qty,setQty]=useState(()=>{ const m={}; lines.forEach(l=>m[l.id]=0); return m; });
+  const [ps,setPs]=useState(project.delivery_date||''); const [pe,setPe]=useState(project.delivery_date||''); const [note,setNote]=useState('');
+  const setQ=(id,v,cap)=>setQty(m=>({...m,[id]:Math.max(0,Math.min(cap,Math.floor(num(v))))}));
+  const total=lines.reduce((s,l)=>s+num(qty[l.id]),0);
+  const submit=()=>{ const picked=lines.filter(l=>num(qty[l.id])>0).map(l=>({bom_id:l.id, code:l.code, desc:l.desc, qty:num(qty[l.id])})); if(!picked.length||!srId){onClose();return;} onSubmit(project.id,{ sr_id:Number(srId), lines:picked, plan_start:ps||null, plan_end:pe||null, location:custs.map(c=>c.location).filter(Boolean).join(' / '), note }); onClose(); };
+  const cellTh="border border-slate-700/70 px-2 py-1.5 font-medium text-[10px] uppercase text-slate-500 text-left";
+  const cell="border border-slate-700/70 px-2 py-1.5 text-[11px]";
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onClick={onClose}>
+      <div className="w-full max-w-3xl rounded-xl border border-slate-700 bg-slate-900 fade-up max-h-[90vh] flex flex-col" onClick={e=>e.stopPropagation()}>
+        <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between">
+          <div><div className="text-slate-100 font-semibold flex items-center gap-2">📤 เบิกสินค้า (อ้าง SR-No.)</div>
+            <div className="text-[11px] text-slate-500 mono">{project.project_stock_no} · Job {project.job_no}</div></div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-100">{Icon.x}</button>
+        </div>
+        <div className="overflow-y-auto">
+          <div className="px-5 py-3 grid grid-cols-2 md:grid-cols-4 gap-3 border-b border-slate-800 bg-slate-800/20">
+            <div><Lbl>อ้าง SR-No.</Lbl><Sel value={srId} onChange={setSrId} options={srs.map(s=>String(s.id))} labels={Object.fromEntries(srs.map(s=>[String(s.id), s.sr_no]))}/></div>
+            <div><Lbl>กำหนดส่งมอบ — เริ่ม</Lbl><Inp type="date" value={ps} onChange={setPs}/></div>
+            <div><Lbl>สิ้นสุด</Lbl><Inp type="date" value={pe} onChange={setPe}/></div>
+            <div><Lbl>หมายเหตุ</Lbl><Inp value={note} onChange={setNote}/></div>
+          </div>
+          {/* ลูกค้าทั้งหมดใน SR */}
+          <div className="px-5 py-3 border-b border-slate-800">
+            <div className="text-[11px] text-slate-500 mb-1">ลูกค้าใน {srs.find(s=>String(s.id)===srId)?.sr_no||'SR'} ({custs.length} ราย)</div>
+            <div className="overflow-x-auto"><table className="w-full border-collapse"><thead><tr className="bg-slate-800/15"><th className={cellTh}>ลูกค้า</th><th className={cellTh}>ประเภท</th><th className={cellTh+' text-right'}>LBS</th><th className={cellTh}>สถานที่</th><th className={cellTh}>PO ลูกค้า</th><th className={cellTh}>สถานะสัญญา</th></tr></thead>
+              <tbody>{custs.length===0 ? <tr><td className={cell+' text-center text-slate-500'} colSpan="6">— ไม่มีลูกค้าใน SR นี้ —</td></tr> : custs.map(c=>(
+                <tr key={c.id}><td className={cell+' text-slate-200'}>{c.name}</td><td className={cell}>{c.customer_type}</td><td className={cell+' text-right mono'} style={{color:'#f97316'}}>{c.lbs_qty}</td><td className={cell+' text-slate-400'}>{c.location||'—'}</td><td className={cell+' mono text-slate-400'}>{c.cust_po_no||'—'}</td><td className={cell}><Pill color={contractColor(c.contract_status)}>{c.contract_status||'—'}</Pill></td></tr>
+              ))}</tbody></table></div>
+          </div>
+          {/* รายการเบิกจาก onhand */}
+          <table className="w-full text-sm">
+            <thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-800">
+              <th className="px-5 py-2.5 font-medium">Epicor Code</th><th className="px-3 py-2.5 font-medium">รายการ</th><th className="px-3 py-2.5 font-medium">Cat</th>
+              <th className="px-3 py-2.5 font-medium text-right">BOM</th><th className="px-3 py-2.5 font-medium text-right">คงเหลือคลัง</th><th className="px-3 py-2.5 font-medium text-right w-24">เบิก</th>
+            </tr></thead>
+            <tbody>
+              {lines.length===0 && <tr><td colSpan="6" className="px-5 py-8 text-center text-slate-500">ยังไม่มี BOM</td></tr>}
+              {lines.map(l=>{ const cap=l.onhand; return (
+                <tr key={l.id} className="border-b border-slate-800/60">
+                  <td className="px-5 py-2.5 mono text-slate-300">{l.code} {l.cat==='LBS'&&<Pill color="#3b82f6">LBS</Pill>}</td>
+                  <td className="px-3 py-2.5 text-slate-300">{l.desc}</td>
+                  <td className="px-3 py-2.5"><Pill color={l.cat==='LBS'?'#f97316':'#64748b'}>{l.cat}</Pill></td>
+                  <td className="px-3 py-2.5 text-right mono text-slate-400">{l.need}</td>
+                  <td className="px-3 py-2.5 text-right mono" style={{color:cap>0?'#cbd5e1':'#f43f5e'}}>{cap}</td>
+                  <td className="px-3 py-2.5 text-right"><input type="number" min="0" max={cap} value={qty[l.id]} disabled={cap<=0} onChange={e=>setQ(l.id,e.target.value,cap)} className="w-20 text-right bg-slate-900 border border-slate-700 rounded-md text-sm text-slate-100 px-2 py-1 focus:outline-none focus:border-amber-500/60 disabled:opacity-40"/></td>
+                </tr>
+              );})}
+            </tbody>
+          </table>
+          <p className="px-5 py-2 text-[11px] text-slate-500">เบิกได้ไม่เกินคงเหลือในคลังโครงการ (รับเข้าอัตโนมัติเมื่อ Delivered) · บันทึกแล้ว <b>ตัดสต็อกทันที</b> + เข้าคิว <b>รอส่งมอบ Service</b> · 1 SR เบิกซ้ำได้หลายครั้ง</p>
+        </div>
+        <div className="px-5 py-3 border-t border-slate-800 flex items-center justify-between">
+          <span className="text-[12px] text-slate-400">รวมเบิก <b className="text-slate-100">{total}</b> ชิ้น</span>
+          <div className="flex gap-2">
+            <button onClick={onClose} className="text-xs font-medium rounded-lg px-3 py-1.5 border border-slate-700 text-slate-300 hover:bg-slate-800">ยกเลิก</button>
+            <button onClick={submit} disabled={total<=0||!srId} className="text-xs font-semibold rounded-lg px-4 py-1.5 disabled:opacity-40" style={{background:DEPT.project.c,color:'#0b0f17'}}>📤 บันทึกการเบิก → รอส่งมอบ Service</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 // แท็บกิ่งย่อย Project: คลังสินค้า (Inventory) — รับเข้าอัตโนมัติเมื่อ Delivered + เบิกอ้าง SR
 function ProjectInventory({state, role, onWithdraw}){
   const canEdit = role==='developer' || role==='project';
@@ -1640,7 +1719,7 @@ function ProjectInventory({state, role, onWithdraw}){
         <div className="text-[11px] text-slate-500 leading-relaxed max-w-2xl">คลังแยกตาม <b>Project Stock</b> · <b>รับเข้าอัตโนมัติ</b>เมื่อฝ่ายจัดซื้ออัปเดต PO เป็น <b>Delivered</b> · กด <b>เบิก (อ้าง SR-No.)</b> เลือกรายการจากคงเหลือ → ตัดสต็อก + เข้าคิวรอส่งมอบ Service (เบิกซ้ำได้หลายครั้งต่อ SR)</div>
         <input value={q} onChange={e=>setQ(e.target.value)} placeholder="🔍 ค้นหา Stock" className="w-56 max-w-full bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 px-3 py-1.5 focus:outline-none focus:border-amber-500/60"/>
       </div>
-      {list.map(p=>{ const isOpen=open[p.id]!==false; const bal=invBalance(state,p.id); const plans=(state.plans||[]).filter(x=>x.project_id===p.id); const onhandTotal=bal.reduce((s,r)=>s+r.onhand,0); return (
+      {list.map(p=>{ const isOpen=!!open[p.id]; const bal=invBalance(state,p.id); const plans=(state.plans||[]).filter(x=>x.project_id===p.id); const onhandTotal=bal.reduce((s,r)=>s+r.onhand,0); return (
         <Card key={p.id} className="overflow-hidden">
           <div className="px-5 py-3 flex items-center justify-between flex-wrap gap-2 cursor-pointer hover:bg-slate-800/20" onClick={()=>setOpen(o=>({...o,[p.id]:!isOpen}))}>
             <div className="flex items-center gap-2 flex-wrap"><span className="text-slate-500">{isOpen?'▼':'▶'}</span><span className="mono text-slate-100 font-semibold">{p.project_stock_no}</span><Pill color={DEPT[p.current_phase]?.c||'#64748b'}>{PHASE_LABEL[p.current_phase]}</Pill><span className="text-[12px] text-slate-400">{p.name}</span></div>
@@ -2450,7 +2529,7 @@ function App(){
           {page==='sales'      && <SalesPipeline state={state} role={role} onAddCustomer={handleAddCustomer} onUpdateCustomer={handleUpdateCustomer} onCreateSR={handleCreateSR} onUpdateSR={handleUpdateSR} onTask={handleTask}/>}
           {page==='sales-sr'   && <SalesSR state={state} role={role} onUpdateCustomer={handleUpdateCustomer}/>}
           {page==='project'    && <ProjectDept state={state} role={role} onCreateStock={handleCreateStock} genDefaults={genDefaults} onGoStocks={()=>setPage('project-stocks')}/>}
-          {page==='project-stocks' && <ProjectStocks state={state} role={role} onAddBom={handleAddBom} onUpdateBom={handleUpdateBom} onDeleteBom={handleDeleteBom} onSendBom={handleSendBom} onUpdateProject={handleUpdateProject} onOpenWorkflow={(id)=>{setActiveId(id);setPage('workflow');}}/>}
+          {page==='project-stocks' && <ProjectStocks state={state} role={role} onAddBom={handleAddBom} onUpdateBom={handleUpdateBom} onDeleteBom={handleDeleteBom} onSendBom={handleSendBom} onUpdateProject={handleUpdateProject} onHandoff={handleHandoff} onReject={handleReject} onAck={handleAck}/>}
           {page==='project-inventory' && <ProjectInventory state={state} role={role} onWithdraw={handleWithdrawSR}/>}
           {page==='purchasing' && <Procurement state={state} role={role} onUpdateBom={handleUpdateBom} onCreatePO={handleCreatePO} onOpenPO={setPoProject} genPoNo={genPoNo}/>}
           {page==='purchasing-done' && <PurchasingDone state={state}/>}
