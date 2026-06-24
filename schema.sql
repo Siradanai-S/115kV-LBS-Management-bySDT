@@ -655,7 +655,7 @@ VALUES
  ('STK-2026-002','JOB-2026-002','BOM-2026-002','Draft',             'ขยายเขตจ่ายไฟ ปิโตรเคมีระยอง','project',         TRUE, 3,  4100000,  20.0, 'เฝ้าระวัง', CURRENT_DATE+45, FALSE),
  ('STK-2026-003','JOB-2026-003','BOM-2026-003','Sent to Purchasing','โรงไฟฟ้า SPP กัลฟ์ สระบุรี','purchasing',        TRUE, 8,  9800000,  16.5, 'ปกติ',     CURRENT_DATE+20, FALSE),
  ('STK-2026-004','JOB-2026-004','BOM-2026-004','Sent to Purchasing','เปลี่ยน LBS ศรีราชา (ปิดงาน)','closed',           TRUE, 4,  3950000,  22.0, 'ปกติ',     CURRENT_DATE-3,  TRUE)
-ON CONFLICT (project_stock_no) DO NOTHING;
+ON CONFLICT DO NOTHING;   -- ครอบทุก unique (project_stock_no / job_no / bom_no) — รันซ้ำได้ไม่ error
 
 -- ผูก SR → Stock
 UPDATE sales_requisitions s SET stock_id = p.id FROM projects p
