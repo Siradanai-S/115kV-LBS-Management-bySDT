@@ -2376,18 +2376,23 @@ function App(){
   // ===== แจ้งเตือน (LINE/Email ผ่าน Edge Function) — ยิงแบบ fire-and-forget + เก็บ log ในแอป =====
   const notify = (event, subject, message, force) => {
     const cfg = state.notifSettings || {};
-    if(!force && !cfg['ev_'+event]) return;                       // เหตุการณ์นี้ปิดอยู่
+    // บันทึก log "ทุกครั้ง" ก่อนเสมอ (แม้จะถูกข้าม) เพื่อให้ไล่สถานะได้ — แล้วค่อยอัปเดตเหตุผล
     const id = ++notifSeq;
     const entry = { id, event, subject, message, at:new Date().toLocaleString('th-TH',{hour12:false}), status:'กำลังส่ง…' };
     setNotifLog(l=>[entry, ...l].slice(0,40));
     const fin = status => setNotifLog(l=>l.map(x=>x.id===id?{...x,status}:x));
+    if(!force && !cfg['ev_'+event]){ fin(`ข้าม (เหตุการณ์ "${event}" ปิดอยู่ — ติ๊กเปิดใน Setting)`); return; }
     const line  = { enabled:!!cfg.line_enabled,  token:cfg.line_token||'', to:String(cfg.line_to||'').split(/[\s,]+/).filter(Boolean) };
     const email = { enabled:!!cfg.email_enabled, to:String(cfg.email_to||'').split(/[\s,]+/).filter(Boolean) };
-    if(!line.enabled && !email.enabled){ fin('ข้าม (ไม่ได้เปิดช่องใด)'); return; }
-    if(!cfg.function_url){ fin('จำลอง (ยังไม่ตั้ง Endpoint)'); return; }
+    if(!line.enabled && !email.enabled){ fin('ข้าม (ยังไม่เปิดช่อง LINE/Email)'); return; }
+    if(line.enabled && !line.token){ fin('LINE เปิดแต่ยังไม่ใส่ Channel Access Token'); return; }
+    if(line.enabled && !line.to.length){ fin('LINE เปิดแต่ช่อง "ส่งถึง" ว่าง (ใส่ groupId/userId)'); return; }
+    if(email.enabled && !email.to.length && !line.enabled){ fin('Email เปิดแต่ไม่มีผู้รับ'); return; }
+    if(!cfg.function_url){ fin('จำลอง (ยังไม่ตั้ง Edge Function URL — ยังไม่ deploy/ยังไม่กรอก)'); return; }
+    fin('กำลังส่ง… → '+cfg.function_url.replace(/^https?:\/\//,'').slice(0,40));
     fetch(cfg.function_url, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ event, subject, message, line, email }) })
-      .then(r=> fin(r.ok ? 'ส่งแล้ว ✓' : ('ผิดพลาด HTTP '+r.status)))
-      .catch(e=> fin('error: '+(e.message||e)));
+      .then(async r=>{ if(r.ok){ fin('ส่งสำเร็จ ✓ (HTTP 200) — ถ้าไม่เห็นในไลน์: บอทไม่ได้อยู่ในกลุ่ม/ผู้รับผิด'); } else { let d=''; try{ d=(await r.text()).slice(0,80); }catch{} fin(`ผิดพลาด HTTP ${r.status} ${d}`); } })
+      .catch(e=> fin('error (เรียก Endpoint ไม่ได้/CORS): '+(e.message||e)));
   };
   const handleSaveNotif = run(async (patch) => { await db.saveNotifSettings(patch); },
     (s, patch) => ({...s, notifSettings:{...s.notifSettings, ...patch}}));
