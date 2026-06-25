@@ -259,8 +259,13 @@ ALTER TABLE customers       ALTER COLUMN contact         TYPE TEXT;
 ALTER TABLE customers       ALTER COLUMN location        TYPE TEXT;
 ALTER TABLE customers       ALTER COLUMN cust_po_no      TYPE TEXT;
 ALTER TABLE customers       ALTER COLUMN term_of_payment TYPE TEXT;
+-- bom_items: view bom_value อ้าง b.* → ต้อง DROP view ก่อนเปลี่ยน type แล้วสร้างใหม่
+DROP VIEW IF EXISTS bom_value;
 ALTER TABLE bom_items       ALTER COLUMN epicor_code     TYPE TEXT;
 ALTER TABLE bom_items       ALTER COLUMN project_phase   TYPE TEXT;
+CREATE VIEW bom_value AS
+  SELECT b.*, ROUND(b.quantity * b.unit_cost * b.fx_rate, 2) AS total_thb
+  FROM bom_items b;
 ALTER TABLE service_team    ALTER COLUMN name            TYPE TEXT;
 ALTER TABLE service_team    ALTER COLUMN role            TYPE TEXT;
 ALTER TABLE service_plans   ALTER COLUMN location        TYPE TEXT;
