@@ -1207,6 +1207,8 @@ function ProjectDept({state, role, onCreateStock, genDefaults, onGoStocks}){
   const toggle = id => setSel(s => s.includes(id) ? s.filter(x=>x!==id) : [...s,id]);
   const srCusts = sr => (state.customers||[]).filter(c=>c.sr_id===sr.id);
   const selCusts = (state.customers||[]).filter(c=>sel.includes(c.sr_id));
+  const cellTh = "border border-slate-700/70 px-2.5 py-2 font-medium text-[11px] uppercase tracking-wide text-slate-500 text-left";
+  const cell   = "border border-slate-700/70 px-2.5 py-2 align-top";
   const openCreate = () => {
     if(!sel.length) return;
     const d=genDefaults();
@@ -1225,24 +1227,44 @@ function ProjectDept({state, role, onCreateStock, genDefaults, onGoStocks}){
             <div className="flex items-center gap-2"><span style={{color:DEPT.project.c}}>📥</span><h3 className="text-slate-200 font-semibold">Sales Requisition ที่ฝ่ายขายส่งมา — เลือกหลายใบเพื่อสร้าง 1 Project Stock</h3><span className="text-[11px] text-slate-500">({inbox.length} ใบ)</span></div>
             {canEdit && <button onClick={openCreate} disabled={!sel.length} className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-1.5" style={sel.length?{background:DEPT.project.c,color:'#0b0f17'}:{background:'#e2e8f0',color:'#94a3b8',cursor:'not-allowed'}}>{Icon.plus} สร้าง Project Stock ({sel.length})</button>}
           </div>
-          <div className="p-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {inbox.map(sr => { const custs=srCusts(sr); const lbs=custs.reduce((s,c)=>s+num(c.lbs_qty),0); const selected=sel.includes(sr.id); const dd=custs.map(c=>c.desired_date).filter(Boolean).sort()[0]; return (
-              <div key={sr.id} className="rounded-lg border p-3 space-y-2" style={selected?{borderColor:DEPT.project.c,background:DEPT.project.c+'12'}:{borderColor:'#cbd5e1aa',background:'#f8fafc'}}>
-                <div className="flex items-start gap-2">
-                  {canEdit && <input type="checkbox" checked={selected} onChange={()=>toggle(sr.id)} className="mt-1 accent-amber-500"/>}
-                  <div className="flex-1"><div className="text-[13px] text-slate-200 font-medium mono">{sr.sr_no}</div><div className="text-[11px] text-slate-500">{custs.length} ลูกค้า · ทำสัญญาแล้ว {custs.filter(c=>c.contract_status==='ทำสัญญาแล้ว').length}/{custs.length}</div></div>
-                  <Pill color="#f97316">LBS {lbs}</Pill>
+          <div className="p-3 space-y-3">
+            {inbox.map(sr => { const custs=srCusts(sr); const lbs=custs.reduce((s,c)=>s+num(c.lbs_qty),0); const selected=sel.includes(sr.id); const dd=custs.map(c=>c.desired_date).filter(Boolean).sort()[0]; const doneCt=custs.filter(c=>c.contract_status==='ทำสัญญาแล้ว').length; return (
+              <div key={sr.id} className="rounded-lg border overflow-hidden" style={selected?{borderColor:DEPT.project.c}:{borderColor:'#cbd5e1aa'}}>
+                {/* หัวใบ SR + checkbox เลือกสร้าง Stock */}
+                <label className="px-4 py-2.5 flex items-center justify-between flex-wrap gap-2 cursor-pointer" style={{background:selected?DEPT.project.c+'1f':'#0f172a40'}}>
+                  <span className="flex items-center gap-2 flex-wrap">
+                    {canEdit && <input type="checkbox" checked={selected} onChange={()=>toggle(sr.id)} className="accent-amber-500"/>}
+                    <span className="mono font-semibold text-slate-100">{sr.sr_no}</span>
+                    {sr.note && <span className="text-[11px] text-slate-500">· {sr.note}</span>}
+                  </span>
+                  <span className="text-[11px] text-slate-400">{custs.length} ลูกค้า · LBS รวม <b style={{color:'#f97316'}}>{lbs}</b> · ทำสัญญา {doneCt}/{custs.length}{dd?` · เร็วสุด ${dd}`:''}</span>
+                </label>
+                {/* ตารางลูกค้าในใบ — เส้นกริดเทา */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm border-collapse">
+                    <thead><tr className="bg-slate-800/15">
+                      <th className={cellTh}>ชื่อลูกค้า</th><th className={cellTh}>ประเภท</th><th className={cellTh}>งาน</th>
+                      <th className={cellTh+' text-right'}>LBS</th><th className={cellTh}>ชื่อโครงการ</th><th className={cellTh}>วันที่ต้องการ</th>
+                      <th className={cellTh}>สถานที่ติดตั้ง</th><th className={cellTh}>ผู้ติดต่อ</th><th className={cellTh}>Scope</th>
+                    </tr></thead>
+                    <tbody>
+                      {custs.length===0 && <tr><td className={cell+' text-center text-slate-500'} colSpan="9">— ไม่มีลูกค้าในใบนี้ —</td></tr>}
+                      {custs.map(c=>(
+                        <tr key={c.id} className="hover:bg-slate-800/20">
+                          <td className={cell+' text-slate-200 font-medium'}>{c.name}</td>
+                          <td className={cell}><Pill color={ctypeColor(c.customer_type)}>{c.customer_type}</Pill></td>
+                          <td className={cell}><Pill color={c.work_type==='Supply'?'#64748b':'#16a34a'}>{c.work_type}</Pill></td>
+                          <td className={cell+' text-right mono font-semibold'} style={{color:'#f97316'}}>{c.lbs_qty}</td>
+                          <td className={cell+' text-slate-300'}>{c.project_name||'—'}</td>
+                          <td className={cell+' mono text-slate-400'}>{c.desired_date||'—'}</td>
+                          <td className={cell+' text-slate-400'}>{c.location||'—'}</td>
+                          <td className={cell+' text-slate-400'}>{c.contact||'—'}</td>
+                          <td className={cell+' text-slate-500 text-[11px]'}>{c.scope||'—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-                <div className="space-y-1.5 border-t border-slate-700/40 pt-2">
-                  {custs.map(c => (
-                    <div key={c.id} className="leading-tight">
-                      <div className="flex items-center gap-1.5"><span className="text-[12px] text-slate-200">{c.name}</span><Pill color={ctypeColor(c.customer_type)}>{c.customer_type}</Pill><Pill color="#f97316">LBS {c.lbs_qty}</Pill></div>
-                      <div className="text-[10px] text-slate-500 mt-0.5">{c.work_type} · {c.location||'—'} · {c.contact||'—'}{c.desired_date?' · ต้องการ '+c.desired_date:''}{c.scope?' · '+c.scope:''}</div>
-                    </div>
-                  ))}
-                  {custs.length===0 && <div className="text-[11px] text-slate-500">—</div>}
-                </div>
-                {dd && <div className="text-[10px] text-slate-500">เร็วสุดต้องการ {dd}</div>}
               </div>
             );})}
           </div>
