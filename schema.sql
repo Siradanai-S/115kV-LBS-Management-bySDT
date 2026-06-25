@@ -220,6 +220,9 @@ ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS proof_url    TEXT;
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS delivered    BOOLEAN DEFAULT FALSE;
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS sr_id        BIGINT REFERENCES sales_requisitions(id) ON DELETE SET NULL;   -- เบิกอ้าง SR-No.
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS cust_id      BIGINT REFERENCES customers(id) ON DELETE SET NULL;            -- เบิกแยกต่อลูกค้า (1 ใบเบิก/ลูกค้า)
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS checkin_lat  DOUBLE PRECISION;   -- พิกัด Check-in ตอนทีมทำ Report (Map Tracking)
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS checkin_lng  DOUBLE PRECISION;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS checkin_at   TIMESTAMPTZ;
 -- Service flow: เช็กลิสต์หน้างาน + ลูกค้าเซ็นรับ + ใบรับประกัน
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS checklist      JSONB DEFAULT '{}'::jsonb;
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS received_by    VARCHAR(120);

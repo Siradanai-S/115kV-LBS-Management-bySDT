@@ -29,6 +29,9 @@
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<!-- Leaflet (แผนที่ Map Tracking) -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
   :root { --app-bg:#eef2f7; --sidebar:#e9eef6; --header:#f4f7fbe6; --scroll:#cbd5e1; --scroll-hover:#94a3b8; --nav-active:#0f172a; color-scheme: light; }
   html[data-theme="dark"] { --app-bg:#0b0f17; --sidebar:#0a0e15; --header:#0b0f17e6; --scroll:#1e293b; --scroll-hover:#334155; --nav-active:#f1f5f9; color-scheme: dark; }
@@ -48,7 +51,7 @@
 <body>
 <div id="root"></div>
 <script type="text/babel" data-presets="react-classic">
-const { useState, useEffect, useMemo } = React;
+const { useState, useEffect, useMemo, useRef } = React;
 
 /* ============================ CONFIG ============================ */
 const SUPABASE_URL  = "https://ptdoaxhjryypjsxeifak.supabase.co"; // Project URL
@@ -676,13 +679,13 @@ const NAV = [
   { id:'sales',      label:'Sales Department',      icon:Icon.pipeline, dep:'sales',      kids:[ { id:'sales-sr', label:'Sales Requisition & ติดตาม PO' } ] },
   { id:'project',    label:'Project Department',    icon:Icon.layers,   dep:'project',    kids:[ { id:'project-stocks', label:'Stock No. (กล่องโครงการ)' }, { id:'project-inventory', label:'คลังสินค้า (Inventory)' } ] },
   { id:'purchasing', label:'Purchasing Department', icon:Icon.cart,     dep:'purchasing', kids:[ { id:'purchasing-done', label:'BOM Delivered completed' } ] },
-  { id:'service',    label:'Service Department',    icon:Icon.truck,    dep:'service' },
+  { id:'service',    label:'Service Department',    icon:Icon.truck,    dep:'service',    kids:[ { id:'map-tracking', label:'🗺️ Map Tracking' } ] },
   { id:'settings',   label:'Setting (ผู้ดูแล)',      icon:Icon.gear,     devOnly:true },
 ];
 // page ใดอยู่ใต้ parent ใด (ไว้ไฮไลต์)
-const PAGE_GROUP = { sales:'sales','sales-sr':'sales', project:'project','project-stocks':'project','project-inventory':'project', workflow:'project', purchasing:'purchasing','purchasing-done':'purchasing', service:'service', settings:'settings', dashboard:'dashboard' };
+const PAGE_GROUP = { sales:'sales','sales-sr':'sales', project:'project','project-stocks':'project','project-inventory':'project', workflow:'project', purchasing:'purchasing','purchasing-done':'purchasing', service:'service','map-tracking':'service', settings:'settings', dashboard:'dashboard' };
 // หน้าใดเป็นของฝ่ายใด (ไว้แสดงแบนเนอร์ "ดูอย่างเดียว" เมื่อไม่ใช่ฝ่ายตน) — #1 per-action
-const PAGE_DEP = { sales:'sales','sales-sr':'sales', project:'project','project-stocks':'project','project-inventory':'project', workflow:'project', purchasing:'purchasing','purchasing-done':'purchasing', service:'service' };
+const PAGE_DEP = { sales:'sales','sales-sr':'sales', project:'project','project-stocks':'project','project-inventory':'project', workflow:'project', purchasing:'purchasing','purchasing-done':'purchasing', service:'service','map-tracking':'service' };
 function Sidebar({page, onNav, state, isDev}){
   return (
     <aside className="w-60 shrink-0 bg-[var(--sidebar)] border-r border-slate-800/80 flex flex-col">
@@ -1204,6 +1207,7 @@ function ProjectDept({state, role, onCreateStock, genDefaults, onGoStocks}){
   const inbox = state.srs.filter(s=>!s.stock_id);              // SR รอสร้าง Stock
   const [sel,setSel]=useState([]);
   const [mk,setMk]=useState(null);                             // Popup ฟอร์มสร้าง Stock (null = ปิด)
+  const [show,setShow]=useState({});                           // sr.id -> กาง (เริ่มต้นซ่อน)
   const toggle = id => setSel(s => s.includes(id) ? s.filter(x=>x!==id) : [...s,id]);
   const srCusts = sr => (state.customers||[]).filter(c=>c.sr_id===sr.id);
   const selCusts = (state.customers||[]).filter(c=>sel.includes(c.sr_id));
@@ -1228,19 +1232,20 @@ function ProjectDept({state, role, onCreateStock, genDefaults, onGoStocks}){
             {canEdit && <button onClick={openCreate} disabled={!sel.length} className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-1.5" style={sel.length?{background:DEPT.project.c,color:'#0b0f17'}:{background:'#e2e8f0',color:'#94a3b8',cursor:'not-allowed'}}>{Icon.plus} สร้าง Project Stock ({sel.length})</button>}
           </div>
           <div className="p-3 space-y-3">
-            {inbox.map(sr => { const custs=srCusts(sr); const lbs=custs.reduce((s,c)=>s+num(c.lbs_qty),0); const selected=sel.includes(sr.id); const dd=custs.map(c=>c.desired_date).filter(Boolean).sort()[0]; const doneCt=custs.filter(c=>c.contract_status==='ทำสัญญาแล้ว').length; return (
+            {inbox.map(sr => { const custs=srCusts(sr); const lbs=custs.reduce((s,c)=>s+num(c.lbs_qty),0); const selected=sel.includes(sr.id); const dd=custs.map(c=>c.desired_date).filter(Boolean).sort()[0]; const doneCt=custs.filter(c=>c.contract_status==='ทำสัญญาแล้ว').length; const isOpen=!!show[sr.id]; return (
               <div key={sr.id} className="rounded-lg border overflow-hidden" style={selected?{borderColor:DEPT.project.c}:{borderColor:'#cbd5e1aa'}}>
-                {/* หัวใบ SR + checkbox เลือกสร้าง Stock */}
-                <label className="px-4 py-2.5 flex items-center justify-between flex-wrap gap-2 cursor-pointer" style={{background:selected?DEPT.project.c+'1f':'#0f172a40'}}>
+                {/* หัวใบ SR — คลิกเพื่อกาง/ยุบ · checkbox เลือกสร้าง Stock (กดแยก) */}
+                <div className="px-4 py-2.5 flex items-center justify-between flex-wrap gap-2 cursor-pointer hover:bg-slate-800/20" style={{background:selected?DEPT.project.c+'1f':'#0f172a40'}} onClick={()=>setShow(s=>({...s,[sr.id]:!isOpen}))}>
                   <span className="flex items-center gap-2 flex-wrap">
-                    {canEdit && <input type="checkbox" checked={selected} onChange={()=>toggle(sr.id)} className="accent-amber-500"/>}
+                    <span className="text-slate-500">{isOpen?'▼':'▶'}</span>
+                    {canEdit && <input type="checkbox" checked={selected} onClick={e=>e.stopPropagation()} onChange={()=>toggle(sr.id)} className="accent-amber-500"/>}
                     <span className="mono font-semibold text-slate-100">{sr.sr_no}</span>
                     {sr.note && <span className="text-[11px] text-slate-500">· {sr.note}</span>}
                   </span>
                   <span className="text-[11px] text-slate-400">{custs.length} ลูกค้า · LBS รวม <b style={{color:'#f97316'}}>{lbs}</b> · ทำสัญญา {doneCt}/{custs.length}{dd?` · เร็วสุด ${dd}`:''}</span>
-                </label>
+                </div>
                 {/* ตารางลูกค้าในใบ — เส้นกริดเทา */}
-                <div className="overflow-x-auto">
+                {isOpen && <div className="overflow-x-auto">
                   <table className="w-full text-sm border-collapse">
                     <thead><tr className="bg-slate-800/15">
                       <th className={cellTh}>ชื่อลูกค้า</th><th className={cellTh}>ประเภท</th><th className={cellTh}>งาน</th>
@@ -1264,7 +1269,7 @@ function ProjectDept({state, role, onCreateStock, genDefaults, onGoStocks}){
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </div>}
               </div>
             );})}
           </div>
@@ -1798,19 +1803,64 @@ function ProjectInventory({state, role, onWithdraw}){
   );
 }
 
+// แผนที่ Map Tracking — ปักหมุด Completed Project ตามพิกัด Check-in (Leaflet + OSM)
+function MapTracking({state}){
+  const ref = useRef(null); const mapRef = useRef(null);
+  const pts = (state.plans||[]).filter(p=>p.delivered && p.checkin_lat!=null && p.checkin_lng!=null).map(p=>{
+    const proj=state.projects.find(x=>x.id===p.project_id)||{}; const cust=p.cust_id?(state.customers||[]).find(c=>c.id===p.cust_id):null;
+    return { id:p.id, lat:Number(p.checkin_lat), lng:Number(p.checkin_lng), title:proj.project_stock_no||proj.name||('แผน#'+p.id), sub:`${cust?cust.name+' · ':''}${proj.name||''}${p.wd_no?' · '+p.wd_no:''}`, date:String(p.received_date||p.checkin_at||'').slice(0,10) };
+  });
+  useEffect(()=>{
+    if(typeof L==='undefined' || !ref.current) return;
+    if(!mapRef.current){
+      mapRef.current = L.map(ref.current).setView([13.5,101.0], 6);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19, attribution:'© OpenStreetMap' }).addTo(mapRef.current);
+    }
+    const map = mapRef.current;
+    setTimeout(()=>map.invalidateSize(), 100);   // กันแผนที่เพี้ยนตอนเพิ่งแสดง
+    if(map._lbsMarkers) map._lbsMarkers.forEach(m=>map.removeLayer(m));
+    map._lbsMarkers = pts.map(pt=>{ const m=L.marker([pt.lat,pt.lng]).addTo(map); m.bindPopup(`<b>${pt.title}</b><br>${pt.sub}<br>${pt.date}<br>📍 ${pt.lat.toFixed(5)}, ${pt.lng.toFixed(5)}`); return m; });
+    if(pts.length){ try{ map.fitBounds(L.featureGroup(map._lbsMarkers).getBounds().pad(0.3)); }catch(e){} }
+  }, [JSON.stringify(pts)]);
+  return (
+    <div className="space-y-3">
+      <Card className="p-4">
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+          <h3 className="text-slate-200 font-semibold flex items-center gap-2">🗺️ Map Tracking — Completed Projects (ประเทศไทย)</h3>
+          <span className="text-[11px] text-slate-500">{pts.length} จุดที่มีพิกัด Check-in</span>
+        </div>
+        <div ref={ref} style={{height:540, borderRadius:12, overflow:'hidden', zIndex:0}} className="border border-slate-700"/>
+        {pts.length===0 && <p className="text-[11px] text-slate-500 mt-2">ยังไม่มี Completed Project ที่มีพิกัด Check-in — ทำ Report พร้อมกด Check-in (GPS/กรอกพิกัด) ในฝ่ายบริการก่อน หมุดจึงจะขึ้นบนแผนที่</p>}
+      </Card>
+    </div>
+  );
+}
+function ServiceSection({title, icon, color, plans, emptyMsg, ...jobProps}){
+  const [open,setOpen]=useState(true);
+  return (
+    <Card className="overflow-hidden" style={{borderColor:color+'55'}}>
+      <div className="px-5 py-3 border-b border-slate-800 flex items-center justify-between gap-2 cursor-pointer hover:bg-slate-800/20" style={{background:color+'12'}} onClick={()=>setOpen(o=>!o)}>
+        <div className="flex items-center gap-2"><span className="text-slate-500">{open?'▼':'▶'}</span><span style={{color}}>{icon}</span><h3 className="text-slate-200 font-semibold">{title}</h3><span className="text-[11px] font-bold rounded-full px-2 py-0.5" style={{background:color,color:'#0b0f17'}}>{plans.length}</span></div>
+      </div>
+      {open && (plans.length===0
+        ? <div className="p-6 text-center text-slate-500 text-sm">{emptyMsg}</div>
+        : <div className="p-3 space-y-3">{plans.map(pl=> <ServiceJob key={pl.id} pl={pl} project={jobProps.state.projects.find(p=>p.id===pl.project_id)} {...jobProps}/>)}</div>)}
+    </Card>
+  );
+}
 function FieldService({state, role, onAddMember, onRemoveMember, onAddSchedule, onRemoveSchedule, onReceive, onAssign, onDeliver, onWarranty, onClose}){
   const canEdit = role==='developer' || role==='service';
-  const jobs = (state.plans||[]).filter(pl=>pl.sent);   // ใบเบิกที่ฝ่ายโครงการส่งมา = งานบริการ
-  const sorted = [...jobs].sort((a,b)=> (a.delivered?1:0)-(b.delivered?1:0) || String(a.plan_end||'').localeCompare(String(b.plan_end||'')));
+  const jobs = (state.plans||[]).filter(pl=>pl.sent);                       // ใบเบิกที่ฝ่ายโครงการส่งมา
+  const byEnd = (a,b)=> String(a.plan_end||'').localeCompare(String(b.plan_end||''));
+  const pending   = jobs.filter(p=>!p.acked).sort(byEnd);                   // รอกดรับงาน
+  const assigned  = jobs.filter(p=>p.acked && !p.delivered).sort(byEnd);    // รับแล้ว — จัดทีม/ทำงาน
+  const completed = jobs.filter(p=>p.delivered).sort((a,b)=>-byEnd(a,b));   // Report เสร็จ (Completed)
+  const jp = { state, canEdit, onReceive, onAssign, onDeliver, onWarranty, onClose };
   return (
     <div className="space-y-5">
-      <Card className="overflow-hidden" style={{borderColor:DEPT.service.c+'55'}}>
-        <div className="px-5 py-3 border-b border-slate-800 flex items-center gap-2" style={{background:DEPT.service.c+'12'}}>
-          <span style={{color:DEPT.service.c}}>🛠️</span><h3 className="text-slate-200 font-semibold">งานบริการ (ตามใบเบิก) — ทำตามขั้นตอน</h3><span className="text-[11px] text-slate-500">({jobs.filter(j=>!j.delivered).length} ค้าง / {jobs.length} ทั้งหมด)</span>
-        </div>
-        {jobs.length===0 ? <div className="p-8 text-center text-slate-500 text-sm">ยังไม่มีงาน — รอฝ่ายโครงการส่งใบเบิก+แผนงานเข้ามา</div> :
-          <div className="p-3 space-y-3">{sorted.map(pl=> <ServiceJob key={pl.id} pl={pl} project={state.projects.find(p=>p.id===pl.project_id)} state={state} canEdit={canEdit} onReceive={onReceive} onAssign={onAssign} onDeliver={onDeliver} onWarranty={onWarranty} onClose={onClose}/>)}</div>}
-      </Card>
+      <ServiceSection title="Pending Actions — งานจากฝ่ายโครงการ รอกดรับงาน" icon="📥" color="#f97316" plans={pending} emptyMsg="ไม่มีงานรอรับ" {...jp}/>
+      <ServiceSection title="Assigned Teams — จัดทีม + วันที่ทำงานจริง" icon="👷" color={DEPT.service.c} plans={assigned} emptyMsg="ยังไม่มีงานที่รับแล้ว" {...jp}/>
+      <ServiceSection title="Completed Projects — Report เสร็จ + Check-in Location" icon="✅" color="#16a34a" plans={completed} emptyMsg="ยังไม่มีงานที่เสร็จ" {...jp}/>
       <ServiceTeam state={state} canEdit={canEdit} onAddMember={onAddMember} onRemoveMember={onRemoveMember} onAddSchedule={onAddSchedule} onRemoveSchedule={onRemoveSchedule}/>
     </div>
   );
@@ -1833,6 +1883,9 @@ function ServiceJob({pl, project, state, canEdit, onReceive, onAssign, onDeliver
   const [chk,setChk]=useState(pl.checklist||{});
   const [recvBy,setRecvBy]=useState(pl.received_by||''); const [recvDate,setRecvDate]=useState(pl.received_date||isoIn(0));
   const [proof,setProof]=useState({ name:pl.proof_name||'', url:pl.proof_url||'' });
+  const [ci,setCi]=useState({ lat:pl.checkin_lat!=null?String(pl.checkin_lat):'', lng:pl.checkin_lng!=null?String(pl.checkin_lng):'' });
+  const [ciMsg,setCiMsg]=useState('');
+  const getGPS = ()=>{ if(!navigator.geolocation){ setCiMsg('เบราว์เซอร์ไม่รองรับ GPS'); return; } setCiMsg('กำลังขอตำแหน่ง…'); navigator.geolocation.getCurrentPosition(p=>{ setCi({lat:p.coords.latitude.toFixed(6),lng:p.coords.longitude.toFixed(6)}); setCiMsg('✓ ได้พิกัดจาก GPS'); }, e=>setCiMsg('ขอ GPS ไม่ได้: '+(e.message||'')+' (กรอกพิกัดเองได้)'), {enableHighAccuracy:true,timeout:10000}); };
   const [wNo,setWNo]=useState(pl.warranty_no||''); const [wUntil,setWUntil]=useState(pl.warranty_until||'');
   const toggleTeam = mid => setTeam(t=> t.includes(mid) ? t.filter(x=>x!==mid) : (t.length>=2 ? t : [...t,mid]));   // จำกัด 1-2 คน
   const onFile = file => { if(!file) return; const r=new FileReader(); r.onload=()=>setProof({name:file.name,url:r.result}); r.readAsDataURL(file); };
@@ -1900,7 +1953,7 @@ function ServiceJob({pl, project, state, canEdit, onReceive, onAssign, onDeliver
         </div>
       )}
 
-      {/* ===== STEP 3: ส่งมอบ + ลูกค้าเซ็นรับ + แนบไฟล์ ===== */}
+      {/* ===== STEP 3: ทำ Report — ส่งมอบ + เซ็นรับ + Check-in Location ===== */}
       {stage===3 && (
         <div className="rounded-md bg-slate-900/40 p-2.5 space-y-2.5">
           <div className="text-[11px] text-slate-400">ทีม: {(pl.team_ids||[]).map(memName).join(', ')||'-'} · ปฏิบัติงาน {pl.actual_start||'-'} → {pl.actual_end||'-'} · ✓ เช็กลิสต์ครบ</div>
@@ -1908,18 +1961,32 @@ function ServiceJob({pl, project, state, canEdit, onReceive, onAssign, onDeliver
             <div><Lbl>ผู้รับมอบ (ลูกค้าเซ็นรับ)</Lbl><Inp value={recvBy} onChange={setRecvBy} placeholder="ชื่อผู้รับมอบ"/></div>
             <div><Lbl>วันที่รับมอบ</Lbl><Inp type="date" value={recvDate} onChange={setRecvDate}/></div>
           </div>
+          {/* Check-in Location (GPS หน้างาน / กรอกเอง) */}
+          <div className="rounded-md border border-slate-700 p-2 space-y-1.5">
+            <div className="flex items-center justify-between"><span className="text-[11px] text-slate-300">📍 Check-in Location (พิกัดหน้างาน — ใช้ปักหมุดใน Map Tracking)</span>
+              <button type="button" onClick={getGPS} className="text-[11px] font-medium rounded-md px-2 py-0.5 border" style={{borderColor:DEPT.service.c+'88',color:DEPT.service.c}}>📡 ดึง GPS</button></div>
+            <div className="grid grid-cols-2 gap-2">
+              <Inp value={ci.lat} onChange={v=>setCi(s=>({...s,lat:v}))} placeholder="Latitude เช่น 13.7563"/>
+              <Inp value={ci.lng} onChange={v=>setCi(s=>({...s,lng:v}))} placeholder="Longitude เช่น 100.5018"/>
+            </div>
+            {ciMsg && <div className="text-[10px] text-slate-400">{ciMsg}</div>}
+            {ci.lat&&ci.lng && <a href={`https://www.google.com/maps?q=${ci.lat},${ci.lng}`} target="_blank" rel="noreferrer" className="text-[10px] text-sky-600 hover:underline">🗺️ ดูบน Google Maps</a>}
+          </div>
           <div><Lbl>แนบไฟล์ส่งมอบ (PDF / รูปถ่าย)</Lbl><input type="file" accept="application/pdf,image/*" onChange={e=>onFile(e.target.files[0])} className="w-full text-[11px] text-slate-400 file:mr-2 file:rounded file:border-0 file:bg-slate-700 file:text-slate-200 file:px-2 file:py-1"/>{proof.name && <span className="text-[10px] text-emerald-600">✓ {proof.name}</span>}</div>
           {docBtns}
-          {canEdit && <button onClick={()=>onDeliver(pl.id, pl.project_id, { received_by:recvBy, received_date:recvDate, proof })} disabled={!recvBy.trim()} title={!recvBy.trim()?'ระบุชื่อผู้รับมอบก่อน':''} className="w-full text-xs font-semibold rounded-md px-3 py-1.5 inline-flex items-center justify-center gap-1.5 disabled:opacity-40" style={{background:DEPT.service.c,color:'#0b0f17'}}>{Icon.doc} ✓ ส่งมอบงาน + ลงนาม DO + ปิดงาน</button>}
+          {canEdit && <button onClick={()=>onDeliver(pl.id, pl.project_id, { received_by:recvBy, received_date:recvDate, proof, checkin_lat:ci.lat!==''?num(ci.lat):null, checkin_lng:ci.lng!==''?num(ci.lng):null })} disabled={!recvBy.trim()} title={!recvBy.trim()?'ระบุชื่อผู้รับมอบก่อน':''} className="w-full text-xs font-semibold rounded-md px-3 py-1.5 inline-flex items-center justify-center gap-1.5 disabled:opacity-40" style={{background:'#16a34a',color:'#fff'}}>{Icon.doc} ✓ ทำ Report → Completed (ลงนาม DO)</button>}
         </div>
       )}
 
       {/* ===== DONE + ใบรับประกัน (optional) ===== */}
       {stage===4 && (
         <div className="rounded-md p-2.5 space-y-2" style={{background:'#16a34a0e'}}>
-          <div className="text-[12px] text-emerald-600 font-medium">✓ ส่งมอบงานเรียบร้อย</div>
+          <div className="text-[12px] text-emerald-600 font-medium">✅ Completed — Report เสร็จ</div>
           <div className="text-[11px] text-slate-400">ทีม: {(pl.team_ids||[]).map(memName).join(', ')||'-'} · ปฏิบัติงานจริง {pl.actual_start||'-'} → {pl.actual_end||'-'}{pl.received_by?` · ผู้รับมอบ ${pl.received_by} (${pl.received_date||'-'})`:''}</div>
-          {pl.proof_url && <a href={pl.proof_url} target="_blank" rel="noreferrer" className="text-[11px] text-sky-600 hover:underline">📎 {pl.proof_name||'ไฟล์ส่งมอบ'}</a>}
+          {pl.checkin_lat!=null&&pl.checkin_lng!=null
+            ? <a href={`https://www.google.com/maps?q=${pl.checkin_lat},${pl.checkin_lng}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[11px] text-emerald-700 hover:underline">📍 Check-in: {Number(pl.checkin_lat).toFixed(5)}, {Number(pl.checkin_lng).toFixed(5)} (เปิดแผนที่)</a>
+            : <div className="text-[10px] text-slate-500">— ไม่มีพิกัด Check-in —</div>}
+          {pl.proof_url && <a href={pl.proof_url} target="_blank" rel="noreferrer" className="text-[11px] text-sky-600 hover:underline block">📎 {pl.proof_name||'ไฟล์ส่งมอบ'}</a>}
           {docBtns}
           {/* ใบรับประกัน */}
           <div className="border-t border-slate-700/40 pt-2">
@@ -2530,14 +2597,16 @@ function App(){
     if(pl){ for(const mid of (teamIds||[])){ await db.addSchedule({ project_id:pl.project_id, member_id:mid, start_date:aStart||pl.plan_start, end_date:aEnd||pl.plan_end, note:'ปฏิบัติงานจริง '+(pl.wd_no||'') }); } }
     await completeSvcTask(planId, 1);
   });
-  // ขั้น 3: ส่งมอบ + ลูกค้าเซ็นรับ + แนบไฟล์ → ลงนาม DO + ปิดงานบริการ
+  // ขั้น 3: ทำ Report (ส่งมอบ + ลูกค้าเซ็นรับ + Check-in Location) → ลงนาม DO + สถานะ Completed
   const handleSvcDeliver = run(async (planId, projectId, info) => {
     info=info||{};
-    await db.updatePlan(planId, { delivered:true, received_by:info.received_by||null, received_date:info.received_date||null, proof_name:(info.proof&&info.proof.name)||null, proof_url:(info.proof&&info.proof.url)||null });
+    await db.updatePlan(planId, { delivered:true, received_by:info.received_by||null, received_date:info.received_date||null, proof_name:(info.proof&&info.proof.name)||null, proof_url:(info.proof&&info.proof.url)||null,
+      checkin_lat:(info.checkin_lat!=null?Number(info.checkin_lat):null), checkin_lng:(info.checkin_lng!=null?Number(info.checkin_lng):null), checkin_at:info.checkin_at||new Date().toISOString() });
     await db.signDO(projectId);
     await completeSvcTask(planId, 2);
     const p=state.projects.find(x=>x.id===projectId); const pl=(state.plans||[]).find(x=>x.id===planId);
-    notify('do', '✅ ลงนาม DO (ส่งมอบเสร็จ)', `${p?.project_stock_no||''} (Job ${p?.job_no||''})\n${p?.name||''}\nผู้รับมอบ: ${info.received_by||'-'} (${info.received_date||'-'})`);
+    const loc = (info.checkin_lat!=null&&info.checkin_lng!=null) ? `\n📍 Check-in: ${Number(info.checkin_lat).toFixed(5)}, ${Number(info.checkin_lng).toFixed(5)}` : '';
+    notify('do', '✅ Report เสร็จ — Completed (ลงนาม DO)', `${p?.project_stock_no||''} (Job ${p?.job_no||''})\n${p?.name||''}\nผู้รับมอบ: ${info.received_by||'-'} (${info.received_date||'-'})${loc}`);
   });
   // (optional) ออกใบรับประกัน
   const handleSvcWarranty = run(async (planId, payload) => {
@@ -2588,6 +2657,7 @@ function App(){
           {page==='purchasing' && <Procurement state={state} role={role} onUpdateBom={handleUpdateBom} onCreatePO={handleCreatePO} onOpenPO={setPoProject} genPoNo={genPoNo}/>}
           {page==='purchasing-done' && <PurchasingDone state={state}/>}
           {page==='service'    && <FieldService state={state} role={role} onAddMember={handleAddMember} onRemoveMember={handleRemoveMember} onAddSchedule={handleAddSchedule} onRemoveSchedule={handleRemoveSchedule} onReceive={handleSvcReceive} onAssign={handleSvcAssign} onDeliver={handleSvcDeliver} onWarranty={handleSvcWarranty} onClose={handleHandoff}/>}
+          {page==='map-tracking' && <MapTracking state={state}/>}
           {page==='workflow'   && <WorkflowBoard state={state} project={activeProject} role={role} onTask={handleTask} onAddTask={handleAddTask} onHandoff={handleHandoff} onReject={handleReject} onAck={handleAck} onPickStock={(id)=>setActiveId(id)}/>}
           {page==='settings'   && role==='developer' && <Settings state={state} role={role} onSetRole={handleSetRole} onRevoke={handleRevoke} onDeleteRow={handleDeleteRow} onUpdateRow={handleUpdateRow} onResetData={handleResetData} notifLog={notifLog} onSaveNotif={handleSaveNotif} onTestNotif={handleTestNotif}/>}
         </main>
