@@ -58,6 +58,7 @@ CREATE INDEX IF NOT EXISTS idx_customers_sr   ON customers (sr_id);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS cust_po_no      VARCHAR(80);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS contract_status VARCHAR(40) NOT NULL DEFAULT 'รอ PO/สัญญา';
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS term_of_payment VARCHAR(120);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS project_name    TEXT;            -- ชื่อโครงการของลูกค้า (ฟอร์มเพิ่มลูกค้า)
 
 -- ---------- 3) projects (Project Stock — รวมหลาย SR) ----------
 CREATE TABLE IF NOT EXISTS projects (
