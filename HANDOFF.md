@@ -48,6 +48,8 @@ service_team · handoff_log(audit) · user_roles · inventory_moves(epicor_code,
 - **(fix) จอขาวตอนเบิก SR:** commit ลบ dead code เผลอลบ `WithdrawSR`+`PLAN_STATUS` (ProjectInventory ใช้อยู่) → กู้กลับแล้ว
 - **WithdrawSR แยกต่อลูกค้า (review v4):** popup ใหญ่ (max-w-5xl) · เลือกลูกค้าใน SR ได้หลายเจ้า → กรอกจำนวนเบิกแยกต่อลูกค้า (cap = onhand − ที่ลูกค้าอื่นจอง) → กดบันทึก = สร้างใบเบิก **1 ใบ/ลูกค้า** (`service_plans.cust_id` ใหม่ใน schema) wd_no = `WD-...-i` ถ้าหลายเจ้า · `handleWithdrawSR` รับ `payload.allocations[]` · `ServiceJob` โชว์ลูกค้าเฉพาะใบ (`pl.cust_id`)
 - **UI อื่น (review v4):** BomRoundCard คอลัมน์ PO โชว์ PO No. จาก `posCovering` · ทุก modal ใหญ่ขึ้น (PoModal 4xl · create-stock/RowEditor 2xl · day-view xl)
+- **Service Department (review v5):** `FieldService` แยก 3 section — **Pending Actions** (`sent&&!acked`) / **Assigned Teams** (`acked&&!delivered`) / **Completed Projects** (`delivered`) ผ่าน `ServiceSection` (พับได้) · stage 3 = **ทำ Report**: เพิ่ม **Check-in Location** (ปุ่ม 📡 GPS `navigator.geolocation` + กรอก lat/lng เอง) → `handleSvcDeliver` เก็บ `checkin_lat/lng/at` (schema service_plans) · Completed โชว์ลิงก์ Google Maps · Project SR inbox แต่ละ SR พับได้ เริ่มต้นซ่อน
+- **🗺️ Map Tracking (review v5):** เมนูย่อยใต้ Service (`page='map-tracking'`) · component `MapTracking` ใช้ **Leaflet + OSM** (CDN ใน `<head>`) ปักหมุด Completed Project ตามพิกัด Check-in บนแผนที่ไทย (popup: Stock/ลูกค้า/วันที่/พิกัด)
 - **LINE webhook (review v3):** `line-webhook.ts` ยกเลิกการตอบ groupId กลับเข้าแชท (ได้ id แล้ว: `C30dde10e5b1d4ce984a85016b79204cd`) เหลือ log เงียบ ๆ + ตอบ 200
 - **Serial LVB/OM ของ BOM** — `bom_items.serial_lvb` + `serial_om` (กรอกในฟอร์ม BOM **เฉพาะเมื่อ Category=LBS**)
 
