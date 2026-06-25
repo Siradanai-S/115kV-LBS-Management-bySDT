@@ -252,6 +252,20 @@ ALTER TABLE inventory_moves ADD COLUMN IF NOT EXISTS po_no       VARCHAR(40);
 ALTER TABLE inventory_moves ADD COLUMN IF NOT EXISTS note        TEXT;
 ALTER TABLE inventory_moves ADD COLUMN IF NOT EXISTS "by"        VARCHAR(60);
 
+-- migration: ขยายช่องกรอก "อิสระ" เป็น TEXT — กัน error "value too long for type character varying"
+-- ปลอดภัย ไม่กระทบข้อมูลเดิม (varchar→text ไม่ตัด/ไม่แปลงค่า) · รันซ้ำได้ (ถ้าเป็น text อยู่แล้ว = no-op)
+ALTER TABLE customers       ALTER COLUMN contact         TYPE TEXT;
+ALTER TABLE customers       ALTER COLUMN location        TYPE TEXT;
+ALTER TABLE customers       ALTER COLUMN cust_po_no      TYPE TEXT;
+ALTER TABLE customers       ALTER COLUMN term_of_payment TYPE TEXT;
+ALTER TABLE bom_items       ALTER COLUMN epicor_code     TYPE TEXT;
+ALTER TABLE bom_items       ALTER COLUMN project_phase   TYPE TEXT;
+ALTER TABLE service_team    ALTER COLUMN name            TYPE TEXT;
+ALTER TABLE service_team    ALTER COLUMN role            TYPE TEXT;
+ALTER TABLE service_plans   ALTER COLUMN location        TYPE TEXT;
+ALTER TABLE service_plans   ALTER COLUMN received_by     TYPE TEXT;
+ALTER TABLE department_tasks ALTER COLUMN updated_by     TYPE TEXT;
+
 -- บล็อกการเบิก/โอนออกเกินยอดคงเหลือ ณ ที่ตั้งนั้น (สต็อกห้ามติดลบ)
 CREATE OR REPLACE FUNCTION inv_block_negative()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
