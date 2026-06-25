@@ -623,10 +623,15 @@ CREATE TABLE IF NOT EXISTS notif_settings (
   updated_at    TIMESTAMPTZ DEFAULT NOW()
 );
 INSERT INTO notif_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
--- เฉพาะ Developer เท่านั้นที่อ่าน/แก้ได้ (มี token อยู่ในตาราง)
+-- อ่านได้ทุกฝ่ายที่ล็อกอิน (ให้ notify() ของทุก role ส่งแจ้งเตือนได้ ไม่ใช่เฉพาะ dev) · แก้ไขเฉพาะ developer
+-- หมายเหตุความปลอดภัย: line_token อยู่ในตารางนี้ → พนักงานที่ล็อกอินอ่านได้ · ถ้าต้องการซ่อน token
+--   ให้ย้ายไปเป็น Edge secret (supabase secrets set LINE_CHANNEL_ACCESS_TOKEN=...) แล้วเว้นช่อง token ว่าง
 ALTER TABLE notif_settings ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS p_notif_all ON notif_settings;
-CREATE POLICY p_notif_all ON notif_settings FOR ALL TO authenticated USING (is_developer()) WITH CHECK (is_developer());
+DROP POLICY IF EXISTS p_notif_read ON notif_settings;
+CREATE POLICY p_notif_read  ON notif_settings FOR SELECT TO authenticated USING (TRUE);
+DROP POLICY IF EXISTS p_notif_write ON notif_settings;
+CREATE POLICY p_notif_write ON notif_settings FOR ALL TO authenticated USING (is_developer()) WITH CHECK (is_developer());
 
 -- คลังสินค้า: อ่านได้ทุกฝ่าย · บันทึกรับ/เบิกได้ developer + purchasing/project/service
 ALTER TABLE inventory_moves ENABLE ROW LEVEL SECURITY;
