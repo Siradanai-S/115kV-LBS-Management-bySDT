@@ -637,9 +637,9 @@ function printServiceDoc(kind, pl, project, state){
 
 /* ===== BOM rounds (สร้าง Material List หลายครั้งต่อ Stock) ===== */
 const roundOf = b => num(b.round)||1;
-// Job No. ต่อ Material List/ครั้ง (derive จาก Stock No.) + เมตาดาต้าราย round ใน projects.bom_rounds
-const roundJobNo = (p, n) => `${String(p.project_stock_no||'STK').replace(/STK/i,'JOB')}-${n}`;
+// Job No. ต่อ Material List/ครั้ง — ใช้ค่าที่ผู้ใช้กรอก (เก็บใน projects.bom_rounds) · ถ้าไม่มี = แนะนำ derive
 const roundMeta  = (p, n) => (p.bom_rounds||{})[n] || (p.bom_rounds||{})[String(n)] || {};
+const roundJobNo = (p, n) => roundMeta(p,n).job_no || `${String(p.project_stock_no||'STK').replace(/STK/i,'JOB')}-${n}`;
 const roundName  = (p, n) => `Job No. ${roundJobNo(p,n)} · STK No. ${p.project_stock_no||'-'} (ครั้ง${n})`;
 function projBomRounds(state, pid){ const ns=[...new Set(state.bom.filter(b=>b.project_id===pid).map(roundOf))]; return ns.length?ns.sort((a,b)=>a-b):[1]; }
 function roundItems(state, pid, n){ return state.bom.filter(b=>b.project_id===pid && roundOf(b)===n); }
@@ -1361,10 +1361,14 @@ function ProjectBom({state, project, canEdit, onAddBom, onUpdateBom, onDeleteBom
   const curLBS = bomLBS(state, project.id);
   const lbsOK = curLBS===targetVal;
   const [extra, setExtra] = useState([]);   // รอบ BOM ใหม่ที่เพิ่งกด "ครั้งใหม่" (ยังไม่มีรายการ)
-  const [mkCust, setMkCust] = useState(null);   // null=ปิด · ''หรือ id = ฟอร์มเลือกลูกค้าก่อนสร้างครั้งใหม่
-  const rounds = [...new Set([...projBomRounds(state, project.id), ...extra])].sort((a,b)=>a-b);
+  const [mkOpen, setMkOpen] = useState(false); const [mkJob, setMkJob] = useState(''); const [mkCust, setMkCust] = useState('');   // ฟอร์มสร้างครั้งใหม่: กรอก Job No. + อ้างลูกค้า
+  // เริ่มต้น "ว่าง" — แสดงเฉพาะครั้งที่มีรายการจริง / ถูกสร้างไว้ (bom_rounds) / เพิ่งกดสร้าง · ไม่ default ครั้ง1
+  const itemRounds = [...new Set(state.bom.filter(b=>b.project_id===project.id).map(roundOf))];
+  const metaRounds = Object.keys(project.bom_rounds||{}).map(Number).filter(x=>x>0);
+  const rounds = [...new Set([...itemRounds, ...metaRounds, ...extra])].sort((a,b)=>a-b);
   const custs = stockCustomers(state, project.id);
-  const createRound = () => { const newN=Math.max(0,...rounds)+1; onUpdateProject(project.id,{ bom_rounds:{...(project.bom_rounds||{}), [newN]:{cust_id:mkCust||null}} }); setExtra(e=>[...e,newN]); setMkCust(null); };
+  const openMk = () => { setMkJob(`${String(project.project_stock_no||'STK').replace(/STK/i,'JOB')}-${Math.max(0,...rounds)+1}`); setMkCust(''); setMkOpen(true); };
+  const createRound = () => { const newN=Math.max(0,...rounds)+1; onUpdateProject(project.id,{ bom_rounds:{...(project.bom_rounds||{}), [newN]:{job_no:mkJob.trim()||null, cust_id:mkCust||null}} }); setExtra(e=>[...e,newN]); setMkOpen(false); };
   const budgetLeft = num(project.total_budget) - matValue;   // งบคงเหลือ = งบรวม − มูลค่าวัสดุ BOM (ตัดอัตโนมัติ)
   return (
     <div className="space-y-4">
@@ -1399,15 +1403,18 @@ function ProjectBom({state, project, canEdit, onAddBom, onUpdateBom, onDeleteBom
       {/* Material List (BOM) — สร้างได้หลายครั้ง/รอบต่อ Stock */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h3 className="text-slate-200 font-semibold flex items-center gap-2">{Icon.box} Material List (BOM) <span className="text-[11px] text-slate-500 font-normal">{rounds.length} ครั้ง · มูลค่ารวม {baht(matValue)}</span></h3>
-        {canEdit && (mkCust===null
-          ? <button onClick={()=>setMkCust('')} className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-1.5" style={{background:'#f97316',color:'#0b0f17'}}>{Icon.plus} สร้าง Job No. (Material List ครั้งใหม่)</button>
+        {canEdit && (!mkOpen
+          ? <button onClick={openMk} className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-1.5" style={{background:'#f97316',color:'#0b0f17'}}>{Icon.plus} สร้าง Job No. (Material List)</button>
           : <div className="flex items-center gap-2 flex-wrap rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-1.5">
-              <span className="text-[11px] text-slate-300">Job No. <b className="mono">{roundJobNo(project, Math.max(0,...rounds)+1)}</b> · อ้างลูกค้า:</span>
+              <span className="text-[11px] text-slate-300">Job No.</span>
+              <Inp value={mkJob} onChange={setMkJob} placeholder="กรอกเลข Job No." className="!w-44"/>
+              <span className="text-[11px] text-slate-300">อ้างลูกค้า:</span>
               <Sel value={mkCust} onChange={setMkCust} options={['', ...custs.map(c=>String(c.id))]} labels={Object.assign({'':'— ไม่ระบุ —'}, Object.fromEntries(custs.map(c=>[String(c.id), `${c.name} (LBS ${c.lbs_qty})`])))}/>
-              <button onClick={createRound} className="text-xs font-semibold rounded-md px-3 py-1" style={{background:'#f97316',color:'#0b0f17'}}>สร้าง</button>
-              <button onClick={()=>setMkCust(null)} className="text-xs rounded-md px-2 py-1 border border-slate-700 text-slate-300">ยกเลิก</button>
+              <button onClick={createRound} disabled={!mkJob.trim()} className="text-xs font-semibold rounded-md px-3 py-1 disabled:opacity-40" style={{background:'#f97316',color:'#0b0f17'}}>สร้าง</button>
+              <button onClick={()=>setMkOpen(false)} className="text-xs rounded-md px-2 py-1 border border-slate-700 text-slate-300">ยกเลิก</button>
             </div>)}
       </div>
+      {rounds.length===0 && <div className="text-center text-slate-500 text-sm py-8 rounded-xl border border-dashed border-slate-700">ยังไม่มี Material List — กด <b>“สร้าง Job No. (Material List)”</b> เพื่อเริ่ม</div>}
       {rounds.map(n => <BomRoundCard key={n} state={state} project={project} n={n} canEdit={canEdit} onAddBom={onAddBom} onUpdateBom={onUpdateBom} onDeleteBom={onDeleteBom} onSendBom={onSendBom}/>)}
       {!canEdit && <p className="text-[11px] text-slate-500">ดูอย่างเดียว — การจัดการ BOM/ส่งจัดซื้อ สงวนให้ฝ่ายโครงการ และ Developer</p>}
     </div>
