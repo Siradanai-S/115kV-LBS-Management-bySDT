@@ -657,13 +657,18 @@ function phaseDataGate(project, state){
     if(items.length>0 && !items.every(b=>b.po_status==='Delivered')) return { ok:false, reason:'ของยังเข้าไม่ครบ (ต้อง Delivered ทุกรายการ)' };
   }
   if(ph==='service'){
+    // ปิดงานได้เมื่อ "ทุกใบเบิกที่ส่ง Service" ส่งมอบครบ (กันปิดก่อนกำหนดเมื่อมีหลายใบเบิก/ลูกค้า)
+    const ps=(state.plans||[]).filter(p=>p.project_id===pid && p.sent);
     if(!project.do_signed) return { ok:false, reason:'ยังไม่ได้ลงนาม DO' };
+    if(ps.length>0 && !ps.every(p=>p.delivered)){ const left=ps.filter(p=>!p.delivered).length; return { ok:false, reason:`ยังส่งมอบใบเบิกไม่ครบ (เหลือ ${left}/${ps.length} ใบ)` }; }
   }
   return { ok:true, reason:'' };
 }
+// ใบเบิกของโครงการนี้ส่งมอบครบทุกใบหรือยัง (ใช้ปิดงาน/ปุ่ม Closed)
+const allPlansDelivered = (state, pid) => { const ps=(state.plans||[]).filter(p=>p.project_id===pid && p.sent); return ps.length>0 && ps.every(p=>p.delivered); };
 // งานเข้าใหม่ของแต่ละฝ่าย
 const stockIncoming = (state, dep) => state.projects.filter(p=>p.current_phase===dep && !p.phase_acked).length;
-const srInbox = state => state.srs.filter(s=>!s.stock_id).length;        // SR รอสร้าง Stock
+const srInbox = state => state.srs.filter(s=>!s.stock_id && !s.returned).length;   // SR รอสร้าง Stock (ไม่รวมที่ตีกลับให้ขาย)
 const custToGather = state => (state.customers||[]).filter(c=>!c.sr_id).length;  // ลูกค้ารอรวบรวม
 const pendingPlans = state => (state.plans||[]).filter(p=>p.sent && !p.acked).length;
 const incomingCount = (state, dep) => {
@@ -731,7 +736,8 @@ function buildNotifs(state, role){
   if(role!=='executive'){ const dep = role==='developer'?null:role;
     state.projects.filter(p=>p.current_phase!=='closed' && !p.phase_acked && (dep?p.current_phase===dep:true)).forEach(p=>list.push({k:'in'+p.id, icon:'📥', color:DEPT[p.current_phase]?.c||'#0ea5e9', text:`งานเข้าใหม่ (${PHASE_LABEL[p.current_phase]}): ${p.project_stock_no}`, page:'workflow'}));
   }
-  if(role==='project'||role==='developer') state.srs.filter(s=>!s.stock_id).forEach(s=>list.push({k:'sr'+s.id, icon:'📋', color:DEPT.project.c, text:`SR รอสร้าง Stock: ${s.sr_no}`, page:'project'}));
+  if(role==='project'||role==='developer') state.srs.filter(s=>!s.stock_id && !s.returned).forEach(s=>list.push({k:'sr'+s.id, icon:'📋', color:DEPT.project.c, text:`SR รอสร้าง Stock: ${s.sr_no}`, page:'project'}));
+  if(role==='sales'||role==='developer') (state.srs||[]).filter(s=>s.returned).forEach(s=>list.push({k:'sret'+s.id, icon:'↩️', color:'#f43f5e', text:`SR ตีกลับให้แก้: ${s.sr_no}${s.return_note?' · '+s.return_note:''}`, page:'sales-sr'}));
   if(role==='service'||role==='developer') (state.plans||[]).filter(pl=>pl.sent && !pl.acked).forEach(pl=>{ const p=state.projects.find(x=>x.id===pl.project_id); list.push({k:'pl'+pl.id, icon:'📦', color:DEPT.service.c, text:`แผนส่งมอบใหม่รอรับ: ${p?.project_stock_no||''}`, page:'service'}); });
   return list;
 }
@@ -1178,14 +1184,26 @@ function SalesPipeline({state, role, onAddCustomer, onUpdateCustomer, onCreateSR
   );
 }
 // แท็บกิ่งย่อย: Sales Requisition & ติดตาม PO & สัญญาซื้อขาย (แยก 2 กล่อง: รอสร้าง Stock / สร้างแล้ว)
-function SalesSR({state, role, onUpdateCustomer}){
+function SalesSR({state, role, onUpdateCustomer, onClearReturn}){
   const canEdit = role==='developer' || role==='sales';
   const pendingSrs = state.srs.filter(s=>!s.stock_id);
+  const returnedSrs = state.srs.filter(s=>s.returned);
   const stockedSrs = state.srs.filter(s=>s.stock_id);
   const [show,setShow]=useState({ pending:false, stocked:false });   // เริ่มต้นซ่อนทั้งสองกล่อง
   return (
     <div className="space-y-4">
       <div className="text-[11px] text-slate-500">ติดตาม <b>เลขที่ PO ลูกค้า</b> และ <b>สถานะสัญญา</b> แยกตามรายชื่อลูกค้าในแต่ละใบ SR (1 ใบมีหลายลูกค้า — อัปเดตได้รายราย)</div>
+      {returnedSrs.length>0 && (
+        <Card className="overflow-hidden" style={{borderColor:'#f43f5e66'}}>
+          <div className="px-5 py-2.5 bg-rose-500/10 border-b border-slate-800 text-[13px] font-semibold text-rose-400 flex items-center gap-2">↩️ ฝ่ายโครงการตีกลับให้แก้ <span className="text-slate-500 text-[11px]">({returnedSrs.length})</span></div>
+          <div className="p-3 space-y-2">{returnedSrs.map(sr=>(
+            <div key={sr.id} className="flex items-center justify-between gap-2 flex-wrap rounded-lg border border-rose-500/30 px-3 py-2 bg-rose-500/5">
+              <span className="text-[12px] text-slate-200"><b className="mono">{sr.sr_no}</b>{sr.return_note?<span className="text-rose-400"> · เหตุผล: {sr.return_note}</span>:''}</span>
+              {canEdit && onClearReturn && <button onClick={()=>onClearReturn(sr.id)} className="text-[11px] font-medium rounded-md px-2.5 py-1" style={{background:DEPT.project.c,color:'#0b0f17'}}>✓ แก้แล้ว — ส่งกลับฝ่ายโครงการ</button>}
+            </div>
+          ))}</div>
+        </Card>
+      )}
       <Card className="overflow-hidden" style={{borderColor:'#f9731655'}}>
         <div className="px-5 py-2.5 bg-amber-500/10 border-b border-slate-800 text-[13px] font-semibold text-amber-700 flex items-center gap-2 cursor-pointer hover:bg-amber-500/15" onClick={()=>setShow(s=>({...s,pending:!s.pending}))}><span className="text-amber-700/70">{show.pending?'▼':'▶'}</span>⏳ รอฝ่ายโครงการสร้าง Stock <span className="text-slate-500 text-[11px]">({pendingSrs.length})</span></div>
         {show.pending && <SrTrackTable list={pendingSrs} state={state} canEdit={canEdit} onUpdateCustomer={onUpdateCustomer} emptyMsg="ไม่มี SR ที่รอสร้าง Stock"/>}
@@ -1202,9 +1220,9 @@ function SalesSR({state, role, onUpdateCustomer}){
 const Field = ({label, value, color, mono}) => (
   <div><div className="text-[11px] text-slate-500">{label}</div><div className={"text-lg font-semibold mt-0.5 "+(mono?'mono ':'')} style={color?{color}:{color:'#1e293b'}}>{value}</div></div>
 );
-function ProjectDept({state, role, onCreateStock, genDefaults, onGoStocks}){
+function ProjectDept({state, role, onCreateStock, genDefaults, onGoStocks, onReturnSR}){
   const canEdit = role==='developer' || role==='project';
-  const inbox = state.srs.filter(s=>!s.stock_id);              // SR รอสร้าง Stock
+  const inbox = state.srs.filter(s=>!s.stock_id && !s.returned);   // SR รอสร้าง Stock (ตีกลับแล้วไม่โชว์)
   const [sel,setSel]=useState([]);
   const [mk,setMk]=useState(null);                             // Popup ฟอร์มสร้าง Stock (null = ปิด)
   const [show,setShow]=useState({});                           // sr.id -> กาง (เริ่มต้นซ่อน)
@@ -1242,7 +1260,10 @@ function ProjectDept({state, role, onCreateStock, genDefaults, onGoStocks}){
                     <span className="mono font-semibold text-slate-100">{sr.sr_no}</span>
                     {sr.note && <span className="text-[11px] text-slate-500">· {sr.note}</span>}
                   </span>
-                  <span className="text-[11px] text-slate-400">{custs.length} ลูกค้า · LBS รวม <b style={{color:'#f97316'}}>{lbs}</b> · ทำสัญญา {doneCt}/{custs.length}{dd?` · เร็วสุด ${dd}`:''}</span>
+                  <span className="flex items-center gap-2" onClick={e=>e.stopPropagation()}>
+                    <span className="text-[11px] text-slate-400">{custs.length} ลูกค้า · LBS รวม <b style={{color:'#f97316'}}>{lbs}</b> · ทำสัญญา {doneCt}/{custs.length}{dd?` · เร็วสุด ${dd}`:''}</span>
+                    {canEdit && onReturnSR && <button onClick={()=>{ const r=prompt('เหตุผลที่ส่งกลับให้ฝ่ายขายแก้ '+sr.sr_no+':'); if(r&&r.trim()) onReturnSR(sr.id, r.trim()); }} className="text-[11px] font-medium rounded-md px-2 py-0.5 border" style={{borderColor:'#f43f5e66',color:'#f43f5e'}}>↩️ ส่งกลับฝ่ายขาย</button>}
+                  </span>
                 </div>
                 {/* ตารางลูกค้าในใบ — เส้นกริดเทา */}
                 {isOpen && <div className="overflow-x-auto">
@@ -1848,14 +1869,14 @@ function ServiceSection({title, icon, color, plans, emptyMsg, ...jobProps}){
     </Card>
   );
 }
-function FieldService({state, role, onAddMember, onRemoveMember, onAddSchedule, onRemoveSchedule, onReceive, onAssign, onDeliver, onWarranty, onClose}){
+function FieldService({state, role, onAddMember, onRemoveMember, onAddSchedule, onRemoveSchedule, onReceive, onAssign, onDeliver, onWarranty, onClose, onReturnStock}){
   const canEdit = role==='developer' || role==='service';
   const jobs = (state.plans||[]).filter(pl=>pl.sent);                       // ใบเบิกที่ฝ่ายโครงการส่งมา
   const byEnd = (a,b)=> String(a.plan_end||'').localeCompare(String(b.plan_end||''));
   const pending   = jobs.filter(p=>!p.acked).sort(byEnd);                   // รอกดรับงาน
   const assigned  = jobs.filter(p=>p.acked && !p.delivered).sort(byEnd);    // รับแล้ว — จัดทีม/ทำงาน
   const completed = jobs.filter(p=>p.delivered).sort((a,b)=>-byEnd(a,b));   // Report เสร็จ (Completed)
-  const jp = { state, canEdit, onReceive, onAssign, onDeliver, onWarranty, onClose };
+  const jp = { state, canEdit, onReceive, onAssign, onDeliver, onWarranty, onClose, onReturnStock };
   return (
     <div className="space-y-5">
       <ServiceSection title="Pending Actions — งานจากฝ่ายโครงการ รอกดรับงาน" icon="📥" color="#f97316" plans={pending} emptyMsg="ไม่มีงานรอรับ" {...jp}/>
@@ -1868,7 +1889,8 @@ function FieldService({state, role, onAddMember, onRemoveMember, onAddSchedule, 
 // การ์ดงานบริการ 1 ใบ — flow 3 ขั้น กดแล้วเลื่อนขั้นอัตโนมัติ: รับงาน → จัดทีม+เวลาจริง → ส่งมอบ+แนบไฟล์
 const SVC_STEPS = ['รับงาน','ปฏิบัติงาน (ทีม+เช็กลิสต์)','ส่งมอบ & เซ็นรับ'];
 const SVC_CHECK = [['recv','ตรวจรับวัสดุหน้างาน'],['install','ติดตั้ง'],['commission','ทดสอบ (Commissioning)']];
-function ServiceJob({pl, project, state, canEdit, onReceive, onAssign, onDeliver, onWarranty, onClose}){
+function ServiceJob({pl, project, state, canEdit, onReceive, onAssign, onDeliver, onWarranty, onClose, onReturnStock}){
+  const [retOpen,setRetOpen]=useState(false); const [ret,setRet]=useState({});   // คืนของ: bom_id -> qty
   const members = (state.team||[]).filter(m=>m.active);
   const custs = pl.cust_id ? (state.customers||[]).filter(c=>c.id===pl.cust_id) : (state.customers||[]).filter(c=>c.sr_id===pl.sr_id);
   const srNo = (state.srs.find(s=>s.id===pl.sr_id)||{}).sr_no;
@@ -1974,7 +1996,9 @@ function ServiceJob({pl, project, state, canEdit, onReceive, onAssign, onDeliver
           </div>
           <div><Lbl>แนบไฟล์ส่งมอบ (PDF / รูปถ่าย)</Lbl><input type="file" accept="application/pdf,image/*" onChange={e=>onFile(e.target.files[0])} className="w-full text-[11px] text-slate-400 file:mr-2 file:rounded file:border-0 file:bg-slate-700 file:text-slate-200 file:px-2 file:py-1"/>{proof.name && <span className="text-[10px] text-emerald-600">✓ {proof.name}</span>}</div>
           {docBtns}
-          {canEdit && <button onClick={()=>onDeliver(pl.id, pl.project_id, { received_by:recvBy, received_date:recvDate, proof, checkin_lat:ci.lat!==''?num(ci.lat):null, checkin_lng:ci.lng!==''?num(ci.lng):null })} disabled={!recvBy.trim()} title={!recvBy.trim()?'ระบุชื่อผู้รับมอบก่อน':''} className="w-full text-xs font-semibold rounded-md px-3 py-1.5 inline-flex items-center justify-center gap-1.5 disabled:opacity-40" style={{background:'#16a34a',color:'#fff'}}>{Icon.doc} ✓ ทำ Report → Completed (ลงนาม DO)</button>}
+          {canEdit && (()=>{ const ciOk=ci.lat!==''&&ci.lng!==''&&!isNaN(num(ci.lat))&&!isNaN(num(ci.lng)); const reason=!recvBy.trim()?'ระบุชื่อผู้รับมอบก่อน':!ciOk?'ต้อง Check-in พิกัด (GPS หรือกรอกเอง) ก่อนทำ Report':''; return (
+            <button onClick={()=>onDeliver(pl.id, pl.project_id, { received_by:recvBy, received_date:recvDate, proof, checkin_lat:num(ci.lat), checkin_lng:num(ci.lng) })} disabled={!!reason} title={reason} className="w-full text-xs font-semibold rounded-md px-3 py-1.5 inline-flex items-center justify-center gap-1.5 disabled:opacity-40" style={{background:'#16a34a',color:'#fff'}}>{Icon.doc} ✓ ทำ Report → Completed (ลงนาม DO)</button>
+          ); })()}
         </div>
       )}
 
@@ -1999,13 +2023,34 @@ function ServiceJob({pl, project, state, canEdit, onReceive, onAssign, onDeliver
               </div>
             ) : null}
           </div>
-          {/* ปิดงานโครงการ — เมื่อยังอยู่เฟส service และเซ็น DO แล้ว (ปิดได้จบในหน้านี้ ไม่ต้องไปหน้า Workflow) */}
-          {canEdit && onClose && project && project.current_phase==='service' && project.do_signed && (
-            <div className="border-t border-slate-700/40 pt-2">
-              <button onClick={()=>onClose(project)} className="w-full text-xs font-semibold rounded-md px-3 py-1.5 inline-flex items-center justify-center gap-1.5" style={{background:'#16a34a',color:'#fff'}}>🏁 ปิดงานโครงการ (Closed)</button>
-              <div className="text-[10px] text-slate-500 mt-1 text-center">ปิดงานฝ่ายบริการที่เหลือให้อัตโนมัติ แล้วเปลี่ยนสถานะโครงการเป็น "ปิดงาน"</div>
-            </div>
+          {/* ปิดงานโครงการ — ต้องอยู่เฟส service + ทุกใบเบิกส่งมอบครบ (กันปิดก่อนกำหนด) */}
+          {canEdit && onClose && project && project.current_phase==='service' && (() => {
+            const allDone = allPlansDelivered(state, project.id);
+            return allDone
+              ? <div className="border-t border-slate-700/40 pt-2">
+                  <button onClick={()=>onClose(project)} className="w-full text-xs font-semibold rounded-md px-3 py-1.5 inline-flex items-center justify-center gap-1.5" style={{background:'#16a34a',color:'#fff'}}>🏁 ปิดงานโครงการ (Closed)</button>
+                  <div className="text-[10px] text-slate-500 mt-1 text-center">ส่งมอบครบทุกใบเบิกแล้ว — ปิดงานฝ่ายบริการที่เหลืออัตโนมัติ + เปลี่ยนสถานะเป็น "ปิดงาน"</div>
+                </div>
+              : <div className="border-t border-slate-700/40 pt-2 text-[10px] text-amber-600 text-center">⏳ ปิดงานโครงการได้เมื่อ <b>ทุกใบเบิก</b> ของโครงการนี้ส่งมอบครบ (ยังเหลือบางใบ)</div>;
+          })()}
+          {canEdit && onClose && project && project.current_phase!=='service' && project.current_phase!=='closed' && (
+            <div className="border-t border-slate-700/40 pt-2 text-[10px] text-slate-500 text-center">ℹ️ ปุ่มปิดงานจะขึ้นเมื่อโครงการเดินเฟสมาถึง <b>Service</b> แล้ว (ตอนนี้อยู่เฟส {PHASE_LABEL[project.current_phase]})</div>
           )}
+        </div>
+      )}
+      {/* คืนของเข้าคลังโครงการ (เบิกเกิน/ไม่ได้ติดตั้ง) — แทนการ reject ใบเบิก */}
+      {canEdit && onReturnStock && recvDone && (pl.lines||[]).length>0 && (
+        <div className="mt-2 border-t border-slate-700/40 pt-2">
+          <button onClick={()=>setRetOpen(o=>!o)} className="text-[11px] font-medium" style={{color:'#f59e0b'}}>↩️ คืนของเข้าคลัง (เบิกเกิน/ไม่ได้ติดตั้ง) {retOpen?'▲':'▼'}</button>
+          {retOpen && <div className="mt-1.5 space-y-1.5">
+            {(pl.lines||[]).map(l=>{ const b=(state.bom||[]).find(x=>x.id===l.bom_id)||{}; const max=num(l.qty); return (
+              <div key={l.bom_id} className="flex items-center justify-between gap-2 text-[11px]">
+                <span className="text-slate-300 mono">{b.epicor_code||'—'} · {b.description||''} <span className="text-slate-500">(เบิก {max})</span></span>
+                <input type="number" min="0" max={max} value={ret[l.bom_id]||0} onChange={e=>setRet(s=>({...s,[l.bom_id]:Math.max(0,Math.min(max,Math.floor(num(e.target.value))))}))} className="w-16 text-right bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-100 focus:outline-none focus:border-amber-500/60"/>
+              </div>
+            );})}
+            <button onClick={()=>{ const returns=(pl.lines||[]).map(l=>({bom_id:l.bom_id, qty:num(ret[l.bom_id])})).filter(r=>r.qty>0); if(!returns.length) return; onReturnStock(pl, returns); setRet({}); setRetOpen(false); }} className="text-[11px] font-semibold rounded-md px-3 py-1.5" style={{background:'#f59e0b',color:'#0b0f17'}}>↩️ คืนเข้าคลังโครงการ</button>
+          </div>}
         </div>
       )}
     </div>
@@ -2455,6 +2500,14 @@ function App(){
   },[session]);
 
   const reload = async () => { try { const d=await db.loadAll(); setState(s=>({...s, ...d})); } catch(e){ setErr(e.message||String(e)); } };
+  // Realtime: มีการเปลี่ยนแปลงในตารางใด ๆ → reload อัตโนมัติ (debounce) ให้ทุกฝ่ายเห็นงานเข้าสด
+  //   ต้องเปิด Realtime publication บน Supabase (ดูหมายเหตุท้าย schema.sql)
+  useEffect(()=>{
+    if(!LIVE || !session) return;
+    let t=null; const ping=()=>{ clearTimeout(t); t=setTimeout(()=>{ reload(); }, 700); };
+    const ch = sb.channel('lbs-rt').on('postgres_changes', { event:'*', schema:'public' }, ping).subscribe();
+    return ()=>{ clearTimeout(t); try{ sb.removeChannel(ch); }catch(e){} };
+  }, [session]);
   // ครอบ action ทุกตัว: เรียก db → reload → จับ error แสดงผู้ใช้ (แก้ปัญหา fail เงียบในรีวิว)
   // run(fn, optimistic?) — ถ้ามี optimistic จะอัปเดต state ทันที (UI ตอบสนองไว) แล้วค่อย reconcile ด้วย reload
   const run = (fn, optimistic) => async (...args) => {
@@ -2479,9 +2532,12 @@ function App(){
     if(email.enabled && !email.to.length && !line.enabled){ fin('Email เปิดแต่ไม่มีผู้รับ'); return; }
     if(!cfg.function_url){ fin('จำลอง (ยังไม่ตั้ง Edge Function URL — ยังไม่ deploy/ยังไม่กรอก)'); return; }
     fin('กำลังส่ง… → '+cfg.function_url.replace(/^https?:\/\//,'').slice(0,40));
-    fetch(cfg.function_url, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ event, subject, message, line, email }) })
+    const body=JSON.stringify({ event, subject, message, line, email });
+    // ยิง + retry อัตโนมัติ 1 ครั้งเมื่อ network ล้ม (กันแจ้งหายชั่วคราว)
+    const send = (attempt) => fetch(cfg.function_url, { method:'POST', headers:{'Content-Type':'application/json'}, body })
       .then(async r=>{ if(r.ok){ fin('ส่งสำเร็จ ✓ (HTTP 200) — ถ้าไม่เห็นในไลน์: บอทไม่ได้อยู่ในกลุ่ม/ผู้รับผิด'); } else { let d=''; try{ d=(await r.text()).slice(0,80); }catch{} fin(`ผิดพลาด HTTP ${r.status} ${d}`); } })
-      .catch(e=> fin('error (เรียก Endpoint ไม่ได้/CORS): '+(e.message||e)));
+      .catch(e=>{ if(attempt<2){ fin('เน็ตล้ม — ลองส่งซ้ำ ('+attempt+')…'); setTimeout(()=>send(attempt+1), 1500); } else { fin('error (เรียก Endpoint ไม่ได้/CORS) หลัง retry: '+(e.message||e)); } });
+    send(1);
   };
   const handleSaveNotif = run(async (patch) => { await db.saveNotifSettings(patch); },
     (s, patch) => ({...s, notifSettings:{...s.notifSettings, ...patch}}));
@@ -2565,11 +2621,20 @@ function App(){
   const handleRemoveMember = run(async (id) => { await db.removeMember(id); });
   const handleAddSchedule = run(async (row) => { await db.addSchedule(row); });
   const handleRemoveSchedule = run(async (id) => { await db.removeSchedule(id); });
-  // ปิดงานบริการ (mark service task เสร็จตามขั้น) — idx 0=รับงาน 1=จัดทีม 2=ส่งมอบ
-  const completeSvcTask = async (planId, idx) => {
-    const pl=(state.plans||[]).find(x=>x.id===planId); if(!pl) return;
-    const t=state.tasks.filter(x=>x.project_id===pl.project_id && x.department==='service').sort((a,b)=>a.sort_order-b.sort_order)[idx];
-    if(t && t.status!=='Completed') await db.updateTask(t.id, { status:'Completed', updated_by:DEPT[role].en });
+  // sync service task 3 ข้อ จากสถานะ "ทุกใบเบิก" ของโครงการ (ไม่ใช่ใบแรก) — กันปิดงานก่อนกำหนด
+  //   task0=รับแผน(ทุกใบ acked) · task1=ปฏิบัติงาน(ทุกใบมีทีม+เวลาจริง+เช็กลิสต์) · task2=ส่งมอบ(ทุกใบ delivered)
+  //   override = {planId:{...fieldใหม่}} เพื่อชดเชย state ที่ยังไม่ reload
+  const syncServiceTasks = async (projectId, override={}) => {
+    const plans=(state.plans||[]).filter(p=>p.project_id===projectId && p.sent).map(p=> override[p.id]?{...p,...override[p.id]}:p);
+    const tasks=state.tasks.filter(x=>x.project_id===projectId && x.department==='service').sort((a,b)=>a.sort_order-b.sort_order);
+    if(!plans.length || tasks.length<3) return;
+    const okChk=c=>SVC_CHECK.every(([k])=>c&&c[k]);
+    const want=[
+      plans.every(p=>p.acked),
+      plans.every(p=>p.acked && (p.team_ids||[]).length>=1 && p.actual_start && p.actual_end && okChk(p.checklist)),
+      plans.every(p=>p.delivered),
+    ];
+    for(let i=0;i<3;i++){ const t=tasks[i]; const st=want[i]?'Completed':'In Progress'; if(t && t.status!==st) await db.updateTask(t.id, { status:st, updated_by:DEPT[role].en }); }
   };
   // เบิกสินค้าอ้าง SR-No. — แยกต่อลูกค้า: ตัดสต็อกโครงการ (OUT 'ติดตั้งงาน') + สร้างใบเบิก 1 ใบ/ลูกค้า รอส่งมอบ Service
   const handleWithdrawSR = run(async (projectId, payload) => {
@@ -2587,15 +2652,22 @@ function App(){
     const p=state.projects.find(x=>x.id===projectId); const srNo=(state.srs.find(s=>s.id===payload.sr_id)||{}).sr_no||'';
     notify('handover', '🔧 เบิกสินค้า + รอส่งมอบ Service', `${wd}${srNo?` · ${srNo}`:''}\nStock ${p?.project_stock_no||''} (Job ${p?.job_no||''})\nกำหนดส่ง ${payload.plan_start||'-'} → ${payload.plan_end||'-'}\n${allocs.length} ลูกค้า · ${Object.values(totals).reduce((s,q)=>s+q,0)} ชิ้น`);
   });
+  // คืนของเข้าคลังโครงการ (ส่วนที่ไม่ได้ติดตั้ง/เบิกเกิน) — IN reason 'คืนจากหน้างาน' (reply ขา Service → คลัง)
+  const handleReturnStock = run(async (plan, returns) => {
+    const rows=(returns||[]).filter(r=>num(r.qty)>0).map(r=>{ const b=state.bom.find(x=>x.id===r.bom_id)||{}; return { epicor_code:b.epicor_code, description:b.description, project_id:plan.project_id, type:'IN', reason:'คืนจากหน้างาน', qty:num(r.qty), note:`คืนจากใบเบิก ${plan.wd_no||''}`, by:DEPT[role].en }; });
+    if(!rows.length) return; await db.addMovements(rows);
+    const p=state.projects.find(x=>x.id===plan.project_id);
+    notify('handover', '↩️ คืนของเข้าคลังโครงการ', `${plan.wd_no||''} · ${p?.project_stock_no||''}\n${rows.length} รายการ · รวม ${rows.reduce((s,r)=>s+num(r.qty),0)} ชิ้น`);
+  });
   /* Service flow — 3 ขั้น กดแล้วเลื่อนอัตโนมัติ */
   // ขั้น 1: รับงาน (รับใบเบิก+แผน+D/O+Handover)
-  const handleSvcReceive = run(async (planId) => { await db.ackPlan(planId); await completeSvcTask(planId, 0); });
+  const handleSvcReceive = run(async (planId) => { const pl=(state.plans||[]).find(x=>x.id===planId); await db.ackPlan(planId); if(pl) await syncServiceTasks(pl.project_id, {[planId]:{acked:true}}); });
   // ขั้น 2: จัดทีม 1-2 คน + actual Start/End + เช็กลิสต์ → ลงคิวปฏิทินตามเวลาจริง
   const handleSvcAssign = run(async (planId, teamIds, aStart, aEnd, checklist) => {
     await db.updatePlan(planId, { team_ids:teamIds, actual_start:aStart||null, actual_end:aEnd||null, checklist:checklist||{} });
     const pl=(state.plans||[]).find(x=>x.id===planId);
     if(pl){ for(const mid of (teamIds||[])){ await db.addSchedule({ project_id:pl.project_id, member_id:mid, start_date:aStart||pl.plan_start, end_date:aEnd||pl.plan_end, note:'ปฏิบัติงานจริง '+(pl.wd_no||'') }); } }
-    await completeSvcTask(planId, 1);
+    if(pl) await syncServiceTasks(pl.project_id, {[planId]:{team_ids:teamIds, actual_start:aStart||null, actual_end:aEnd||null, checklist:checklist||{}}});
   });
   // ขั้น 3: ทำ Report (ส่งมอบ + ลูกค้าเซ็นรับ + Check-in Location) → ลงนาม DO + สถานะ Completed
   const handleSvcDeliver = run(async (planId, projectId, info) => {
@@ -2603,7 +2675,7 @@ function App(){
     await db.updatePlan(planId, { delivered:true, received_by:info.received_by||null, received_date:info.received_date||null, proof_name:(info.proof&&info.proof.name)||null, proof_url:(info.proof&&info.proof.url)||null,
       checkin_lat:(info.checkin_lat!=null?Number(info.checkin_lat):null), checkin_lng:(info.checkin_lng!=null?Number(info.checkin_lng):null), checkin_at:info.checkin_at||new Date().toISOString() });
     await db.signDO(projectId);
-    await completeSvcTask(planId, 2);
+    await syncServiceTasks(projectId, {[planId]:{delivered:true}});
     const p=state.projects.find(x=>x.id===projectId); const pl=(state.plans||[]).find(x=>x.id===planId);
     const loc = (info.checkin_lat!=null&&info.checkin_lng!=null) ? `\n📍 Check-in: ${Number(info.checkin_lat).toFixed(5)}, ${Number(info.checkin_lng).toFixed(5)}` : '';
     notify('do', '✅ Report เสร็จ — Completed (ลงนาม DO)', `${p?.project_stock_no||''} (Job ${p?.job_no||''})\n${p?.name||''}\nผู้รับมอบ: ${info.received_by||'-'} (${info.received_date||'-'})${loc}`);
@@ -2650,13 +2722,13 @@ function App(){
         <main className="flex-1 overflow-y-auto p-6">
           {page==='dashboard'  && <Dashboard state={state} onNav={setPage} onSelectProject={goProject} onOpenPO={setPoProject}/>}
           {page==='sales'      && <SalesPipeline state={state} role={role} onAddCustomer={handleAddCustomer} onUpdateCustomer={handleUpdateCustomer} onCreateSR={handleCreateSR} onUpdateSR={handleUpdateSR} onTask={handleTask}/>}
-          {page==='sales-sr'   && <SalesSR state={state} role={role} onUpdateCustomer={handleUpdateCustomer}/>}
-          {page==='project'    && <ProjectDept state={state} role={role} onCreateStock={handleCreateStock} genDefaults={genDefaults} onGoStocks={()=>setPage('project-stocks')}/>}
+          {page==='sales-sr'   && <SalesSR state={state} role={role} onUpdateCustomer={handleUpdateCustomer} onClearReturn={(id)=>handleUpdateSR(id,{returned:false,return_note:null})}/>}
+          {page==='project'    && <ProjectDept state={state} role={role} onCreateStock={handleCreateStock} genDefaults={genDefaults} onGoStocks={()=>setPage('project-stocks')} onReturnSR={(id,note)=>handleUpdateSR(id,{returned:true,return_note:note})}/>}
           {page==='project-stocks' && <ProjectStocks state={state} role={role} onAddBom={handleAddBom} onUpdateBom={handleUpdateBom} onDeleteBom={handleDeleteBom} onSendBom={handleSendBom} onUpdateProject={handleUpdateProject} onHandoff={handleHandoff} onReject={handleReject} onAck={handleAck}/>}
           {page==='project-inventory' && <ProjectInventory state={state} role={role} onWithdraw={handleWithdrawSR}/>}
           {page==='purchasing' && <Procurement state={state} role={role} onUpdateBom={handleUpdateBom} onCreatePO={handleCreatePO} onOpenPO={setPoProject} genPoNo={genPoNo}/>}
           {page==='purchasing-done' && <PurchasingDone state={state}/>}
-          {page==='service'    && <FieldService state={state} role={role} onAddMember={handleAddMember} onRemoveMember={handleRemoveMember} onAddSchedule={handleAddSchedule} onRemoveSchedule={handleRemoveSchedule} onReceive={handleSvcReceive} onAssign={handleSvcAssign} onDeliver={handleSvcDeliver} onWarranty={handleSvcWarranty} onClose={handleHandoff}/>}
+          {page==='service'    && <FieldService state={state} role={role} onAddMember={handleAddMember} onRemoveMember={handleRemoveMember} onAddSchedule={handleAddSchedule} onRemoveSchedule={handleRemoveSchedule} onReceive={handleSvcReceive} onAssign={handleSvcAssign} onDeliver={handleSvcDeliver} onWarranty={handleSvcWarranty} onClose={handleHandoff} onReturnStock={handleReturnStock}/>}
           {page==='map-tracking' && <MapTracking state={state}/>}
           {page==='workflow'   && <WorkflowBoard state={state} project={activeProject} role={role} onTask={handleTask} onAddTask={handleAddTask} onHandoff={handleHandoff} onReject={handleReject} onAck={handleAck} onPickStock={(id)=>setActiveId(id)}/>}
           {page==='settings'   && role==='developer' && <Settings state={state} role={role} onSetRole={handleSetRole} onRevoke={handleRevoke} onDeleteRow={handleDeleteRow} onUpdateRow={handleUpdateRow} onResetData={handleResetData} notifLog={notifLog} onSaveNotif={handleSaveNotif} onTestNotif={handleTestNotif}/>}

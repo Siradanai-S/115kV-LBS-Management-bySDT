@@ -31,6 +31,9 @@ CREATE TABLE IF NOT EXISTS sales_requisitions (
   created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_sr_stock ON sales_requisitions (stock_id);
+-- ตีกลับ SR ให้ฝ่ายขายแก้ (reply ขา Project → Sales)
+ALTER TABLE sales_requisitions ADD COLUMN IF NOT EXISTS returned    BOOLEAN DEFAULT FALSE;
+ALTER TABLE sales_requisitions ADD COLUMN IF NOT EXISTS return_note TEXT;
 
 -- ---------- 2) customers (ฝ่ายขายสร้าง + แยกประเภท) — ผูก SR ผ่าน sr_id ----------
 CREATE TABLE IF NOT EXISTS customers (
@@ -433,6 +436,9 @@ BEGIN
     IF pending > 0 THEN RAISE EXCEPTION 'ของยังเข้าไม่ครบ (ต้อง Delivered ทุกรายการ)'; END IF;
   ELSIF cur = 'service' THEN
     IF NOT (SELECT do_signed FROM projects WHERE id=p_id) THEN RAISE EXCEPTION 'ยังไม่ได้ลงนาม DO'; END IF;
+    -- ปิดงานได้เมื่อทุกใบเบิก (sent) ส่งมอบครบ (กันปิดก่อนกำหนดเมื่อมีหลายใบเบิก/ลูกค้า)
+    SELECT COUNT(*) INTO pending FROM service_plans WHERE project_id=p_id AND sent=TRUE AND delivered IS NOT TRUE;
+    IF pending > 0 THEN RAISE EXCEPTION 'ยังส่งมอบใบเบิกไม่ครบ (เหลือ % ใบ)', pending; END IF;
   END IF;
   i := array_position(seq, cur::text);
   IF i IS NULL OR i >= array_length(seq,1) THEN RAISE EXCEPTION 'ไม่มีเฟสถัดไป'; END IF;
@@ -672,5 +678,11 @@ ON CONFLICT (user_id) DO UPDATE SET is_developer = TRUE, department = 'developer
 --    - createStock → RPC create_stock_multi(sr_ids[], stock_no, job_no, bom_no, name)
 --    - ส่งงาน/ตีกลับ/รับงาน → RPC handoff_project / reject_project / ack_phase (มี gate ครบฝั่ง server)
 --    - ปุ่มเดียวจบ "เสร็จ & ส่งต่อ" / "ปิดงานโครงการ" → RPC complete_and_handoff (ปิดงานเฟส auto + ส่งต่อ atomic)
+--
+--  (ออปชัน) เปิด Realtime ให้ทุกฝ่ายเห็นงานเข้าสด — แอป subscribe postgres_changes แล้ว reload อัตโนมัติ:
+--    Dashboard → Database → Replication → เปิดตาราง (projects, sales_requisitions, customers, bom_items,
+--      purchase_orders, department_tasks, service_plans, inventory_moves, handoff_log) เข้า publication supabase_realtime
+--    หรือ SQL: ALTER PUBLICATION supabase_realtime ADD TABLE <table>;  (ถ้าซ้ำจะ error — ข้ามได้)
+--    ถ้าไม่เปิด: แอปยังทำงานปกติ เพียงต้อง refresh เองเพื่อเห็นงานเข้า
 --    - createSR / sendBom / PO / team / schedule → table ops (RLS ครอบคลุม)
 -- =====================================================================
