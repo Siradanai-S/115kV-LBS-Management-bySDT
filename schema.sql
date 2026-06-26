@@ -62,6 +62,8 @@ ALTER TABLE customers ADD COLUMN IF NOT EXISTS cust_po_no      VARCHAR(80);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS contract_status VARCHAR(40) NOT NULL DEFAULT 'รอ PO/สัญญา';
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS term_of_payment VARCHAR(120);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS project_name    TEXT;            -- ชื่อโครงการของลูกค้า (ฟอร์มเพิ่มลูกค้า)
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS contract_file_url  TEXT;         -- ไฟล์แนบ PO/สัญญา (บังคับเมื่อสถานะ=ได้รับ PO/ทำสัญญา)
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS contract_file_name TEXT;
 
 -- ---------- 3) projects (Project Stock — รวมหลาย SR) ----------
 CREATE TABLE IF NOT EXISTS projects (
@@ -119,6 +121,7 @@ ALTER TABLE bom_items ADD COLUMN IF NOT EXISTS round      INT     NOT NULL DEFAU
 ALTER TABLE bom_items ADD COLUMN IF NOT EXISTS is_sent    BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE bom_items ADD COLUMN IF NOT EXISTS serial_lvb VARCHAR(80);
 ALTER TABLE bom_items ADD COLUMN IF NOT EXISTS serial_om  VARCHAR(80);
+ALTER TABLE bom_items ADD COLUMN IF NOT EXISTS cust_id    BIGINT REFERENCES customers(id) ON DELETE SET NULL;   -- อ้างลูกค้าของรายการ BOM (จำกัด LBS ต่อลูกค้า)
 -- ของเดิมที่ Stock เคยส่งจัดซื้อแล้ว (bom_status) → ตั้ง is_sent=TRUE ให้รายการในนั้น
 UPDATE bom_items b SET is_sent=TRUE FROM projects p WHERE b.project_id=p.id AND p.bom_status='Sent to Purchasing' AND b.is_sent=FALSE;
 
@@ -573,7 +576,8 @@ CREATE POLICY p_proj_upd ON projects FOR UPDATE TO authenticated
   USING (is_developer() OR current_department() = 'project' OR current_department()::text = current_phase::text)
   WITH CHECK (is_developer() OR current_department() = 'project' OR current_department()::text = current_phase::text);
 DROP POLICY IF EXISTS p_proj_del ON projects;
-CREATE POLICY p_proj_del ON projects FOR DELETE TO authenticated USING (is_developer());
+-- ฝ่ายโครงการลบ Project ของฝ่ายตนได้ (CRUD ฝ่ายตน) · developer ลบได้ทุกอัน
+CREATE POLICY p_proj_del ON projects FOR DELETE TO authenticated USING (is_developer() OR current_department() = 'project');
 
 -- WRITE bom_items: ฝ่ายโครงการ (สร้าง/แก้ BOM) + ฝ่ายจัดซื้อ (อัปเดต po_status) + developer
 DROP POLICY IF EXISTS p_bom_write ON bom_items;

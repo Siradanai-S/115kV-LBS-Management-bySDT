@@ -543,9 +543,13 @@ const Brand = ({titleClass='text-[14px]'}) => (
 );
 
 /* ============================ UI ATOMS ============================ */
-const Card = ({children, className='', style}) => (
-  <div className={"rounded-xl border border-slate-800 bg-slate-900/70 "+className} style={style}>{children}</div>
-);
+// tone = สีพื้นหลังอ่อน ๆ ของการ์ด: blue น้ำเงิน · orange ส้ม · green เขียว · gray เทา · violet ม่วง
+const CARD_TONE = { blue:'#3b82f6', orange:'#f97316', green:'#16a34a', gray:'#64748b', violet:'#8b5cf6' };
+const Card = ({children, className='', style, tone}) => {
+  const c = CARD_TONE[tone];
+  const toneStyle = c ? { background:c+'14', borderColor:c+'44' } : {};
+  return <div className={"rounded-xl border border-slate-800 bg-slate-900/70 "+className} style={{...toneStyle, ...style}}>{children}</div>;
+};
 const Pill = ({children, color, soft=true}) => (
   <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium" style={ soft ? {background:color+'22', color} : {background:color, color:'#0b0f17'} }>{children}</span>
 );
@@ -682,7 +686,7 @@ const incomingCount = (state, dep) => {
 const NAV = [
   { id:'dashboard',  label:'Executive Dashboard',   icon:Icon.grid },
   { id:'sales',      label:'Sales Department',      icon:Icon.pipeline, dep:'sales',      kids:[ { id:'sales-sr', label:'Sales Requisition & ติดตาม PO' } ] },
-  { id:'project',    label:'Project Department',    icon:Icon.layers,   dep:'project',    kids:[ { id:'project-stocks', label:'Stock No. (กล่องโครงการ)' }, { id:'project-inventory', label:'คลังสินค้า (Inventory)' } ] },
+  { id:'project',    label:'Project Department',    icon:Icon.layers,   dep:'project',    kids:[ { id:'project-stocks', label:'Purchase Requisition (Job No.)' }, { id:'project-inventory', label:'คลังสินค้า (Inventory)' } ] },
   { id:'purchasing', label:'Purchasing Department', icon:Icon.cart,     dep:'purchasing', kids:[ { id:'purchasing-done', label:'BOM Delivered completed' } ] },
   { id:'service',    label:'Service Department',    icon:Icon.truck,    dep:'service',    kids:[ { id:'map-tracking', label:'🗺️ Map Tracking' } ] },
   { id:'settings',   label:'Setting (ผู้ดูแล)',      icon:Icon.gear,     devOnly:true },
@@ -798,8 +802,9 @@ function TopBar({state, onNav, role, onRole, page, me, onSignOut, onRefreshAll})
 }
 
 /* ============================ PO MODAL ============================ */
-function PoModal({project, pos, onClose}){
+function PoModal({project, pos, onClose, role, onDelete}){
   const list = pos.filter(o=>o.project_id===project.id);
+  const canDel = onDelete && (role==='developer' || role==='purchasing');
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onClick={onClose}>
       <div className="w-full max-w-4xl rounded-xl border border-slate-700 bg-slate-900 fade-up" onClick={e=>e.stopPropagation()}>
@@ -812,7 +817,7 @@ function PoModal({project, pos, onClose}){
           <thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-800">
             <th className="px-5 py-2.5 font-medium">เลขที่ PO</th><th className="px-3 py-2.5 font-medium">ผู้ขาย</th>
             <th className="px-3 py-2.5 font-medium">กำหนดรับ</th><th className="px-3 py-2.5 font-medium text-right">มูลค่า</th>
-            <th className="px-3 py-2.5 font-medium">สถานะ</th><th className="px-3 py-2.5 font-medium">ไฟล์แนบ</th>
+            <th className="px-3 py-2.5 font-medium">สถานะ</th><th className="px-3 py-2.5 font-medium">ไฟล์แนบ</th>{canDel && <th className="px-3 py-2.5"/>}
           </tr></thead>
           <tbody>
             {list.length===0 && <tr><td colSpan="6" className="px-5 py-8 text-center text-slate-500">ยังไม่มี PO</td></tr>}
@@ -824,6 +829,7 @@ function PoModal({project, pos, onClose}){
                 <td className="px-3 py-3 text-right mono text-slate-200">{baht(o.amount)}</td>
                 <td className="px-3 py-3"><Pill color={poDocColor(o.status)}>{o.status}</Pill></td>
                 <td className="px-3 py-3">{o.pdf_url ? <button onClick={()=>window.open(o.pdf_url,'_blank')} className="text-xs text-sky-600 hover:underline">📎 {o.pdf_name||'เปิดไฟล์'}</button> : <span className="text-slate-600 text-xs">—</span>}</td>
+                {canDel && <td className="px-3 py-3 text-right"><button onClick={()=>{ if(confirm('ลบ PO "'+o.po_no+'" ?')) onDelete(o.id); }} className="text-slate-500 hover:text-rose-600">{Icon.trash}</button></td>}
               </tr>
             ))}
           </tbody>
@@ -857,15 +863,14 @@ function Dashboard({state, onNav, onSelectProject, onOpenPO}){
         <button onClick={()=>exportXLSX('dashboard-summary.xlsx','Summary',[['Stock No.','โครงการ','เฟส','ความคืบหน้า %','งบประมาณ','Margin %'], ...projects.map(p=>[p.project_stock_no,p.name,PHASE_LABEL[p.current_phase],projProgress(tasks,p.id),p.total_budget,p.margin])])} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:'#16a34a22',color:'#16a34a'}}>⬇ สรุป (Excel)</button>
         <button onClick={()=>window.print()} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:'#3b82f622',color:'#3b82f6'}}>🖨️ พิมพ์ / PDF</button>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <KPI label="งบประมาณรวม (Total)" value={bahtShort(totalSales)} sub={baht(totalSales)} color="#3b82f6" icon={Icon.pipeline}/>
-        <KPI label="กำไรรวมประมาณการ" value={bahtShort(totalProfit)} sub={"เฉลี่ย margin "+(projects.length?(projects.reduce((s,p)=>s+num(p.margin),0)/projects.length).toFixed(1):0)+'%'} color="#16a34a" icon={Icon.chart}/>
         <KPI label="ความคืบหน้ารวม" value={avgProgress+'%'} sub={srPending+" SR รอสร้าง Stock"} color="#f97316" icon={Icon.layers}/>
         <KPI label="Project Stock ทั้งหมด" value={projects.length} sub={"ลูกค้า "+(customers?customers.length:0)+" ราย · ดำเนินการ "+projects.filter(p=>p.current_phase!=='closed').length} color="#8b5cf6" icon={Icon.box}/>
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card className="p-5 lg:col-span-2 fade-up">
-          <div className="flex items-center justify-between mb-4"><h3 className="text-slate-200 font-semibold">คอขวดระหว่างฝ่าย (Cross-department Bottleneck)</h3><span className="text-[11px] text-slate-500">จำนวน Stock ที่ค้างในแต่ละเฟส</span></div>
+          <div className="flex items-center justify-between mb-4"><h3 className="text-slate-200 font-semibold">กระบวนการทำงานข้ามหน่วยงาน (Cross-Functional Process by Department)</h3><span className="text-[11px] text-slate-500">จำนวน Stock ที่ค้างในแต่ละเฟส</span></div>
           <div className="space-y-3">
             {PHASE_STEPS.map(ph => { const n=bottleneck[ph]; const max=Math.max(1,...Object.values(bottleneck)); return (
               <div key={ph} className="flex items-center gap-3">
@@ -1048,8 +1053,19 @@ const SALES_BLANK = { name:'', customer_type:'ราชการ', work_type:'Su
 // ตาราง SR + รายละเอียดลูกค้า + ติดตาม PO/สัญญา (ใช้ซ้ำได้ทั้งกล่อง "รอสร้าง Stock" และ "สร้าง Stock แล้ว")
 const contractColor = s => s==='ทำสัญญาแล้ว'?'#16a34a':s==='ได้รับ PO แล้ว'?'#3b82f6':'#f97316';
 // ตาราง SR + ลูกค้าในใบ (เส้นกริดสีเทา) — เลขที่ PO ลูกค้า / สถานะสัญญา แก้ไขแยก "รายชื่อลูกค้า"
+const CONTRACT_NEEDS_FILE = ['ได้รับ PO แล้ว','ทำสัญญาแล้ว'];   // สถานะที่บังคับแนบไฟล์
 function SrTrackTable({list, state, canEdit, onUpdateCustomer, emptyMsg}){
   const [show,setShow]=useState({});                 // sr.id -> กาง (เริ่มต้นซ่อน)
+  // เปลี่ยนสถานะสัญญา: ถ้าเป็น "ได้รับ PO/ทำสัญญา" และยังไม่มีไฟล์แนบ → บังคับเลือกไฟล์ก่อนจึง save
+  const onContractChange = (c, v) => {
+    if(CONTRACT_NEEDS_FILE.includes(v) && !c.contract_file_url){
+      const inp=document.createElement('input'); inp.type='file'; inp.accept='application/pdf,image/*';
+      inp.onchange=e=>{ const f=e.target.files&&e.target.files[0]; if(!f) return; const rd=new FileReader(); rd.onload=()=>onUpdateCustomer(c.id,{contract_status:v, contract_file_url:rd.result, contract_file_name:f.name}); rd.readAsDataURL(f); };
+      inp.click(); return;   // ยังไม่ save จนกว่าจะเลือกไฟล์
+    }
+    onUpdateCustomer(c.id,{contract_status:v});
+  };
+  const attachFile = (c) => { const inp=document.createElement('input'); inp.type='file'; inp.accept='application/pdf,image/*'; inp.onchange=e=>{ const f=e.target.files&&e.target.files[0]; if(!f) return; const rd=new FileReader(); rd.onload=()=>onUpdateCustomer(c.id,{contract_file_url:rd.result, contract_file_name:f.name}); rd.readAsDataURL(f); }; inp.click(); };
   if(list.length===0) return <div className="px-5 py-6 text-center text-slate-500 text-sm">{emptyMsg||'—'}</div>;
   const cellTh = "border border-slate-700/70 px-2.5 py-2 font-medium text-[11px] uppercase tracking-wide text-slate-500 text-left";
   const cell   = "border border-slate-700/70 px-2.5 py-2 align-top";
@@ -1086,7 +1102,9 @@ function SrTrackTable({list, state, canEdit, onUpdateCustomer, emptyMsg}){
                     <td className={cell+' text-right mono font-semibold'} style={{color:'#f97316'}}>{c.lbs_qty}</td>
                     <td className={cell+' text-[11px] text-slate-400'}>📍 {c.location||'—'}<br/>☎ {c.contact||'—'}{c.desired_date?<><br/>📅 ต้องการ {c.desired_date}</>:''}{c.term_of_payment?<><br/>💳 {c.term_of_payment}</>:''}</td>
                     <td className={cell}>{canEdit ? <EditText value={c.cust_po_no||''} onCommit={v=>onUpdateCustomer(c.id,{cust_po_no:v})} placeholder="— ระบุ PO —"/> : <span className="mono text-slate-300">{c.cust_po_no||'—'}</span>}</td>
-                    <td className={cell}>{canEdit ? <Sel value={c.contract_status||'รอ PO/สัญญา'} onChange={v=>onUpdateCustomer(c.id,{contract_status:v})} options={CONTRACT_STATUS}/> : <Pill color={contractColor(c.contract_status)}>{c.contract_status||'—'}</Pill>}</td>
+                    <td className={cell}>{canEdit ? <Sel value={c.contract_status||'รอ PO/สัญญา'} onChange={v=>onContractChange(c,v)} options={CONTRACT_STATUS}/> : <Pill color={contractColor(c.contract_status)}>{c.contract_status||'—'}</Pill>}
+                      {c.contract_file_url ? <div className="mt-1 text-[10px] flex items-center gap-1.5"><a href={c.contract_file_url} target="_blank" rel="noreferrer" className="text-sky-600 hover:underline">📎 {c.contract_file_name||'ไฟล์สัญญา'}</a>{canEdit && <button onClick={()=>attachFile(c)} className="text-slate-500 hover:text-slate-300">↻</button>}</div>
+                        : CONTRACT_NEEDS_FILE.includes(c.contract_status) ? <div className="mt-1 text-[10px] text-rose-500">⚠ ต้องแนบไฟล์ PO/สัญญา</div> : null}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1097,7 +1115,7 @@ function SrTrackTable({list, state, canEdit, onUpdateCustomer, emptyMsg}){
     </div>
   );
 }
-function SalesPipeline({state, role, onAddCustomer, onUpdateCustomer, onCreateSR, onUpdateSR, onTask}){
+function SalesPipeline({state, role, onAddCustomer, onUpdateCustomer, onCreateSR, onUpdateSR, onTask, onDeleteCustomer}){
   const canEdit = role==='developer' || role==='sales';
   const [open,setOpen]=useState(false); const [f,setF]=useState(SALES_BLANK);
   const [locs,setLocs]=useState(['']);             // สถานที่ติดตั้งหลายแห่ง (กดเพิ่มได้)
@@ -1114,7 +1132,7 @@ function SalesPipeline({state, role, onAddCustomer, onUpdateCustomer, onCreateSR
           <div className="text-[11px] text-slate-500">เลือกลูกค้า (ติ๊ก) แล้วรวบรวมเป็น Sales Requisition เพื่อส่งฝ่ายโครงการ — 1 SR รวมได้หลายลูกค้า</div>
           <div className="flex items-center gap-2">
             {sel.length>0 && <span className="text-[11px] text-slate-400">เลือกแล้ว {sel.length} ราย</span>}
-            <button onClick={submitSR} disabled={!sel.length} className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-1.5" style={sel.length?{background:DEPT.sales.c,color:'#0b0f17'}:{background:'#e2e8f0',color:'#94a3b8',cursor:'not-allowed'}}>{Icon.send} รวบรวมส่งฝ่ายโครงการ</button>
+            <button onClick={submitSR} disabled={!sel.length} className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-1.5" style={sel.length?{background:DEPT.sales.c,color:'#0b0f17'}:{background:'#e2e8f0',color:'#94a3b8',cursor:'not-allowed'}}>{Icon.send} สร้าง Project Stock No. ส่งฝ่ายโครงการ</button>
             <button onClick={()=>setOpen(o=>!o)} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:DEPT.sales.c+'22',color:DEPT.sales.c}}>{Icon.plus} เพิ่มลูกค้า</button>
           </div>
         </div>
@@ -1168,9 +1186,10 @@ function SalesPipeline({state, role, onAddCustomer, onUpdateCustomer, onCreateSR
                     </div>
                   </div>
                   <div className="text-[11px] text-slate-500 leading-relaxed">{c.location||'—'} · {c.contact||'—'}<br/>{c.scope||''} {c.desired_date?'· ต้องการ '+c.desired_date:''}</div>
-                  <div className="pt-1 border-t border-slate-700/50">
+                  <div className="pt-1 border-t border-slate-700/50 flex items-center justify-between gap-2">
                     {sr ? <span className="text-[10px] font-medium" style={{color:sr.stock_id?'#16a34a':'#f97316'}}>{sr.stock_id?'✓ สร้าง Stock แล้ว · ':'✓ ส่งแล้ว · รอสร้าง Stock · '}{sr.sr_no}</span>
                       : <span className="text-[10px] text-slate-500">ยังไม่ได้รวบรวมส่งฝ่ายโครงการ</span>}
+                    {canEdit && !c.sr_id && onDeleteCustomer && <button onClick={()=>{ if(confirm('ลบลูกค้า "'+c.name+'" ?')) onDeleteCustomer(c.id); }} className="text-[11px] text-slate-500 hover:text-rose-600 shrink-0">🗑 ลบ</button>}
                   </div>
                 </div>
               );})}
@@ -1204,11 +1223,11 @@ function SalesSR({state, role, onUpdateCustomer, onClearReturn}){
           ))}</div>
         </Card>
       )}
-      <Card className="overflow-hidden" style={{borderColor:'#f9731655'}}>
+      <Card tone="blue" className="overflow-hidden" style={{borderColor:'#f9731655'}}>
         <div className="px-5 py-2.5 bg-amber-500/10 border-b border-slate-800 text-[13px] font-semibold text-amber-700 flex items-center gap-2 cursor-pointer hover:bg-amber-500/15" onClick={()=>setShow(s=>({...s,pending:!s.pending}))}><span className="text-amber-700/70">{show.pending?'▼':'▶'}</span>⏳ รอฝ่ายโครงการสร้าง Stock <span className="text-slate-500 text-[11px]">({pendingSrs.length})</span></div>
         {show.pending && <SrTrackTable list={pendingSrs} state={state} canEdit={canEdit} onUpdateCustomer={onUpdateCustomer} emptyMsg="ไม่มี SR ที่รอสร้าง Stock"/>}
       </Card>
-      <Card className="overflow-hidden" style={{borderColor:'#16a34a55'}}>
+      <Card tone="blue" className="overflow-hidden" style={{borderColor:'#16a34a55'}}>
         <div className="px-5 py-2.5 bg-emerald-500/10 border-b border-slate-800 text-[13px] font-semibold text-emerald-300 flex items-center gap-2 cursor-pointer hover:bg-emerald-500/15" onClick={()=>setShow(s=>({...s,stocked:!s.stocked}))}><span className="text-emerald-300/70">{show.stocked?'▼':'▶'}</span>✓ สร้าง Project Stock แล้ว <span className="text-slate-500 text-[11px]">({stockedSrs.length})</span></div>
         {show.stocked && <SrTrackTable list={stockedSrs} state={state} canEdit={canEdit} onUpdateCustomer={onUpdateCustomer} emptyMsg="ยังไม่มี SR ที่สร้าง Stock"/>}
       </Card>
@@ -1244,10 +1263,10 @@ function ProjectDept({state, role, onCreateStock, genDefaults, onGoStocks, onRet
       {inbox.length===0
         ? <Card className="p-8 text-center text-slate-500">ไม่มี Sales Requisition รอสร้าง Stock — ไปที่แท็บ <button onClick={onGoStocks} className="text-amber-600 hover:underline font-medium">Stock No.</button> เพื่อจัดการ Budget &amp; BOM ของโครงการที่สร้างแล้ว</Card>
         : (
-        <Card className="overflow-hidden" style={{borderColor:DEPT.project.c+'55'}}>
+        <Card tone="orange" className="overflow-hidden" style={{borderColor:DEPT.project.c+'55'}}>
           <div className="px-5 py-3 border-b border-slate-800 flex items-center justify-between flex-wrap gap-2" style={{background:DEPT.project.c+'12'}}>
             <div className="flex items-center gap-2"><span style={{color:DEPT.project.c}}>📥</span><h3 className="text-slate-200 font-semibold">Sales Requisition ที่ฝ่ายขายส่งมา — เลือกหลายใบเพื่อสร้าง 1 Project Stock</h3><span className="text-[11px] text-slate-500">({inbox.length} ใบ)</span></div>
-            {canEdit && <button onClick={openCreate} disabled={!sel.length} className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-1.5" style={sel.length?{background:DEPT.project.c,color:'#0b0f17'}:{background:'#e2e8f0',color:'#94a3b8',cursor:'not-allowed'}}>{Icon.plus} สร้าง Project Stock ({sel.length})</button>}
+            {canEdit && <button onClick={openCreate} disabled={!sel.length} className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-1.5" style={sel.length?{background:DEPT.project.c,color:'#0b0f17'}:{background:'#e2e8f0',color:'#94a3b8',cursor:'not-allowed'}}>{Icon.plus} Import → Purchase Requisition ({sel.length})</button>}
           </div>
           <div className="p-3 space-y-3">
             {inbox.map(sr => { const custs=srCusts(sr); const lbs=custs.reduce((s,c)=>s+num(c.lbs_qty),0); const selected=sel.includes(sr.id); const dd=custs.map(c=>c.desired_date).filter(Boolean).sort()[0]; const doneCt=custs.filter(c=>c.contract_status==='ทำสัญญาแล้ว').length; const isOpen=!!show[sr.id]; return (
@@ -1302,7 +1321,7 @@ function ProjectDept({state, role, onCreateStock, genDefaults, onGoStocks, onRet
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onClick={()=>setMk(null)}>
           <div className="w-full max-w-2xl rounded-xl border border-slate-700 bg-slate-900 fade-up" onClick={e=>e.stopPropagation()}>
             <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between">
-              <div className="text-slate-100 font-semibold flex items-center gap-2">{Icon.layers} สร้าง Project Stock</div>
+              <div className="text-slate-100 font-semibold flex items-center gap-2">{Icon.layers} Import → Purchase Requisition (สร้าง Job No.)</div>
               <button onClick={()=>setMk(null)} className="text-slate-400 hover:text-slate-100">{Icon.x}</button>
             </div>
             <div className="p-5 space-y-3">
@@ -1328,7 +1347,9 @@ function ProjectDept({state, role, onCreateStock, genDefaults, onGoStocks, onRet
     </div>
   );
 }
-const BOM_BLANK = { epicor_code:'', description:'', category:'LBS', serial_lvb:'', serial_om:'', due_date:'', ium:'EA', quantity:1, currency:'THB', unit_cost:0, fx_rate:36.5, project_phase:'Phase 1' };
+const BOM_BLANK = { epicor_code:'', description:'', category:'LBS', serial_lvb:'', serial_om:'', due_date:'', ium:'EA', quantity:1, currency:'THB', unit_cost:0, fx_rate:36.5, project_phase:'Phase 1', cust_id:'' };
+// LBS (หมวด LBS) ที่ลงให้ลูกค้ารายนี้ไปแล้วทั้ง Stock (ทุกครั้ง/รอบ)
+const custBomLBS = (state, pid, custId) => (state.bom||[]).filter(b=>b.project_id===pid && String(b.cust_id)===String(custId) && b.category==='LBS').reduce((s,b)=>s+num(b.quantity),0);
 function ProjectBom({state, project, canEdit, onAddBom, onUpdateBom, onDeleteBom, onSendBom, onUpdateProject}){
   const items = state.bom.filter(b=>b.project_id===project.id);
   const matValue = items.reduce((s,b)=>s+lineTHB(b),0);
@@ -1345,7 +1366,7 @@ function ProjectBom({state, project, canEdit, onAddBom, onUpdateBom, onDeleteBom
       {/* Budget (กว้าง) + ตรวจ LBS (compact) — เรียงตาม Flow */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card className="p-5 lg:col-span-2">
-          <h3 className="text-slate-200 font-semibold mb-4 flex items-center gap-2">{Icon.layers} Project Budget <span className="mono text-[13px] text-slate-400">{project.project_stock_no}</span></h3>
+          <h3 className="text-slate-200 font-semibold mb-4 flex items-center gap-2">{Icon.layers} Project Budget <span className="mono text-[13px] text-slate-400">{project.job_no||project.project_stock_no}</span> <span className="text-[12px] text-slate-500 font-normal">· {project.name}</span></h3>
           {canEdit && <div className="mb-4"><Lbl>ชื่อโครงการ (แก้ไขได้)</Lbl><EditText value={project.name} onCommit={v=>onUpdateProject(project.id,{name:v.trim()||project.name})}/></div>}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div><Lbl>งบประมาณรวม (฿)</Lbl>{canEdit ? <Inp type="number" value={project.total_budget} onChange={v=>onUpdateProject(project.id,{total_budget:num(v)})}/> : <div className="text-lg font-semibold" style={{color:'#3b82f6'}}>{baht(project.total_budget)}</div>}</div>
@@ -1384,6 +1405,8 @@ function ProjectBom({state, project, canEdit, onAddBom, onUpdateBom, onDeleteBom
 // การ์ด BOM หนึ่ง "ครั้ง" (round) — ชื่อ BOM-yyyy-000 (ครั้งN) · ส่งจัดซื้อแยกรายครั้ง
 function BomRoundCard({state, project, n, canEdit, onAddBom, onUpdateBom, onDeleteBom, onSendBom}){
   const items = roundItems(state, project.id, n);
+  const custs = stockCustomers(state, project.id);                     // ลูกค้าใน Stock (ใช้อ้างใน BOM + จำกัด LBS)
+  const custName = id => (custs.find(c=>String(c.id)===String(id))||{}).name || '—';
   const matValue = items.reduce((s,b)=>s+lineTHB(b),0);
   const sent = roundIsSent(state, project.id, n);
   const name = roundName(project, n);
@@ -1418,9 +1441,11 @@ function BomRoundCard({state, project, n, canEdit, onAddBom, onUpdateBom, onDele
           <div><Lbl>Cost/unit</Lbl><Inp type="number" value={form.unit_cost} onChange={v=>setForm({...form,unit_cost:num(v)})}/></div>
           {form.currency!=='THB' && <div><div className="flex items-center gap-1 mb-1"><span className="text-[11px] text-slate-500">FX (฿/{form.currency})</span><button type="button" onClick={()=>onCurrency(form.currency)} title="ดึงเรตปัจจุบัน" className="text-[10px] text-sky-500 hover:text-sky-400">🔄</button></div><Inp type="number" value={form.fx_rate} onChange={v=>setForm({...form,fx_rate:num(v)})}/></div>}
           <div><Lbl>Project Phase</Lbl><Inp value={form.project_phase} onChange={v=>setForm({...form,project_phase:v})} placeholder="เช่น Phase 1 / งวดที่ 1"/></div>
+          <div className="col-span-2"><Lbl>อ้างลูกค้า (จำกัด LBS)</Lbl><Sel value={form.cust_id||''} onChange={v=>setForm({...form,cust_id:v})} options={['', ...custs.map(c=>String(c.id))]} labels={Object.assign({'':'— ไม่ระบุ —'}, Object.fromEntries(custs.map(c=>[String(c.id), `${c.name} (LBS ${c.lbs_qty})`])))}/></div>
+          {(()=>{ if(form.category!=='LBS'||!form.cust_id) return null; const cu=custs.find(c=>String(c.id)===String(form.cust_id))||{}; const used=custBomLBS(state,project.id,form.cust_id); const after=used+num(form.quantity); return after>num(cu.lbs_qty) ? <div className="col-span-2 md:col-span-6 text-[11px] text-rose-500">⚠ LBS ของ {cu.name} จะเกินที่ระบุ ({after}/{cu.lbs_qty}) — ลงแล้วเกินโควตา</div> : <div className="col-span-2 md:col-span-6 text-[11px] text-slate-500">LBS {cu.name}: ลงแล้ว {used} + {num(form.quantity)} = {after}/{cu.lbs_qty}</div>; })()}
           <div className="col-span-2 md:col-span-6 flex justify-end gap-2">
             <button onClick={()=>setOpen(false)} className="text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300">ยกเลิก</button>
-            <button onClick={()=>{ if(!form.description)return; onAddBom({project_id:project.id, round:n, is_sent:false, ...form, fx_rate:form.currency!=='THB'?(num(form.fx_rate)||1):1, po_status:'Awaiting PO'}); setForm(BOM_BLANK); setOpen(false); }} className="text-xs px-3 py-1.5 rounded-lg font-medium" style={{background:'#f97316',color:'#0b0f17'}}>บันทึกเข้า ครั้ง{n}</button>
+            <button onClick={()=>{ if(!form.description)return; onAddBom({project_id:project.id, round:n, is_sent:false, ...form, cust_id:form.cust_id||null, fx_rate:form.currency!=='THB'?(num(form.fx_rate)||1):1, po_status:'Awaiting PO'}); setForm(BOM_BLANK); setOpen(false); }} className="text-xs px-3 py-1.5 rounded-lg font-medium" style={{background:'#f97316',color:'#0b0f17'}}>บันทึกเข้า ครั้ง{n}</button>
           </div>
         </div>
       )}
@@ -1478,7 +1503,7 @@ function HandoffTimeline({list}){
   );
 }
 // แท็บกิ่งย่อย: Stock No. — กล่องข้อมูลรายโครงการ (พับได้, เริ่มต้นซ่อน) + ส่งแผนส่งมอบให้ Service
-function ProjectStocks({state, role, onAddBom, onUpdateBom, onDeleteBom, onSendBom, onUpdateProject, onHandoff, onReject, onAck}){
+function ProjectStocks({state, role, onAddBom, onUpdateBom, onDeleteBom, onSendBom, onUpdateProject, onHandoff, onReject, onAck, onDeleteProject}){
   const canEdit = role==='developer' || role==='project';
   const [open,setOpen]=useState({});
   const [q,setQ]=useState('');
@@ -1497,11 +1522,12 @@ function ProjectStocks({state, role, onAddBom, onUpdateBom, onDeleteBom, onSendB
       {list.map(p => {
         const isOpen=!!open[p.id]; const pr=projProgress(state.tasks,p.id); const plans=(state.plans||[]).filter(x=>x.project_id===p.id);
         return (
-          <Card key={p.id} className="overflow-hidden">
+          <Card key={p.id} tone="orange" className="overflow-hidden">
             <div className="px-5 py-3.5 flex items-center justify-between flex-wrap gap-2 cursor-pointer hover:bg-slate-800/20" onClick={()=>toggle(p.id)}>
               <div className="flex items-center gap-2"><span className="text-slate-500">{isOpen?'▼':'▶'}</span><span className="mono text-slate-200 font-semibold">{p.project_stock_no}</span><Pill color={DEPT[p.current_phase]?.c||'#64748b'}>{PHASE_LABEL[p.current_phase]}</Pill><Pill color={bomStatusColor(bomStatusOf(state,p))}>{p.bom_no}{projBomRounds(state,p.id).length>1?` ·${projBomRounds(state,p.id).length} ครั้ง`:''}</Pill><span className="text-[12px] text-slate-400">{p.name}</span></div>
               <div className="flex items-center gap-2" onClick={e=>e.stopPropagation()}>
                 <span className="text-[11px] text-slate-500">{pr}% · {stockCustomers(state,p.id).length} ลูกค้า</span>
+                {canEdit && onDeleteProject && <button onClick={()=>{ if(confirm('ลบ Project Stock "'+p.project_stock_no+'" ?\n⚠ จะลบ BOM/PO/ใบเบิกที่ผูกอยู่ทั้งหมดด้วย')) onDeleteProject(p.id); }} className="text-[11px] text-slate-500 hover:text-rose-600">🗑 ลบ</button>}
               </div>
             </div>
             {plans.length>0 && <div className="px-5 py-2 border-t border-slate-800 flex flex-wrap gap-2">{plans.map(pl=><span key={pl.id} className="text-[11px] rounded-full px-2.5 py-1" style={pl.acked?{background:'#16a34a22',color:'#16a34a'}:{background:'#f9731622',color:'#f97316'}}>📋 {pl.wd_no||'แผนส่ง'} · {pl.acked?'Service รับแล้ว':'รอ Service รับ'}</span>)}</div>}
@@ -1547,7 +1573,7 @@ function Procurement({state, role, onUpdateBom, onCreatePO, onOpenPO, genPoNo}){
         const lines = Object.entries(poForm.qtys).map(([id,qty])=>({bom_id:Number(id), qty:num(qty)})).filter(l=>l.qty>0);
         const selTHB = formOpen ? lines.reduce((s,l)=>{ const b=items.find(x=>x.id===l.bom_id); return s + (b? num(l.qty)*num(b.unit_cost)*(b.currency&&b.currency!=='THB'?(num(b.fx_rate)||1):1) : 0); },0) : 0;
         return (
-          <Card key={p.id} className="overflow-hidden">
+          <Card key={p.id} tone="gray" className="overflow-hidden">
             {/* หัวการ์ด — คลิกเพื่อกาง/ยุบ */}
             <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between flex-wrap gap-2 cursor-pointer hover:bg-slate-800/20" onClick={()=>toggleCard(p.id)}>
               <div><h3 className="text-slate-200 font-semibold flex items-center gap-2"><span className="text-slate-500">{isExp?'▼':'▶'}</span>{Icon.cart} {p.bom_no} <span className="text-[11px] text-slate-500 mono">{p.project_stock_no} · {p.name}</span></h3>
@@ -1657,7 +1683,7 @@ function PurchasingDone({state}){
       </div>
       {groups.length===0 && <Empty msg="ยังไม่มีรายการที่ Delivered"/>}
       {groups.map(g=>{ const isOpen=!!open[g.pid]; return (
-        <Card key={g.pid} className="overflow-hidden">
+        <Card key={g.pid} tone="gray" className="overflow-hidden">
           <div className="px-5 py-3 flex items-center justify-between flex-wrap gap-2 cursor-pointer hover:bg-slate-800/20" onClick={()=>setOpen(o=>({...o,[g.pid]:!isOpen}))}>
             <div className="flex items-center gap-2 flex-wrap"><span className="text-slate-500">{isOpen?'▼':'▶'}</span><span className="mono text-slate-100 font-semibold">{g.p?.project_stock_no||'—'}</span><span className="text-[11px] text-slate-500 mono">{g.p?.bom_no}</span><span className="text-[12px] text-slate-400">{g.p?.name}</span>
               {g.fullyComplete ? <Pill color="#16a34a">✓ ครบทุกรายการ</Pill> : <Pill color="#f97316">{g.items.length}/{g.totalItems} รายการ</Pill>}</div>
@@ -1790,7 +1816,7 @@ function ProjectInventory({state, role, onWithdraw}){
         <input value={q} onChange={e=>setQ(e.target.value)} placeholder="🔍 ค้นหา Stock" className="w-56 max-w-full bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 px-3 py-1.5 focus:outline-none focus:border-amber-500/60"/>
       </div>
       {list.map(p=>{ const isOpen=!!open[p.id]; const bal=invBalance(state,p.id); const plans=(state.plans||[]).filter(x=>x.project_id===p.id); const onhandTotal=bal.reduce((s,r)=>s+r.onhand,0); return (
-        <Card key={p.id} className="overflow-hidden">
+        <Card key={p.id} tone="orange" className="overflow-hidden">
           <div className="px-5 py-3 flex items-center justify-between flex-wrap gap-2 cursor-pointer hover:bg-slate-800/20" onClick={()=>setOpen(o=>({...o,[p.id]:!isOpen}))}>
             <div className="flex items-center gap-2 flex-wrap"><span className="text-slate-500">{isOpen?'▼':'▶'}</span><span className="mono text-slate-100 font-semibold">{p.project_stock_no}</span><Pill color={DEPT[p.current_phase]?.c||'#64748b'}>{PHASE_LABEL[p.current_phase]}</Pill><span className="text-[12px] text-slate-400">{p.name}</span></div>
             <div className="flex items-center gap-2" onClick={e=>e.stopPropagation()}>
@@ -1859,7 +1885,7 @@ function MapTracking({state}){
 function ServiceSection({title, icon, color, plans, emptyMsg, ...jobProps}){
   const [open,setOpen]=useState(true);
   return (
-    <Card className="overflow-hidden" style={{borderColor:color+'55'}}>
+    <Card className="overflow-hidden" style={{borderColor:color+'55', background:color+'0d'}}>
       <div className="px-5 py-3 border-b border-slate-800 flex items-center justify-between gap-2 cursor-pointer hover:bg-slate-800/20" style={{background:color+'12'}} onClick={()=>setOpen(o=>!o)}>
         <div className="flex items-center gap-2"><span className="text-slate-500">{open?'▼':'▶'}</span><span style={{color}}>{icon}</span><h3 className="text-slate-200 font-semibold">{title}</h3><span className="text-[11px] font-bold rounded-full px-2 py-0.5" style={{background:color,color:'#0b0f17'}}>{plans.length}</span></div>
       </div>
@@ -2571,7 +2597,8 @@ function App(){
   const handleCreateSR = run(async (customerIds) => {
     const custs=(state.customers||[]).filter(c=>customerIds.includes(c.id));
     const r = await db.createSR(customerIds, genSrNo());
-    notify('sr', '🆕 SR ใหม่ รอฝ่ายโครงการสร้าง Stock', `${r?.sr_no||''}\nลูกค้า: ${custs.map(c=>c.name).join(', ')||'-'}\nLBS รวม: ${custs.reduce((s,c)=>s+num(c.lbs_qty),0)}`);
+    const lines = custs.map((c,i)=>`${i+1}. ${c.name}${c.project_name?` — ${c.project_name}`:''} · LBS ${num(c.lbs_qty)}`).join('\n');
+    notify('sr', '📦 Project Stock No. ใหม่ — ส่งฝ่ายโครงการ', `${r?.sr_no||''}\nลูกค้า ${custs.length} ราย:\n${lines||'-'}\nรวม LBS: ${custs.reduce((s,c)=>s+num(c.lbs_qty),0)}`);
   });
   const handleUpdateSR = run(async (id, patch) => { await db.updateSR(id, patch); },
     (s, id, patch) => ({...s, srs:s.srs.map(x=>x.id===id?{...x,...patch}:x)}));
@@ -2721,10 +2748,10 @@ function App(){
         )}
         <main className="flex-1 overflow-y-auto p-6">
           {page==='dashboard'  && <Dashboard state={state} onNav={setPage} onSelectProject={goProject} onOpenPO={setPoProject}/>}
-          {page==='sales'      && <SalesPipeline state={state} role={role} onAddCustomer={handleAddCustomer} onUpdateCustomer={handleUpdateCustomer} onCreateSR={handleCreateSR} onUpdateSR={handleUpdateSR} onTask={handleTask}/>}
+          {page==='sales'      && <SalesPipeline state={state} role={role} onAddCustomer={handleAddCustomer} onUpdateCustomer={handleUpdateCustomer} onCreateSR={handleCreateSR} onUpdateSR={handleUpdateSR} onTask={handleTask} onDeleteCustomer={(id)=>handleDeleteRow('customers','customers',id)}/>}
           {page==='sales-sr'   && <SalesSR state={state} role={role} onUpdateCustomer={handleUpdateCustomer} onClearReturn={(id)=>handleUpdateSR(id,{returned:false,return_note:null})}/>}
           {page==='project'    && <ProjectDept state={state} role={role} onCreateStock={handleCreateStock} genDefaults={genDefaults} onGoStocks={()=>setPage('project-stocks')} onReturnSR={(id,note)=>handleUpdateSR(id,{returned:true,return_note:note})}/>}
-          {page==='project-stocks' && <ProjectStocks state={state} role={role} onAddBom={handleAddBom} onUpdateBom={handleUpdateBom} onDeleteBom={handleDeleteBom} onSendBom={handleSendBom} onUpdateProject={handleUpdateProject} onHandoff={handleHandoff} onReject={handleReject} onAck={handleAck}/>}
+          {page==='project-stocks' && <ProjectStocks state={state} role={role} onAddBom={handleAddBom} onUpdateBom={handleUpdateBom} onDeleteBom={handleDeleteBom} onSendBom={handleSendBom} onUpdateProject={handleUpdateProject} onHandoff={handleHandoff} onReject={handleReject} onAck={handleAck} onDeleteProject={(id)=>handleDeleteRow('projects','projects',id)}/>}
           {page==='project-inventory' && <ProjectInventory state={state} role={role} onWithdraw={handleWithdrawSR}/>}
           {page==='purchasing' && <Procurement state={state} role={role} onUpdateBom={handleUpdateBom} onCreatePO={handleCreatePO} onOpenPO={setPoProject} genPoNo={genPoNo}/>}
           {page==='purchasing-done' && <PurchasingDone state={state}/>}
@@ -2734,7 +2761,7 @@ function App(){
           {page==='settings'   && role==='developer' && <Settings state={state} role={role} onSetRole={handleSetRole} onRevoke={handleRevoke} onDeleteRow={handleDeleteRow} onUpdateRow={handleUpdateRow} onResetData={handleResetData} notifLog={notifLog} onSaveNotif={handleSaveNotif} onTestNotif={handleTestNotif}/>}
         </main>
       </div>
-      {poProj && <PoModal project={poProj} pos={state.pos} onClose={()=>setPoProject(null)}/>}
+      {poProj && <PoModal project={poProj} pos={state.pos} role={role} onDelete={(id)=>handleDeleteRow('pos','purchase_orders',id)} onClose={()=>setPoProject(null)}/>}
     </div>
   );
 }
