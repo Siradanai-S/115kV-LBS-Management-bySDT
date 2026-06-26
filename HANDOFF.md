@@ -50,6 +50,14 @@ service_team · handoff_log(audit) · user_roles · inventory_moves(epicor_code,
 - **UI อื่น (review v4):** BomRoundCard คอลัมน์ PO โชว์ PO No. จาก `posCovering` · ทุก modal ใหญ่ขึ้น (PoModal 4xl · create-stock/RowEditor 2xl · day-view xl)
 - **Service Department (review v5):** `FieldService` แยก 3 section — **Pending Actions** (`sent&&!acked`) / **Assigned Teams** (`acked&&!delivered`) / **Completed Projects** (`delivered`) ผ่าน `ServiceSection` (พับได้) · stage 3 = **ทำ Report**: เพิ่ม **Check-in Location** (ปุ่ม 📡 GPS `navigator.geolocation` + กรอก lat/lng เอง) → `handleSvcDeliver` เก็บ `checkin_lat/lng/at` (schema service_plans) · Completed โชว์ลิงก์ Google Maps · Project SR inbox แต่ละ SR พับได้ เริ่มต้นซ่อน
 - **🗺️ Map Tracking (review v5):** เมนูย่อยใต้ Service (`page='map-tracking'`) · component `MapTracking` ใช้ **Leaflet + OSM** (CDN ใน `<head>`) ปักหมุด Completed Project ตามพิกัด Check-in บนแผนที่ไทย (popup: Stock/ลูกค้า/วันที่/พิกัด)
+- **Flow fixes (review v6):**
+  - 🔴 **ปิดงานต้องครบทุกใบเบิก:** `phaseDataGate`(service) + RPC `handoff_project`(service) + ปุ่ม "ปิดงานโครงการ" ใน ServiceJob ใช้ `allPlansDelivered(state,pid)` (ทุก `sent` plan ต้อง `delivered`) แทน `do_signed` เดียว — กันปิดก่อนกำหนดเมื่อมีหลายใบเบิก/ลูกค้า
+  - 🔴 **`syncServiceTasks(projectId, override)`** แทน `completeSvcTask(idx)`: service task 3 ข้อ derive จากสถานะ **ทุกใบเบิก** (acked/work/delivered) ไม่ใช่ใบแรก · override กัน state stale
+  - 🟡 **Check-in บังคับ** ก่อนทำ Report (ปุ่ม disable ถ้าไม่มี lat/lng) → Map Tracking ครบ
+  - 🟡 **ตีกลับ SR → ฝ่ายขาย:** ปุ่ม "↩️ ส่งกลับฝ่ายขาย" ใน Project inbox → `srs.returned`/`return_note` (schema) · SR ที่ตีกลับออกจาก inbox Project ไปโชว์กล่อง "ฝ่ายโครงการตีกลับ" ใน Sales SR + ปุ่ม "แก้แล้ว ส่งกลับ" เคลียร์ · กระดิ่งแจ้ง sales
+  - 🟡 **คืนของเข้าคลัง:** ServiceJob ปุ่ม "↩️ คืนของเข้าคลัง" (เบิกเกิน/ไม่ติดตั้ง) → `handleReturnStock` IN reason 'คืนจากหน้างาน'
+  - 🟡 **Realtime:** subscribe `postgres_changes` → reload (debounce 700ms) เมื่อ LIVE+login (ต้องเปิด publication — ดูหมายเหตุท้าย schema.sql)
+  - 🟡 **notify retry** 1 ครั้งเมื่อ network ล้ม + hint เฟส (ปุ่มปิดงานขึ้นเมื่อ phase ถึง service)
 - **LINE webhook (review v3):** `line-webhook.ts` ยกเลิกการตอบ groupId กลับเข้าแชท (ได้ id แล้ว: `C30dde10e5b1d4ce984a85016b79204cd`) เหลือ log เงียบ ๆ + ตอบ 200
 - **Serial LVB/OM ของ BOM** — `bom_items.serial_lvb` + `serial_om` (กรอกในฟอร์ม BOM **เฉพาะเมื่อ Category=LBS**)
 
