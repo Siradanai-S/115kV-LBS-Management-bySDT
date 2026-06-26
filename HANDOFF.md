@@ -58,6 +58,13 @@ service_team · handoff_log(audit) · user_roles · inventory_moves(epicor_code,
   - 🟡 **คืนของเข้าคลัง:** ServiceJob ปุ่ม "↩️ คืนของเข้าคลัง" (เบิกเกิน/ไม่ติดตั้ง) → `handleReturnStock` IN reason 'คืนจากหน้างาน'
   - 🟡 **Realtime:** subscribe `postgres_changes` → reload (debounce 700ms) เมื่อ LIVE+login (ต้องเปิด publication — ดูหมายเหตุท้าย schema.sql)
   - 🟡 **notify retry** 1 ครั้งเมื่อ network ล้ม + hint เฟส (ปุ่มปิดงานขึ้นเมื่อ phase ถึง service)
+- **review v7 (label + UI + CRUD):**
+  - **สีการ์ด:** `Card` รับ prop `tone` (blue/orange/green/gray/violet → พื้นอ่อน) · Sales=น้ำเงิน · Project/Inventory=ส้ม · Purchasing/Done=เทา · Service section=เขียว(สีตาม section)
+  - **Dashboard:** ลบการ์ด "กำไรรวมประมาณการ" (เหลือ 3 KPI) · เปลี่ยน "คอขวดระหว่างฝ่าย" → "กระบวนการทำงานข้ามหน่วยงาน (Cross-Functional Process by Department)"
+  - **Relabel (ป้ายชื่อเท่านั้น ไม่แตะ DB):** Sales ปุ่ม "สร้าง Project Stock No. ส่งฝ่ายโครงการ" · NAV โครงการ "Purchase Requisition (Job No.)" · popup สร้าง = "Import → Purchase Requisition" · Budget title = Job No./Project Name
+  - **Sales:** LINE แจ้ง createSR ลิสต์ลูกค้า+LBS เรียง 1,2,3 · **บังคับแนบไฟล์** เมื่อ contract_status=ได้รับ PO/ทำสัญญา (schema `customers.contract_file_url/name`) — `onContractChange` เปิด file dialog ก่อน save
+  - **BOM อ้างลูกค้า:** `bom_items.cust_id` (schema) + ช่อง "อ้างลูกค้า" ในฟอร์ม BOM + เตือนเมื่อ LBS เกินโควตาลูกค้า (`custBomLBS`)
+  - **CRUD ฝ่ายตน:** ปุ่มลบ ลูกค้า(Sales, ก่อนรวบรวม) / Project Stock(Project, cascade) / PO(PoModal, purchasing) ผ่าน `handleDeleteRow` · RLS `p_proj_del` เปิดให้ฝ่าย project ลบได้
 - **LINE webhook (review v3):** `line-webhook.ts` ยกเลิกการตอบ groupId กลับเข้าแชท (ได้ id แล้ว: `C30dde10e5b1d4ce984a85016b79204cd`) เหลือ log เงียบ ๆ + ตอบ 200
 - **Serial LVB/OM ของ BOM** — `bom_items.serial_lvb` + `serial_om` (กรอกในฟอร์ม BOM **เฉพาะเมื่อ Category=LBS**)
 
