@@ -84,6 +84,7 @@ CREATE TABLE IF NOT EXISTS projects (
   created_at        TIMESTAMPTZ DEFAULT NOW(),
   updated_at        TIMESTAMPTZ DEFAULT NOW()
 );
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS bom_rounds JSONB DEFAULT '{}'::jsonb;   -- เมตาดาต้าราย Material List/ครั้ง: { "1": {cust_id}, ... } (Job No. + Ref ลูกค้า ต่อครั้ง)
 CREATE INDEX IF NOT EXISTS idx_projects_phase    ON projects (current_phase);
 CREATE INDEX IF NOT EXISTS idx_projects_delivery ON projects (delivery_date);
 

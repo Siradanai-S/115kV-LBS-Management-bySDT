@@ -65,6 +65,10 @@ service_team · handoff_log(audit) · user_roles · inventory_moves(epicor_code,
   - **Sales:** LINE แจ้ง createSR ลิสต์ลูกค้า+LBS เรียง 1,2,3 · **บังคับแนบไฟล์** เมื่อ contract_status=ได้รับ PO/ทำสัญญา (schema `customers.contract_file_url/name`) — `onContractChange` เปิด file dialog ก่อน save
   - **BOM อ้างลูกค้า:** `bom_items.cust_id` (schema) + ช่อง "อ้างลูกค้า" ในฟอร์ม BOM + เตือนเมื่อ LBS เกินโควตาลูกค้า (`custBomLBS`)
   - **CRUD ฝ่ายตน:** ปุ่มลบ ลูกค้า(Sales, ก่อนรวบรวม) / Project Stock(Project, cascade) / PO(PoModal, purchasing) ผ่าน `handleDeleteRow` · RLS `p_proj_del` เปิดให้ฝ่าย project ลบได้
+- **review v8 (Job No. ต่อ Material List):**
+  - Budget card: ลบ Field Job No./BOM No. (เหลือ Project Stock No.)
+  - **Job No. ต่อ round** = `roundJobNo(p,n)` (derive STK→JOB-…-n) · `projects.bom_rounds` (JSONB) เก็บ `{ [n]:{cust_id} }` ราย Material List · ปุ่ม "สร้าง Job No. (Material List ครั้งใหม่)" → เลือก Ref ลูกค้า → `onUpdateProject(bom_rounds)` + เปิด round
+  - `roundName` = `Job No. {roundJobNo} · STK No. {stock} (ครั้งN)` · BomRoundCard โชว์ Ref ลูกค้า + LBS {roundLBS}/{cust.lbs_qty} (เตือนเกิน) · add-form ใช้ cust_id ของ round (เลิก dropdown รายรายการ) · gate เดิม (project.job_no) ไม่แตะ
 - **LINE webhook (review v3):** `line-webhook.ts` ยกเลิกการตอบ groupId กลับเข้าแชท (ได้ id แล้ว: `C30dde10e5b1d4ce984a85016b79204cd`) เหลือ log เงียบ ๆ + ตอบ 200
 - **Serial LVB/OM ของ BOM** — `bom_items.serial_lvb` + `serial_om` (กรอกในฟอร์ม BOM **เฉพาะเมื่อ Category=LBS**)
 
