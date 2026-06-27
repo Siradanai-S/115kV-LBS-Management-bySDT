@@ -640,7 +640,7 @@ const roundOf = b => num(b.round)||1;
 // Job No. ต่อ Material List/ครั้ง — ใช้ค่าที่ผู้ใช้กรอก (เก็บใน projects.bom_rounds) · ถ้าไม่มี = แนะนำ derive
 const roundMeta  = (p, n) => (p.bom_rounds||{})[n] || (p.bom_rounds||{})[String(n)] || {};
 const roundJobNo = (p, n) => roundMeta(p,n).job_no || `${String(p.project_stock_no||'STK').replace(/STK/i,'JOB')}-${n}`;
-const roundName  = (p, n) => `Job No. ${roundJobNo(p,n)} · STK No. ${p.project_stock_no||'-'} (ครั้ง${n})`;
+const roundName  = (p, n) => `Job No. ${roundJobNo(p,n)} · ${p.project_stock_no||'-'} (ครั้ง${n})`;
 function projBomRounds(state, pid){ const ns=[...new Set(state.bom.filter(b=>b.project_id===pid).map(roundOf))]; return ns.length?ns.sort((a,b)=>a-b):[1]; }
 function roundItems(state, pid, n){ return state.bom.filter(b=>b.project_id===pid && roundOf(b)===n); }
 function roundIsSent(state, pid, n){ const it=roundItems(state,pid,n); return it.length>0 && it.every(b=>b.is_sent); }
