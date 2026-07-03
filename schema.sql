@@ -230,6 +230,13 @@ ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS cust_id      BIGINT REFERENCE
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS checkin_lat  DOUBLE PRECISION;   -- พิกัด Check-in ตอนทีมทำ Report (Map Tracking)
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS checkin_lng  DOUBLE PRECISION;
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS checkin_at   TIMESTAMPTZ;
+-- อนุมัติการเบิกโดย Division Manager (executive) ก่อนเข้า Service
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS approved        BOOLEAN DEFAULT FALSE;   -- DM อนุมัติแล้ว → เข้า Service
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS approved_by     TEXT;
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS has_po          BOOLEAN DEFAULT FALSE;   -- ลูกค้ามี PO/สัญญา (ข้อมูลประกอบการอนุมัติ)
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS advance_payment BOOLEAN DEFAULT FALSE;   -- เรียกเก็บ advance payment
+-- ข้อมูลเดิม (ก่อนมีระบบอนุมัติ) ถือว่าอนุมัติแล้ว เพื่อไม่ให้งานที่ค้างอยู่หลุดจาก Service
+UPDATE service_plans SET approved=TRUE WHERE approved IS NOT TRUE AND sent=TRUE;
 -- Service flow: เช็กลิสต์หน้างาน + ลูกค้าเซ็นรับ + ใบรับประกัน
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS checklist      JSONB DEFAULT '{}'::jsonb;
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS received_by    VARCHAR(120);
@@ -619,7 +626,7 @@ ALTER TABLE service_plans ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS p_plans_read ON service_plans;   CREATE POLICY p_plans_read   ON service_plans FOR SELECT TO authenticated USING (TRUE);
 DROP POLICY IF EXISTS p_plans_ins ON service_plans;    CREATE POLICY p_plans_ins    ON service_plans FOR INSERT TO authenticated WITH CHECK (is_developer() OR current_department() = 'project');
 -- UPDATE: project (ตั้ง sent ตอนส่งมอบ) + service (กดรับ acked/team) + dev
-DROP POLICY IF EXISTS p_plans_upd ON service_plans;    CREATE POLICY p_plans_upd    ON service_plans FOR UPDATE TO authenticated USING (is_developer() OR current_department() IN ('service','project')) WITH CHECK (is_developer() OR current_department() IN ('service','project'));
+DROP POLICY IF EXISTS p_plans_upd ON service_plans;    CREATE POLICY p_plans_upd    ON service_plans FOR UPDATE TO authenticated USING (is_developer() OR current_department() IN ('service','project','executive')) WITH CHECK (is_developer() OR current_department() IN ('service','project','executive'));   -- executive = Division Manager อนุมัติการเบิก
 -- DELETE: ฝ่ายโครงการลบร่างใบเบิกได้ + dev
 DROP POLICY IF EXISTS p_plans_del ON service_plans;    CREATE POLICY p_plans_del    ON service_plans FOR DELETE TO authenticated USING (is_developer() OR current_department() = 'project');
 
