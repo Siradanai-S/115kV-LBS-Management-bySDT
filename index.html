@@ -1362,7 +1362,7 @@ function ProjectDept({state, role, onCreateStock, genDefaults, onGoStocks, onRet
 const BOM_BLANK = { epicor_code:'', description:'', category:'LBS', serial_lvb:'', serial_om:'', due_date:'', ium:'EA', quantity:1, currency:'THB', unit_cost:0, fx_rate:36.5, project_phase:'Phase 1', cust_id:'' };
 // LBS (หมวด LBS) ที่ลงให้ลูกค้ารายนี้ไปแล้วทั้ง Stock (ทุกครั้ง/รอบ)
 const custBomLBS = (state, pid, custId) => (state.bom||[]).filter(b=>b.project_id===pid && String(b.cust_id)===String(custId) && b.category==='LBS').reduce((s,b)=>s+num(b.quantity),0);
-function ProjectBom({state, project, canEdit, onAddBom, onUpdateBom, onDeleteBom, onSendBom, onUpdateProject}){
+function ProjectBom({state, project, role, canEdit, onAddBom, onUpdateBom, onDeleteBom, onSendBom, onUpdateProject}){
   const items = state.bom.filter(b=>b.project_id===project.id);
   const matValue = items.reduce((s,b)=>s+lineTHB(b),0);
   const reqLBS = requestedLBS(state, project.id);
@@ -1381,7 +1381,13 @@ function ProjectBom({state, project, canEdit, onAddBom, onUpdateBom, onDeleteBom
   const custs = stockCustomers(state, project.id);
   const openMk = () => { setMkJob(`${String(project.project_stock_no||'STK').replace(/STK/i,'JOB')}-${Math.max(0,...rounds)+1}`); setMkCust(''); setMkOpen(true); };
   const createRound = () => { const newN=Math.max(0,...rounds)+1; onUpdateProject(project.id,{ bom_rounds:{...(project.bom_rounds||{}), [newN]:{job_no:mkJob.trim()||null, cust_id:mkCust||null}} }); setExtra(e=>[...e,newN]); setMkOpen(false); };
+  // Developer: ลบ Material List ทั้งครั้ง (รายการ BOM + meta round) — ทำได้แม้ส่งจัดซื้อแล้ว
+  const deleteRound = n => { const its=roundItems(state, project.id, n); if(!confirm(`ลบ ${roundName(project,n)} ทั้งครั้ง?\n⚠ จะลบรายการ BOM ${its.length} รายการในครั้งนี้ด้วย`)) return; its.forEach(b=>onDeleteBom(b.id)); const rr={...(project.bom_rounds||{})}; delete rr[n]; onUpdateProject(project.id,{bom_rounds:rr}); setExtra(e=>e.filter(x=>x!==n)); };
   const budgetLeft = num(project.total_budget) - matValue;   // งบคงเหลือ = งบรวม − มูลค่าวัสดุ BOM (ตัดอัตโนมัติ)
+  // Export Excel — รวมทุกครั้ง จัดกลุ่มตาม Job No.
+  const exportByJob = () => exportXLSX(`material-list-${project.project_stock_no}.xlsx`, 'Material List', [
+    ['Job No.','ครั้ง','Epicor Code','Description','Category','Due Date','IUM','Qty','Currency','Cost/unit','FX','Total THB','Phase','PO Status','สถานะส่งจัดซื้อ'],
+    ...rounds.flatMap(n=>roundItems(state,project.id,n).map(b=>[roundJobNo(project,n),roundSeq(project,n),b.epicor_code,b.description,b.category,b.due_date,b.ium,b.quantity,b.currency,b.unit_cost,b.fx_rate,Math.round(lineTHB(b)),b.project_phase,b.po_status,roundIsSent(state,project.id,n)?'ส่งจัดซื้อแล้ว':'ร่าง']))]);
   return (
     <div className="space-y-4">
       {/* Budget (กว้าง) + ตรวจ LBS (compact) — เรียงตาม Flow */}
@@ -1415,6 +1421,8 @@ function ProjectBom({state, project, canEdit, onAddBom, onUpdateBom, onDeleteBom
       {/* Material List (BOM) — สร้างได้หลายครั้ง/รอบต่อ Stock */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h3 className="text-slate-200 font-semibold flex items-center gap-2">{Icon.box} Material List (BOM) <span className="text-[11px] text-slate-500 font-normal">{rounds.length} ครั้ง · มูลค่ารวม {baht(matValue)}</span></h3>
+        <div className="flex items-center gap-2 flex-wrap">
+        {rounds.length>0 && <button onClick={exportByJob} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:'#16a34a22',color:'#16a34a'}}>⬇ Excel (ทุกครั้ง)</button>}
         {canEdit && (!mkOpen
           ? <button onClick={openMk} className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-1.5" style={{background:'#f97316',color:'#0b0f17'}}>{Icon.plus} สร้าง Job No. (Material List)</button>
           : <div className="flex items-center gap-2 flex-wrap rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-1.5">
@@ -1425,16 +1433,17 @@ function ProjectBom({state, project, canEdit, onAddBom, onUpdateBom, onDeleteBom
               <button onClick={createRound} disabled={!mkJob.trim()} className="text-xs font-semibold rounded-md px-3 py-1 disabled:opacity-40" style={{background:'#f97316',color:'#0b0f17'}}>สร้าง</button>
               <button onClick={()=>setMkOpen(false)} className="text-xs rounded-md px-2 py-1 border border-slate-700 text-slate-300">ยกเลิก</button>
             </div>)}
+        </div>
       </div>
       {rounds.length===0 && <div className="text-center text-slate-500 text-sm py-8 rounded-xl border border-dashed border-slate-700">ยังไม่มี Material List — กด <b>“สร้าง Job No. (Material List)”</b> เพื่อเริ่ม</div>}
-      {rounds.map(n => <BomRoundCard key={n} state={state} project={project} n={n} canEdit={canEdit} onAddBom={onAddBom} onUpdateBom={onUpdateBom} onDeleteBom={onDeleteBom} onSendBom={onSendBom}/>)}
+      {rounds.map(n => <BomRoundCard key={n} state={state} project={project} n={n} role={role} canEdit={canEdit} onAddBom={onAddBom} onUpdateBom={onUpdateBom} onDeleteBom={onDeleteBom} onSendBom={onSendBom} onDeleteRound={isDev(role)?deleteRound:null}/>)}
       {!canEdit && <p className="text-[11px] text-slate-500">ดูอย่างเดียว — การจัดการ BOM/ส่งจัดซื้อ สงวนให้ฝ่ายโครงการ และ Developer</p>}
     </div>
   );
 }
 
 // การ์ด BOM หนึ่ง "ครั้ง" (round) — ชื่อ BOM-yyyy-000 (ครั้งN) · ส่งจัดซื้อแยกรายครั้ง
-function BomRoundCard({state, project, n, canEdit, onAddBom, onUpdateBom, onDeleteBom, onSendBom}){
+function BomRoundCard({state, project, n, role, canEdit, onAddBom, onUpdateBom, onDeleteBom, onSendBom, onDeleteRound}){
   const items = roundItems(state, project.id, n);
   const custs = stockCustomers(state, project.id);                     // ลูกค้าใน Stock
   const rCust = custs.find(c=>String(c.id)===String(roundMeta(project,n).cust_id));   // ลูกค้าที่ Material List ครั้งนี้อ้างถึง (จำกัด LBS)
@@ -1446,7 +1455,7 @@ function BomRoundCard({state, project, n, canEdit, onAddBom, onUpdateBom, onDele
   const [form, setForm] = useState(BOM_BLANK);
   const [open, setOpen] = useState(false);
   const [show, setShow] = useState(false);              // พับ/กางรายการของครั้งนี้ (เริ่มต้นซ่อน)
-  const editable = canEdit && !sent;
+  const editable = canEdit && (!sent || isDev(role));   // Developer แก้ไข/ลบรายการได้แม้ส่งจัดซื้อแล้ว
   // เปลี่ยนสกุลเงิน → ดึงเรตปัจจุบันมาเติมช่อง FX อัตโนมัติ (แก้มือทับได้)
   const onCurrency = async v => { setForm(f=>({...f, currency:v, fx_rate:v==='THB'?1:(FX_FALLBACK[v]||f.fx_rate||1)})); if(v!=='THB'){ const rate=await fetchFxToTHB(v); setForm(f=> f.currency===v ? {...f, fx_rate:rate} : f); } };
   return (
@@ -1455,8 +1464,9 @@ function BomRoundCard({state, project, n, canEdit, onAddBom, onUpdateBom, onDele
         <h3 className="text-slate-200 font-semibold flex items-center gap-2 flex-wrap cursor-pointer" onClick={()=>setShow(s=>!s)}><span className="text-slate-500">{show?'▼':'▶'}</span>{Icon.box} {name} <Pill color={sent?'#16a34a':'#64748b'}>{sent?'ส่งจัดซื้อแล้ว':'ร่าง'}</Pill>{rCust && <Pill color={lbsOver?'#f43f5e':'#3b82f6'}>👤 {rCust.name} · LBS {roundLBS}/{rCust.lbs_qty}{lbsOver?' ⚠ เกิน':''}</Pill>}<span className="text-[11px] text-slate-500 font-normal">{items.length} รายการ · {baht(matValue)}</span></h3>
         <div className="flex items-center gap-2">
           {items.length>0 && <button onClick={()=>exportXLSX(`${name}.xlsx`, `ครั้ง${n}`, [['Epicor Code','Description','Category','Due Date','IUM','Qty','Currency','Cost/unit','FX','Total THB','Project Phase','PO Status'], ...items.map(b=>[b.epicor_code,b.description,b.category,b.due_date,b.ium,b.quantity,b.currency,b.unit_cost,b.fx_rate,Math.round(lineTHB(b)),b.project_phase,b.po_status])])} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:'#16a34a22',color:'#16a34a'}}>⬇ Excel</button>}
-          {editable && items.length>0 && <button onClick={()=>{ if(confirm(`ส่ง ${name} (${items.length} รายการ) ให้จัดซื้อ?`)) onSendBom(project.id, n); }} className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-1.5" style={{background:'#16a34a',color:'#0b0f17'}}>{Icon.send} ส่ง BOM (ครั้ง{n}) ให้จัดซื้อ</button>}
+          {editable && !sent && items.length>0 && <button onClick={()=>{ if(confirm(`ส่ง ${name} (${items.length} รายการ) ให้จัดซื้อ?`)) onSendBom(project.id, n); }} className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-1.5" style={{background:'#16a34a',color:'#0b0f17'}}>{Icon.send} ส่ง BOM (ครั้ง{n}) ให้จัดซื้อ</button>}
           {editable && <button onClick={()=>{ setShow(true); setOpen(o=>!o); }} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:'#f9731622',color:'#f97316'}}>{Icon.plus} เพิ่มรายการ</button>}
+          {onDeleteRound && <button onClick={()=>onDeleteRound(n)} title="ลบ Material List ครั้งนี้ (Developer)" className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:'#f43f5e22',color:'#f43f5e'}}>{Icon.trash} ลบครั้งนี้</button>}
         </div>
       </div>
       {show && <>
@@ -1510,7 +1520,8 @@ function BomRoundCard({state, project, n, canEdit, onAddBom, onUpdateBom, onDele
         {items.length>0 && <tfoot><tr className="border-t border-slate-700"><td colSpan="7" className="px-4 py-3 text-right text-slate-400 text-xs">รวม ครั้ง{n} (฿)</td><td className="px-3 py-3 text-right font-bold text-slate-100 mono">{baht(matValue)}</td><td colSpan="3"/></tr></tfoot>}
       </table>
       </div>
-      {sent && canEdit && <p className="px-5 py-2.5 text-[11px] text-emerald-700/80 border-t border-slate-800">ครั้งนี้ส่งให้จัดซื้อแล้ว — แก้ไขรายการไม่ได้ (ฝ่ายจัดซื้อจะอัปเดตสถานะ PO กลับมา)</p>}
+      {sent && canEdit && !isDev(role) && <p className="px-5 py-2.5 text-[11px] text-emerald-700/80 border-t border-slate-800">ครั้งนี้ส่งให้จัดซื้อแล้ว — แก้ไขรายการไม่ได้ (ฝ่ายจัดซื้อจะอัปเดตสถานะ PO กลับมา)</p>}
+      {sent && isDev(role) && <p className="px-5 py-2.5 text-[11px] text-amber-600/80 border-t border-slate-800">⚙ Developer: ครั้งนี้ส่งจัดซื้อแล้ว แต่ยังแก้ไข/ลบรายการได้ (สิทธิ์ผู้ดูแลระบบ)</p>}
       </>}
     </Card>
   );
@@ -1565,7 +1576,7 @@ function ProjectStocks({state, role, onAddBom, onUpdateBom, onDeleteBom, onSendB
             {plans.length>0 && <div className="px-5 py-2 border-t border-slate-800 flex flex-wrap gap-2">{plans.map(pl=><span key={pl.id} className="text-[11px] rounded-full px-2.5 py-1" style={pl.acked?{background:'#16a34a22',color:'#16a34a'}:{background:'#f9731622',color:'#f97316'}}>📋 {pl.wd_no||'แผนส่ง'} · {pl.acked?'Service รับแล้ว':'รอ Service รับ'}</span>)}</div>}
             {isOpen && <div className="border-t border-slate-800 p-4 space-y-4">
               <PhaseRibbon project={p} state={state} role={role} onHandoff={onHandoff} onReject={onReject} onAck={onAck}/>
-              <ProjectBom state={state} project={p} canEdit={canEdit} onAddBom={onAddBom} onUpdateBom={onUpdateBom} onDeleteBom={onDeleteBom} onSendBom={onSendBom} onUpdateProject={onUpdateProject}/>
+              <ProjectBom state={state} project={p} role={role} canEdit={canEdit} onAddBom={onAddBom} onUpdateBom={onUpdateBom} onDeleteBom={onDeleteBom} onSendBom={onSendBom} onUpdateProject={onUpdateProject}/>
               <Card className="p-4"><h3 className="text-slate-200 font-semibold mb-3 flex items-center gap-2">📜 ประวัติการส่งงาน (Audit Timeline)</h3><HandoffTimeline list={(state.handoffs||[]).filter(h=>h.project_id===p.id)}/></Card>
             </div>}
           </Card>
@@ -1704,12 +1715,17 @@ function PurchasingDone({state}){
   const grandItems=delivered.length, grandTHB=delivered.reduce((s,b)=>s+lineTHB(b),0);
   const allCollapsed = groups.length>0 && groups.every(g=>!open[g.pid]);   // เริ่มต้นซ่อนทั้งหมด
   const toggleAll = () => { const m={}; groups.forEach(g=>m[g.pid]=allCollapsed); setOpen(m); };
+  // Export Excel — รายการ BOM ที่ Delivered แล้ว (ทุก Stock)
+  const exportDelivered = () => exportXLSX('bom-delivered.xlsx', 'BOM Delivered', [
+    ['Stock No.','BOM No.','โครงการ','ครั้ง','Epicor Code','Description','Category','Qty','IUM','Total THB','PO No.'],
+    ...groups.flatMap(g=>g.items.map(b=>[g.p?.project_stock_no,g.p?.bom_no,g.p?.name,roundOf(b),b.epicor_code,b.description,b.category,b.quantity,b.ium,Math.round(lineTHB(b)),posCovering(state,b.id).map(po=>po.po_no).join(', ')]))]);
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <h3 className="text-slate-200 font-semibold flex items-center gap-2"><span style={{color:'#16a34a'}}>{Icon.check}</span>BOM Delivered completed <span className="text-[11px] text-slate-500 font-normal">{groups.length} Stock · {grandItems} รายการ · {baht(grandTHB)}</span></h3>
         <div className="flex items-center gap-2">
           <input value={q} onChange={e=>setQ(e.target.value)} placeholder="🔍 ค้นหา Stock / BOM / โครงการ" className="w-64 max-w-full bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 px-3 py-1.5 focus:outline-none focus:border-amber-500/60"/>
+          {groups.length>0 && <button onClick={exportDelivered} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:'#16a34a22',color:'#16a34a'}}>⬇ Excel</button>}
           {groups.length>0 && <button onClick={toggleAll} className="text-xs font-medium rounded-lg px-3 py-1.5 border border-slate-700 text-slate-300 hover:bg-slate-800">{allCollapsed?'ขยายทั้งหมด':'ย่อทั้งหมด'}</button>}
         </div>
       </div>
@@ -1851,11 +1867,23 @@ function ProjectInventory({state, role, onWithdraw, onApprove, onReject}){
   const pName = id => (state.projects.find(p=>p.id===id)||{}).project_stock_no || '';
   const pending = (state.plans||[]).filter(pl=>pl.sent && !pl.approved);   // รออนุมัติ Division Manager
   const list = state.projects.filter(p=> !q || (p.project_stock_no+' '+p.name).toLowerCase().includes(q.toLowerCase()));
+  // Export Excel — สรุปคงเหลือคลัง (ทุก Stock)
+  const exportInv = () => exportXLSX('inventory-stock.xlsx', 'คลังสินค้า', [
+    ['Stock No.','โครงการ','Epicor Code','Description','รับเข้า','เบิกออก','คงเหลือ'],
+    ...state.projects.flatMap(p=>invBalance(state,p.id).map(r=>[p.project_stock_no,p.name,r.code,r.desc,r.inQ,r.outQ,r.onhand]))]);
+  // Export Excel — ใบเบิกทั้งหมด
+  const exportPlans = () => exportXLSX('withdrawals.xlsx', 'ใบเบิก', [
+    ['WD No.','Stock No.','ลูกค้า','SR No.','จำนวนรายการ','สถานะ','PO/สัญญา','Advance','แผนเริ่ม','แผนจบ','อนุมัติแล้ว','ส่งมอบแล้ว'],
+    ...(state.plans||[]).map(pl=>{ const cust=pl.cust_id?(state.customers||[]).find(c=>c.id===pl.cust_id):null; return [pl.wd_no,pName(pl.project_id),cust?cust.name:'',srNoOf(pl.sr_id)||'',(pl.lines||[]).length,PLAN_STATUS(pl).t,pl.has_po?'Y':'N',pl.advance_payment?'Y':'N',pl.plan_start||'',pl.plan_end||'',pl.approved?'Y':'N',pl.delivered?'Y':'N']; })]);
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="text-[11px] text-slate-500 leading-relaxed max-w-2xl">คลังแยกตาม <b>Project Stock</b> · <b>รับเข้าอัตโนมัติ</b>เมื่อฝ่ายจัดซื้ออัปเดต PO เป็น <b>Delivered</b> · กด <b>เบิก (อ้าง SR-No.)</b> → ตัดสต็อก + <b>รออนุมัติ Division Manager</b> → เข้า Service</div>
-        <input value={q} onChange={e=>setQ(e.target.value)} placeholder="🔍 ค้นหา Stock" className="w-56 max-w-full bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 px-3 py-1.5 focus:outline-none focus:border-amber-500/60"/>
+        <div className="text-[11px] text-slate-500 leading-relaxed max-w-xl">คลังแยกตาม <b>Project Stock</b> · <b>รับเข้าอัตโนมัติ</b>เมื่อฝ่ายจัดซื้ออัปเดต PO เป็น <b>Delivered</b> · กด <b>เบิก (อ้าง SR-No.)</b> → ตัดสต็อก + <b>รออนุมัติ Division Manager</b> → เข้า Service</div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button onClick={exportInv} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:'#16a34a22',color:'#16a34a'}}>⬇ คลังสินค้า</button>
+          <button onClick={exportPlans} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:'#16a34a22',color:'#16a34a'}}>⬇ ใบเบิก</button>
+          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="🔍 ค้นหา Stock" className="w-56 max-w-full bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 px-3 py-1.5 focus:outline-none focus:border-amber-500/60"/>
+        </div>
       </div>
       {/* กล่องรออนุมัติจาก Division Manager (executive) */}
       <Card tone="violet" className="overflow-hidden" style={{borderColor:'#8b5cf655'}}>
