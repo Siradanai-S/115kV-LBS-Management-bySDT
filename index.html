@@ -1388,6 +1388,10 @@ function ProjectBom({state, project, role, canEdit, onAddBom, onUpdateBom, onDel
   const exportByJob = () => exportXLSX(`material-list-${project.project_stock_no}.xlsx`, 'Material List', [
     ['Job No.','ครั้ง','Epicor Code','Description','Category','Due Date','IUM','Qty','Currency','Cost/unit','FX','Total THB','Phase','PO Status','สถานะส่งจัดซื้อ'],
     ...rounds.flatMap(n=>roundItems(state,project.id,n).map(b=>[roundJobNo(project,n),roundSeq(project,n),b.epicor_code,b.description,b.category,b.due_date,b.ium,b.quantity,b.currency,b.unit_cost,b.fx_rate,Math.round(lineTHB(b)),b.project_phase,b.po_status,roundIsSent(state,project.id,n)?'ส่งจัดซื้อแล้ว':'ร่าง']))]);
+  // จัดกลุ่ม "ครั้ง" ตาม Job No. → 1 Job No. = กล่องใหญ่ 1 กล่อง (rounds เรียงให้ Job เดียวกันติดกันแล้ว)
+  const jobGroups = rounds.reduce((acc,n)=>{ const job=roundJobNo(project,n); let g=acc.find(x=>x.job===job); if(!g){ g={job, ns:[]}; acc.push(g); } g.ns.push(n); return acc; }, []);
+  // เพิ่ม "ครั้ง" (round) ใหม่ภายใต้ Job No. เดิม — สืบทอดลูกค้าที่อ้างจากครั้งก่อนใน Job นั้น
+  const addRoundToJob = (job, custId) => { const newN=Math.max(0,...rounds,...extra)+1; onUpdateProject(project.id,{ bom_rounds:{...(project.bom_rounds||{}), [newN]:{job_no:job, cust_id:custId||null}} }); setExtra(e=>[...e,newN]); };
   return (
     <div className="space-y-4">
       {/* Budget (กว้าง) + ตรวจ LBS (compact) — เรียงตาม Flow */}
@@ -1436,14 +1440,42 @@ function ProjectBom({state, project, role, canEdit, onAddBom, onUpdateBom, onDel
         </div>
       </div>
       {rounds.length===0 && <div className="text-center text-slate-500 text-sm py-8 rounded-xl border border-dashed border-slate-700">ยังไม่มี Material List — กด <b>“สร้าง Job No. (Material List)”</b> เพื่อเริ่ม</div>}
-      {rounds.map(n => <BomRoundCard key={n} state={state} project={project} n={n} role={role} canEdit={canEdit} onAddBom={onAddBom} onUpdateBom={onUpdateBom} onDeleteBom={onDeleteBom} onSendBom={onSendBom} onDeleteRound={isDev(role)?deleteRound:null}/>)}
+      {jobGroups.map(g => <JobGroupCard key={g.job} state={state} project={project} job={g.job} ns={g.ns} role={role} canEdit={canEdit} onAddBom={onAddBom} onUpdateBom={onUpdateBom} onDeleteBom={onDeleteBom} onSendBom={onSendBom} onDeleteRound={isDev(role)?deleteRound:null} onAddRound={canEdit?addRoundToJob:null}/>)}
       {!canEdit && <p className="text-[11px] text-slate-500">ดูอย่างเดียว — การจัดการ BOM/ส่งจัดซื้อ สงวนให้ฝ่ายโครงการ และ Developer</p>}
     </div>
   );
 }
 
+// กล่องใหญ่ต่อ Job No. — ครอบการ์ด "BOM List (ครั้งn)" ที่อ้าง Job No. เดียวกัน เพื่อทำงานแยกตาม Job
+function JobGroupCard({state, project, job, ns, role, canEdit, onAddBom, onUpdateBom, onDeleteBom, onSendBom, onDeleteRound, onAddRound}){
+  const [show, setShow] = useState(false);
+  const items = ns.flatMap(n=>roundItems(state, project.id, n));
+  const value = items.reduce((s,b)=>s+lineTHB(b),0);
+  const custs = stockCustomers(state, project.id);
+  const custId = ns.map(n=>roundMeta(project,n).cust_id).find(Boolean);      // ลูกค้าที่ Job นี้อ้าง (จากครั้งแรกที่ระบุ)
+  const rCust = custs.find(c=>String(c.id)===String(custId));
+  const sentCount = ns.filter(n=>roundIsSent(state, project.id, n)).length;
+  const allSent = ns.length>0 && sentCount===ns.length;
+  return (
+    <Card tone="orange" className="overflow-hidden">
+      <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between flex-wrap gap-2" style={{background:allSent?'#16a34a12':'#f9731614'}}>
+        <h3 className="text-slate-100 font-semibold flex items-center gap-2 flex-wrap cursor-pointer" onClick={()=>setShow(s=>!s)}>
+          <span className="text-slate-500">{show?'▼':'▶'}</span>{Icon.layers} <span className="mono text-base">Job No. {job}</span>
+          <Pill color={allSent?'#16a34a':'#f97316'}>{ns.length} ครั้ง{sentCount>0?` · ส่งแล้ว ${sentCount}/${ns.length}`:''}</Pill>
+          {rCust && <Pill color="#3b82f6">👤 {rCust.name} · LBS {rCust.lbs_qty}</Pill>}
+          <span className="text-[11px] text-slate-500 font-normal">{items.length} รายการ · {baht(value)}</span>
+        </h3>
+        {onAddRound && <button onClick={()=>onAddRound(job, custId)} className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-1.5" style={{background:'#f9731622',color:'#f97316'}}>{Icon.plus} เพิ่มครั้งใน Job นี้</button>}
+      </div>
+      {show && <div className="p-3 space-y-3 bg-slate-900/20">
+        {ns.map(n => <BomRoundCard key={n} state={state} project={project} n={n} role={role} canEdit={canEdit} onAddBom={onAddBom} onUpdateBom={onUpdateBom} onDeleteBom={onDeleteBom} onSendBom={onSendBom} onDeleteRound={onDeleteRound} nested/>)}
+      </div>}
+    </Card>
+  );
+}
+
 // การ์ด BOM หนึ่ง "ครั้ง" (round) — ชื่อ BOM-yyyy-000 (ครั้งN) · ส่งจัดซื้อแยกรายครั้ง
-function BomRoundCard({state, project, n, role, canEdit, onAddBom, onUpdateBom, onDeleteBom, onSendBom, onDeleteRound}){
+function BomRoundCard({state, project, n, role, canEdit, onAddBom, onUpdateBom, onDeleteBom, onSendBom, onDeleteRound, nested}){
   const items = roundItems(state, project.id, n);
   const custs = stockCustomers(state, project.id);                     // ลูกค้าใน Stock
   const rCust = custs.find(c=>String(c.id)===String(roundMeta(project,n).cust_id));   // ลูกค้าที่ Material List ครั้งนี้อ้างถึง (จำกัด LBS)
@@ -1451,7 +1483,7 @@ function BomRoundCard({state, project, n, role, canEdit, onAddBom, onUpdateBom, 
   const lbsOver = rCust && roundLBS>num(rCust.lbs_qty);
   const matValue = items.reduce((s,b)=>s+lineTHB(b),0);
   const sent = roundIsSent(state, project.id, n);
-  const name = roundName(project, n);
+  const name = nested ? `BOM List (ครั้ง${roundSeq(project,n)}) · ref Job No. ${roundJobNo(project,n)}` : roundName(project, n);
   const [form, setForm] = useState(BOM_BLANK);
   const [open, setOpen] = useState(false);
   const [show, setShow] = useState(false);              // พับ/กางรายการของครั้งนี้ (เริ่มต้นซ่อน)
