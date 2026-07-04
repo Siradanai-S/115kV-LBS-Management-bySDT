@@ -177,3 +177,12 @@ service_team · handoff_log(audit) · user_roles · inventory_moves(epicor_code,
 | ~1938 | **`App`** | state(1939) · useEffect auth/load · `run(fn,optimistic)`(~1958) · gen* เลขเอกสาร · **handlers ทุกตัว** · `<main>` routing ตาม `page` (~2030+) |
 
 **ค้นโค้ดเร็ว:** ค้น `function ชื่อComponent` หรือ comment แถบ `=====` ของแต่ละ section · routing ของ page อยู่ใน `App` (`{page==='...' && <Component .../>}`)
+
+## อัปเดตล่าสุด (approval flow + fixes)
+- **อนุมัติการเบิกโดย Division Manager (executive)** — เบิก(อ้าง SR) = **จอง** (ไม่ตัดสต็อก) + ติ๊ก PO/สัญญา, advance (ข้อมูลประกอบ) → กล่อง "รออนุมัติ Division Manager" ในคลังสินค้า (project-inventory) → executive/dev กด **อนุมัติ = ตัดสต็อกจริง (OUT) แล้วส่งเข้า Service** · หรือ **ไม่อนุมัติ/ยกเลิก** (ลบใบ ปล่อยของที่จองคืน) · schema `service_plans.approved/approved_by/has_po/advance_payment` (RLS p_plans_upd += executive) · helper `reservedQty`/`invAvail` (คงเหลือพร้อมเบิก = onhand − จอง)
+- **Gate อิงเฉพาะใบที่อนุมัติ:** `allPlansDelivered` + `syncServiceTasks` กรอง `sent && approved` (ใบรออนุมัติไม่บล็อกปิดงาน/ความคืบหน้า Service)
+- **Material List:** Job No. ต่อ round (กรอกเอง เก็บใน `projects.bom_rounds`) · "ครั้ง" นับแยกต่อ Job No. (`roundSeq`) + จัดกลุ่มเรียง Job No. เดียวกันติดกัน · เริ่มต้นว่าง (ไม่ default ครั้ง1)
+- **Contract Sel:** บังคับแนบไฟล์เมื่อ ได้รับ PO/ทำสัญญา (`customers.contract_file_url/name`) + snap กลับค่าเดิมเมื่อยกเลิก
+- **Realtime:** subscribe postgres_changes → reload (debounce 700ms) + ข้าม change ที่ตัวเองเพิ่งเขียน (`lastWriteRef`, 2.5s)
+- **ยังไม่ทำ (คิวถัดไป):** (E1) Developer แก้/ลบ BOM ในหน้า Material List แม้ส่งแล้ว + ลบ round · (E2) Export Excel: BOM by Job No / คลังสินค้า / ใบเบิก / BOM Delivered completed
+- **schema ที่ต้องรันสะสม:** projects.bom_rounds · customers.project_name/contract_file_* · bom_items.cust_id · service_plans.checkin_*/cust_id/approved/approved_by/has_po/advance_payment · RLS p_proj_del(+project) / p_plans_upd(+executive) / p_notif read-all

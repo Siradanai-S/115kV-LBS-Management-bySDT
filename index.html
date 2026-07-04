@@ -2584,20 +2584,21 @@ function App(){
     })();
   },[session]);
 
+  const lastWriteRef = useRef(0);   // เวลาที่ผู้ใช้เพิ่งเขียน/reload เอง — ใช้กัน realtime reload ซ้ำ
   const reload = async () => { try { const d=await db.loadAll(); setState(s=>({...s, ...d})); } catch(e){ setErr(e.message||String(e)); } };
   // Realtime: มีการเปลี่ยนแปลงในตารางใด ๆ → reload อัตโนมัติ (debounce) ให้ทุกฝ่ายเห็นงานเข้าสด
   //   ต้องเปิด Realtime publication บน Supabase (ดูหมายเหตุท้าย schema.sql)
   useEffect(()=>{
     if(!LIVE || !session) return;
-    let t=null; const ping=()=>{ clearTimeout(t); t=setTimeout(()=>{ reload(); }, 700); };
+    let t=null; const ping=()=>{ clearTimeout(t); t=setTimeout(()=>{ if(Date.now()-lastWriteRef.current < 2500) return; reload(); }, 700); };   // ข้าม change ที่ตัวเองเพิ่งเขียน (run reload ไปแล้ว)
     const ch = sb.channel('lbs-rt').on('postgres_changes', { event:'*', schema:'public' }, ping).subscribe();
     return ()=>{ clearTimeout(t); try{ sb.removeChannel(ch); }catch(e){} };
   }, [session]);
   // ครอบ action ทุกตัว: เรียก db → reload → จับ error แสดงผู้ใช้ (แก้ปัญหา fail เงียบในรีวิว)
   // run(fn, optimistic?) — ถ้ามี optimistic จะอัปเดต state ทันที (UI ตอบสนองไว) แล้วค่อย reconcile ด้วย reload
   const run = (fn, optimistic) => async (...args) => {
-    try { setErr(''); if(optimistic) setState(s=>optimistic(s, ...args)); const r=await fn(...args); await reload(); return r; }
-    catch(e){ setErr(e.message||String(e)); await reload(); }
+    try { setErr(''); if(optimistic) setState(s=>optimistic(s, ...args)); const r=await fn(...args); await reload(); lastWriteRef.current=Date.now(); return r; }
+    catch(e){ setErr(e.message||String(e)); await reload(); lastWriteRef.current=Date.now(); }
   };
 
   // ===== แจ้งเตือน (LINE/Email ผ่าน Edge Function) — ยิงแบบ fire-and-forget + เก็บ log ในแอป =====
