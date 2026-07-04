@@ -604,6 +604,9 @@ function invBalance(state, loc){
   return Object.values(rows).map(r=>({...r, onhand:r.inQ-r.outQ})).sort((a,b)=>String(a.code).localeCompare(String(b.code)));
 }
 const invOnhand = (state, loc, code) => { const r=invBalance(state, loc).find(x=>x.code===code); return r?r.onhand:0; };   // ยอดคงเหลือ ณ ที่ตั้ง
+// จำนวนที่ "จอง" ไว้ในใบเบิกที่ยังไม่อนุมัติ (reserve — ยังไม่ตัดสต็อกจริงจนกว่าจะอนุมัติ)
+const reservedQty = (state, pid, code) => (state.plans||[]).filter(p=>p.project_id===pid && p.sent && !p.approved).reduce((s,p)=> s + (p.lines||[]).reduce((ss,l)=>{ const b=(state.bom||[]).find(x=>x.id===l.bom_id); return ss + (b && b.epicor_code===code ? num(l.qty) : 0); },0), 0);
+const invAvail = (state, pid, code) => invOnhand(state, pid, code) - reservedQty(state, pid, code);   // คงเหลือพร้อมเบิก = onhand − จอง
 // ช่างไม่ว่าง = มีคิวงานทับช่วง [start,end] อยู่แล้ว
 const memberBusy = (state, mid, start, end) => !!(start && end) && (state.schedule||[]).some(s=> s.member_id===mid && !(String(s.end_date)<start || String(s.start_date)>end));
 // ปริ้นเอกสารงานบริการ — kind: 'wd' ใบเบิก · 'do' Delivery Order · 'handover' เอกสารส่งมอบงาน
@@ -674,7 +677,7 @@ function phaseDataGate(project, state){
   return { ok:true, reason:'' };
 }
 // ใบเบิกของโครงการนี้ส่งมอบครบทุกใบหรือยัง (ใช้ปิดงาน/ปุ่ม Closed)
-const allPlansDelivered = (state, pid) => { const ps=(state.plans||[]).filter(p=>p.project_id===pid && p.sent); return ps.length>0 && ps.every(p=>p.delivered); };
+const allPlansDelivered = (state, pid) => { const ps=(state.plans||[]).filter(p=>p.project_id===pid && p.sent && p.approved); return ps.length>0 && ps.every(p=>p.delivered); };   // นับเฉพาะใบที่อนุมัติแล้ว (งานจริงของ Service)
 // งานเข้าใหม่ของแต่ละฝ่าย
 const stockIncoming = (state, dep) => state.projects.filter(p=>p.current_phase===dep && !p.phase_acked).length;
 const srInbox = state => state.srs.filter(s=>!s.stock_id && !s.returned).length;   // SR รอสร้าง Stock (ไม่รวมที่ตีกลับให้ขาย)
@@ -1063,12 +1066,14 @@ const contractColor = s => s==='ทำสัญญาแล้ว'?'#16a34a':s==
 const CONTRACT_NEEDS_FILE = ['ได้รับ PO แล้ว','ทำสัญญาแล้ว'];   // สถานะที่บังคับแนบไฟล์
 function SrTrackTable({list, state, canEdit, onUpdateCustomer, emptyMsg}){
   const [show,setShow]=useState({});                 // sr.id -> กาง (เริ่มต้นซ่อน)
+  const [,forceR]=useState(0);                        // บังคับ re-render กัน <select> ค้างค่าเมื่อยกเลิกแนบไฟล์
   // เปลี่ยนสถานะสัญญา: ถ้าเป็น "ได้รับ PO/ทำสัญญา" และยังไม่มีไฟล์แนบ → บังคับเลือกไฟล์ก่อนจึง save
   const onContractChange = (c, v) => {
     if(CONTRACT_NEEDS_FILE.includes(v) && !c.contract_file_url){
       const inp=document.createElement('input'); inp.type='file'; inp.accept='application/pdf,image/*';
-      inp.onchange=e=>{ const f=e.target.files&&e.target.files[0]; if(!f) return; const rd=new FileReader(); rd.onload=()=>onUpdateCustomer(c.id,{contract_status:v, contract_file_url:rd.result, contract_file_name:f.name}); rd.readAsDataURL(f); };
-      inp.click(); return;   // ยังไม่ save จนกว่าจะเลือกไฟล์
+      inp.onchange=e=>{ const f=e.target.files&&e.target.files[0]; if(!f){ forceR(x=>x+1); return; } const rd=new FileReader(); rd.onload=()=>onUpdateCustomer(c.id,{contract_status:v, contract_file_url:rd.result, contract_file_name:f.name}); rd.readAsDataURL(f); };
+      inp.oncancel=()=>forceR(x=>x+1);
+      inp.click(); setTimeout(()=>forceR(x=>x+1),0); return;   // snap <select> กลับค่าเดิมทันที (ยังไม่ save จนกว่าจะเลือกไฟล์)
     }
     onUpdateCustomer(c.id,{contract_status:v});
   };
@@ -1751,7 +1756,7 @@ function WithdrawSR({project, state, onClose, onSubmit}){
   const srs = (state.srs||[]).filter(s=>s.stock_id===project.id);
   const [srId,setSrId]=useState(srs[0]?String(srs[0].id):'');
   const custs = (state.customers||[]).filter(c=>String(c.sr_id)===String(srId));
-  const bomItems = useMemo(()=> (state.bom||[]).filter(b=>b.project_id===project.id).map(b=>({ id:b.id, code:b.epicor_code, desc:b.description, cat:b.category, onhand:invOnhand(state,project.id,b.epicor_code) })), [state, project.id]);
+  const bomItems = useMemo(()=> (state.bom||[]).filter(b=>b.project_id===project.id).map(b=>({ id:b.id, code:b.epicor_code, desc:b.description, cat:b.category, onhand:invAvail(state,project.id,b.epicor_code) })), [state, project.id]);   // คงเหลือพร้อมเบิก (หักที่จองไว้)
   const [sel,setSel]=useState([]);                 // cust ids ที่เลือกเบิก
   const [qty,setQty]=useState({});                 // `${cid}_${bid}` -> จำนวน
   const [ps,setPs]=useState(project.delivery_date||''); const [pe,setPe]=useState(project.delivery_date||''); const [note,setNote]=useState('');
@@ -1837,7 +1842,7 @@ function WithdrawSR({project, state, onClose, onSubmit}){
   );
 }
 // แท็บกิ่งย่อย Project: คลังสินค้า (Inventory) — รับเข้าอัตโนมัติเมื่อ Delivered + เบิกอ้าง SR
-function ProjectInventory({state, role, onWithdraw, onApprove}){
+function ProjectInventory({state, role, onWithdraw, onApprove, onReject}){
   const canEdit = role==='developer' || role==='project';
   const canApprove = role==='developer' || role==='executive';   // Division Manager = executive
   const [open,setOpen]=useState({}); const [wdFor,setWdFor]=useState(null); const [q,setQ]=useState('');
@@ -1861,7 +1866,10 @@ function ProjectInventory({state, role, onWithdraw, onApprove}){
               <div className="text-[12px] text-slate-200"><b className="mono">{pl.wd_no||'ใบเบิก'}</b> · {pName(pl.project_id)}{cust?` · ${cust.name}`:''} · {(pl.lines||[]).length} รายการ
                 <div className="text-[10px] mt-0.5"><span style={{color:pl.has_po?'#16a34a':'#f43f5e'}}>PO/สัญญา: {pl.has_po?'Y':'N'}</span> · <span style={{color:pl.advance_payment?'#16a34a':'#f43f5e'}}>Advance: {pl.advance_payment?'Y':'N'}</span> · แผน {pl.plan_start||'-'}→{pl.plan_end||'-'}</div>
               </div>
-              {canApprove ? <button onClick={()=>onApprove(pl.id)} className="text-[11px] font-semibold rounded-md px-3 py-1.5 shrink-0" style={{background:'#8b5cf6',color:'#fff'}}>✓ อนุมัติ → Service</button>
+              {canApprove ? <span className="flex items-center gap-1.5 shrink-0">
+                  <button onClick={()=>onApprove(pl.id)} className="text-[11px] font-semibold rounded-md px-3 py-1.5" style={{background:'#8b5cf6',color:'#fff'}}>✓ อนุมัติ → Service</button>
+                  <button onClick={()=>{ if(confirm('ไม่อนุมัติ/ยกเลิกใบเบิก '+(pl.wd_no||'')+' ?\n(ยังไม่ตัดสต็อก — ของที่จองจะถูกปล่อยคืน)')) onReject(pl.id); }} className="text-[11px] font-medium rounded-md px-2.5 py-1.5 border border-rose-500/50 text-rose-500">✗ ไม่อนุมัติ</button>
+                </span>
                 : <span className="text-[10px] text-slate-500 shrink-0">รอผู้บริหารอนุมัติ</span>}
             </div>
           );})}</div>}
@@ -2703,7 +2711,7 @@ function App(){
   //   task0=รับแผน(ทุกใบ acked) · task1=ปฏิบัติงาน(ทุกใบมีทีม+เวลาจริง+เช็กลิสต์) · task2=ส่งมอบ(ทุกใบ delivered)
   //   override = {planId:{...fieldใหม่}} เพื่อชดเชย state ที่ยังไม่ reload
   const syncServiceTasks = async (projectId, override={}) => {
-    const plans=(state.plans||[]).filter(p=>p.project_id===projectId && p.sent).map(p=> override[p.id]?{...p,...override[p.id]}:p);
+    const plans=(state.plans||[]).filter(p=>p.project_id===projectId && p.sent && p.approved).map(p=> override[p.id]?{...p,...override[p.id]}:p);
     const tasks=state.tasks.filter(x=>x.project_id===projectId && x.department==='service').sort((a,b)=>a.sort_order-b.sort_order);
     if(!plans.length || tasks.length<3) return;
     const okChk=c=>SVC_CHECK.every(([k])=>c&&c[k]);
@@ -2714,28 +2722,34 @@ function App(){
     ];
     for(let i=0;i<3;i++){ const t=tasks[i]; const st=want[i]?'Completed':'In Progress'; if(t && t.status!==st) await db.updateTask(t.id, { status:st, updated_by:DEPT[role].en }); }
   };
-  // เบิกสินค้าอ้าง SR-No. — แยกต่อลูกค้า: ตัดสต็อกโครงการ (OUT 'ติดตั้งงาน') + สร้างใบเบิก 1 ใบ/ลูกค้า รอส่งมอบ Service
+  // เบิกสินค้าอ้าง SR-No. — แยกต่อลูกค้า: "จอง" (ยังไม่ตัดสต็อก) + สร้างใบเบิก 1 ใบ/ลูกค้า → รออนุมัติ DM
   const handleWithdrawSR = run(async (projectId, payload) => {
     const allocs=(payload.allocations||[]).map(a=>({...a, lines:(a.lines||[]).filter(l=>num(l.qty)>0)})).filter(a=>a.lines.length);
     if(!allocs.length) return;
-    // ตรวจยอดรวมทุกลูกค้าต่อรายการ ไม่เกินคงเหลือ
+    // ตรวจยอดรวมทุกลูกค้าต่อรายการ ไม่เกิน "คงเหลือพร้อมเบิก" (onhand − ที่จองไว้ในใบรออนุมัติอื่น)
     const totals={}; allocs.forEach(a=>a.lines.forEach(l=>{ totals[l.bom_id]=(totals[l.bom_id]||0)+num(l.qty); }));
-    for(const [bid,q] of Object.entries(totals)){ const b=state.bom.find(x=>x.id===Number(bid)); const onh=invOnhand(state, projectId, b?.epicor_code); if(b && q>onh){ throw new Error(`${b.epicor_code} คงเหลือในคลังโครงการ ${onh} — เบิกรวม ${q} ไม่ได้`); } }
+    for(const [bid,q] of Object.entries(totals)){ const b=state.bom.find(x=>x.id===Number(bid)); const av=invAvail(state, projectId, b?.epicor_code); if(b && q>av){ throw new Error(`${b.epicor_code} คงเหลือพร้อมเบิก ${av} (หักที่จองแล้ว) — เบิกรวม ${q} ไม่ได้`); } }
     const wd = genWdNo();
     for(let i=0;i<allocs.length;i++){ const a=allocs[i]; const wdNo = allocs.length>1 ? `${wd}-${i+1}` : wd;
-      const rows=a.lines.map(l=>{ const b=state.bom.find(x=>x.id===l.bom_id)||{}; return { epicor_code:b.epicor_code, description:b.description, project_id:projectId, type:'OUT', reason:'ติดตั้งงาน', qty:num(l.qty), note:`ใบเบิก ${wdNo} · ${a.cust_name||''}`, by:DEPT[role].en }; });
-      await db.addMovements(rows);
+      // จองเท่านั้น: ไม่ตัดสต็อกตอนนี้ (จะตัดจริงเมื่อ Division Manager อนุมัติ)
       await db.addPlan({ project_id:projectId, sr_id:payload.sr_id||null, cust_id:a.cust_id||null, wd_no:wdNo, lines:a.lines.map(l=>({bom_id:l.bom_id, qty:num(l.qty)})), plan_start:payload.plan_start||null, plan_end:payload.plan_end||null, delivery_date:payload.plan_end||payload.plan_start||null, location:a.location||'', note:payload.note||'', team_need:'', team_ids:[], sent:true, acked:false, approved:false, has_po:!!payload.has_po, advance_payment:!!payload.advance_payment });
     }
     const p=state.projects.find(x=>x.id===projectId); const srNo=(state.srs.find(s=>s.id===payload.sr_id)||{}).sr_no||'';
-    notify('handover', '🔧 เบิกสินค้า → รออนุมัติ Division Manager', `${wd}${srNo?` · ${srNo}`:''}\nStock ${p?.project_stock_no||''} (Job ${p?.job_no||''})\nPO/สัญญา: ${payload.has_po?'Y':'N'} · Advance: ${payload.advance_payment?'Y':'N'}\nกำหนดส่ง ${payload.plan_start||'-'} → ${payload.plan_end||'-'}\n${allocs.length} ลูกค้า · ${Object.values(totals).reduce((s,q)=>s+q,0)} ชิ้น`);
+    notify('handover', '🔧 เบิกสินค้า (จอง) → รออนุมัติ Division Manager', `${wd}${srNo?` · ${srNo}`:''}\nStock ${p?.project_stock_no||''} (Job ${p?.job_no||''})\nPO/สัญญา: ${payload.has_po?'Y':'N'} · Advance: ${payload.advance_payment?'Y':'N'}\nกำหนดส่ง ${payload.plan_start||'-'} → ${payload.plan_end||'-'}\n${allocs.length} ลูกค้า · ${Object.values(totals).reduce((s,q)=>s+q,0)} ชิ้น (ยังไม่ตัดสต็อก)`);
   });
-  // Division Manager (executive) อนุมัติการเบิก → ปล่อยใบเบิกเข้า Service
+  // Division Manager (executive) อนุมัติ → "ตัดสต็อกจริง" (OUT) แล้วปล่อยใบเบิกเข้า Service
   const handleApprovePlan = run(async (planId) => {
+    const pl=(state.plans||[]).find(x=>x.id===planId); if(!pl) return;
+    for(const l of (pl.lines||[])){ const b=state.bom.find(x=>x.id===l.bom_id); const onh=invOnhand(state, pl.project_id, b?.epicor_code); if(b && num(l.qty)>onh){ throw new Error(`${b.epicor_code} คงเหลือ ${onh} — อนุมัติเบิก ${l.qty} ไม่ได้ (สต็อกไม่พอ)`); } }
+    const cust=pl.cust_id?(state.customers||[]).find(c=>c.id===pl.cust_id):null;
+    const rows=(pl.lines||[]).map(l=>{ const b=state.bom.find(x=>x.id===l.bom_id)||{}; return { epicor_code:b.epicor_code, description:b.description, project_id:pl.project_id, type:'OUT', reason:'ติดตั้งงาน', qty:num(l.qty), note:`ใบเบิก ${pl.wd_no||''} · ${cust?cust.name:''} (อนุมัติ)`, by:DEPT[role].en }; });
+    await db.addMovements(rows);
     await db.updatePlan(planId, { approved:true, approved_by:DEPT[role].en });
-    const pl=(state.plans||[]).find(x=>x.id===planId); const p=pl&&state.projects.find(x=>x.id===pl.project_id);
-    notify('handover', '✅ Division Manager อนุมัติการเบิก → ส่ง Service', `${pl?.wd_no||''}\nStock ${p?.project_stock_no||''} · ${p?.name||''}`, true);
+    const p=state.projects.find(x=>x.id===pl.project_id);
+    notify('handover', '✅ Division Manager อนุมัติ → ตัดสต็อก + ส่ง Service', `${pl.wd_no||''}\nStock ${p?.project_stock_no||''} · ${p?.name||''}`, true);
   });
+  // Division Manager ไม่อนุมัติ/ยกเลิกใบเบิก — ยังไม่ได้ตัดสต็อก จึงแค่ลบใบเบิก (ปล่อยของที่จองคืน)
+  const handleRejectPlan = run(async (planId) => { await db.deletePlan(planId); });
   // คืนของเข้าคลังโครงการ (ส่วนที่ไม่ได้ติดตั้ง/เบิกเกิน) — IN reason 'คืนจากหน้างาน' (reply ขา Service → คลัง)
   const handleReturnStock = run(async (plan, returns) => {
     const rows=(returns||[]).filter(r=>num(r.qty)>0).map(r=>{ const b=state.bom.find(x=>x.id===r.bom_id)||{}; return { epicor_code:b.epicor_code, description:b.description, project_id:plan.project_id, type:'IN', reason:'คืนจากหน้างาน', qty:num(r.qty), note:`คืนจากใบเบิก ${plan.wd_no||''}`, by:DEPT[role].en }; });
@@ -2809,7 +2823,7 @@ function App(){
           {page==='sales-sr'   && <SalesSR state={state} role={role} onUpdateCustomer={handleUpdateCustomer} onClearReturn={(id)=>handleUpdateSR(id,{returned:false,return_note:null})}/>}
           {page==='project'    && <ProjectDept state={state} role={role} onCreateStock={handleCreateStock} genDefaults={genDefaults} onGoStocks={()=>setPage('project-stocks')} onReturnSR={(id,note)=>handleUpdateSR(id,{returned:true,return_note:note})}/>}
           {page==='project-stocks' && <ProjectStocks state={state} role={role} onAddBom={handleAddBom} onUpdateBom={handleUpdateBom} onDeleteBom={handleDeleteBom} onSendBom={handleSendBom} onUpdateProject={handleUpdateProject} onHandoff={handleHandoff} onReject={handleReject} onAck={handleAck} onDeleteProject={(id)=>handleDeleteRow('projects','projects',id)}/>}
-          {page==='project-inventory' && <ProjectInventory state={state} role={role} onWithdraw={handleWithdrawSR} onApprove={handleApprovePlan}/>}
+          {page==='project-inventory' && <ProjectInventory state={state} role={role} onWithdraw={handleWithdrawSR} onApprove={handleApprovePlan} onReject={handleRejectPlan}/>}
           {page==='purchasing' && <Procurement state={state} role={role} onUpdateBom={handleUpdateBom} onCreatePO={handleCreatePO} onOpenPO={setPoProject} genPoNo={genPoNo}/>}
           {page==='purchasing-done' && <PurchasingDone state={state}/>}
           {page==='service'    && <FieldService state={state} role={role} onAddMember={handleAddMember} onRemoveMember={handleRemoveMember} onAddSchedule={handleAddSchedule} onRemoveSchedule={handleRemoveSchedule} onReceive={handleSvcReceive} onAssign={handleSvcAssign} onDeliver={handleSvcDeliver} onWarranty={handleSvcWarranty} onClose={handleHandoff} onReturnStock={handleReturnStock}/>}
