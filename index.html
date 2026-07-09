@@ -712,15 +712,15 @@ const incomingCount = (state, dep) => {
 const NAV = [
   { id:'dashboard',  label:'Executive Dashboard',   icon:Icon.grid },
   { id:'sales',      label:'Sales Department',      icon:Icon.pipeline, dep:'sales',      kids:[ { id:'sales-sr', label:'Sales Requisition & ติดตาม PO' } ] },
-  { id:'project',    label:'Project Department',    icon:Icon.layers,   dep:'project',    kids:[ { id:'project-stocks', label:'Purchase Requisition (Job No.)' }, { id:'project-inventory', label:'คลังสินค้า (Inventory)' } ] },
+  { id:'project',    label:'Project Department',    icon:Icon.layers,   dep:'project',    kids:[ { id:'project-stocks', label:'Purchase Requisition (Job No.)' }, { id:'project-inventory', label:'คลังสินค้า (Inventory)' }, { id:'project-catalog', label:'📚 ฐานข้อมูลวัสดุ (Item Catalog)' } ] },
   { id:'purchasing', label:'Purchasing Department', icon:Icon.cart,     dep:'purchasing', kids:[ { id:'purchasing-done', label:'BOM Delivered completed' } ] },
   { id:'service',    label:'Service Department',    icon:Icon.truck,    dep:'service',    kids:[ { id:'map-tracking', label:'🗺️ Map Tracking' } ] },
   { id:'settings',   label:'Setting (ผู้ดูแล)',      icon:Icon.gear,     devOnly:true },
 ];
 // page ใดอยู่ใต้ parent ใด (ไว้ไฮไลต์)
-const PAGE_GROUP = { sales:'sales','sales-sr':'sales', project:'project','project-stocks':'project','project-inventory':'project', workflow:'project', purchasing:'purchasing','purchasing-done':'purchasing', service:'service','map-tracking':'service', settings:'settings', dashboard:'dashboard' };
+const PAGE_GROUP = { sales:'sales','sales-sr':'sales', project:'project','project-stocks':'project','project-inventory':'project','project-catalog':'project', workflow:'project', purchasing:'purchasing','purchasing-done':'purchasing', service:'service','map-tracking':'service', settings:'settings', dashboard:'dashboard' };
 // หน้าใดเป็นของฝ่ายใด (ไว้แสดงแบนเนอร์ "ดูอย่างเดียว" เมื่อไม่ใช่ฝ่ายตน) — #1 per-action
-const PAGE_DEP = { sales:'sales','sales-sr':'sales', project:'project','project-stocks':'project','project-inventory':'project', workflow:'project', purchasing:'purchasing','purchasing-done':'purchasing', service:'service','map-tracking':'service' };
+const PAGE_DEP = { sales:'sales','sales-sr':'sales', project:'project','project-stocks':'project','project-inventory':'project','project-catalog':'project', workflow:'project', purchasing:'purchasing','purchasing-done':'purchasing', service:'service','map-tracking':'service' };
 function Sidebar({page, onNav, state, isDev}){
   return (
     <aside className="w-60 shrink-0 bg-[var(--sidebar)] border-r border-slate-800/80 flex flex-col">
@@ -2502,12 +2502,13 @@ function RowEditor({en, row, onClose, onSave}){
 // ตั้งค่าแจ้งเตือน LINE/Email (Dev) — บันทึกลงตาราง notif_settings + ส่งทดสอบ + log
 function NotifSettings({cfg, log, onSave, onTest}){
   const [f,setF]=useState(cfg||NOTIF_DEFAULT);
+  const [show,setShow]=useState(false);   // พับได้ — เริ่มต้นซ่อน
   const set=(k,v)=>setF(s=>({...s,[k]:v}));
   const inputCls="w-full bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 px-2.5 py-1.5 focus:outline-none focus:border-amber-500/60";
   return (
     <Card className="overflow-hidden">
-      <div className="px-5 py-3.5 border-b border-slate-800 flex items-center gap-2"><span style={{color:'#06c755'}}>🔔</span><h3 className="text-slate-200 font-semibold">การแจ้งเตือน (LINE Messaging API / Email)</h3></div>
-      <div className="px-5 py-4 space-y-4">
+      <div className="px-5 py-3.5 border-b border-slate-800 flex items-center gap-2 cursor-pointer hover:bg-slate-800/20" onClick={()=>setShow(s=>!s)}><span className="text-slate-500">{show?'▼':'▶'}</span><span style={{color:'#06c755'}}>🔔</span><h3 className="text-slate-200 font-semibold">การแจ้งเตือน (LINE Messaging API / Email)</h3></div>
+      {show && <div className="px-5 py-4 space-y-4">
         <div className="text-[11px] text-slate-500 leading-relaxed">ส่งจริงผ่าน <b>Supabase Edge Function</b> (เก็บ token/คีย์ฝั่ง server) — กรอก URL ของฟังก์ชันด้านล่าง · โค้ดฟังก์ชันอยู่ที่ <code>edge-notify.ts</code> (ดูวิธี deploy ใน LIVE-OPS.md) · ถ้ายังไม่ตั้ง URL ระบบจะบันทึกเป็น “จำลอง” ใน log</div>
         <div><Lbl>Edge Function URL (endpoint ส่งแจ้งเตือน)</Lbl><input value={f.function_url||''} onChange={e=>set('function_url',e.target.value)} placeholder="https://<project>.supabase.co/functions/v1/notify" className={inputCls}/></div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2548,12 +2549,13 @@ function NotifSettings({cfg, log, onSave, onTest}){
               </div>
             ))}</div>}
         </div>
-      </div>
+      </div>}
     </Card>
   );
 }
-// ฐานข้อมูลวัสดุ (Item Catalog) — Developer เพิ่ม/แก้/ลบ + Import/Export Excel · ฟอร์ม BOM ใช้ค้นหา (CodeSearch)
-function CatalogSettings({rows, onAdd, onUpdateRow, onDeleteRow, onImport}){
+// ฐานข้อมูลวัสดุ (Item Catalog) — Developer + ฝ่ายโครงการ เพิ่ม/แก้/ลบ + Import/Export Excel · ฟอร์ม BOM ใช้ค้นหา (CodeSearch)
+// canEdit=false → ดูอย่างเดียว (Export ได้ · ซ่อนเพิ่ม/แก้/ลบ/Import)
+function CatalogSettings({rows, onAdd, onUpdateRow, onDeleteRow, onImport, canEdit=true}){
   const [q,setQ]=useState('');
   const [form,setForm]=useState({ epicor_code:'', description:'', ium:'EA' });
   const fileRef=useRef(null);
@@ -2586,17 +2588,17 @@ function CatalogSettings({rows, onAdd, onUpdateRow, onDeleteRow, onImport}){
       <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between flex-wrap gap-2">
         <h3 className="text-slate-200 font-semibold flex items-center gap-2"><span style={{color:'#0ea5e9'}}>📚</span> ฐานข้อมูลวัสดุ (Item Catalog) <span className="text-[11px] text-slate-500 font-normal">({(rows||[]).length} รายการ · ใช้ค้นหาในฟอร์ม BOM)</span></h3>
         <div className="flex items-center gap-2">
-          <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e=>{ const f=e.target.files[0]; e.target.value=''; if(f) doImport(f); }}/>
-          <button onClick={()=>fileRef.current&&fileRef.current.click()} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:'#0ea5e922',color:'#0ea5e9'}}>⬆ Import Excel</button>
+          {canEdit && <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e=>{ const f=e.target.files[0]; e.target.value=''; if(f) doImport(f); }}/>}
+          {canEdit && <button onClick={()=>fileRef.current&&fileRef.current.click()} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:'#0ea5e922',color:'#0ea5e9'}}>⬆ Import Excel</button>}
           <button onClick={doExport} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:'#16a34a22',color:'#16a34a'}}>⬇ Export Excel</button>
         </div>
       </div>
-      <div className="px-5 py-3 border-b border-slate-800 grid grid-cols-2 md:grid-cols-5 gap-3 items-end bg-slate-800/20">
+      {canEdit && <div className="px-5 py-3 border-b border-slate-800 grid grid-cols-2 md:grid-cols-5 gap-3 items-end bg-slate-800/20">
         <div><Lbl>Epicor Code</Lbl><Inp value={form.epicor_code} onChange={v=>setForm({...form,epicor_code:v})}/></div>
         <div className="col-span-2"><Lbl>Description</Lbl><Inp value={form.description} onChange={v=>setForm({...form,description:v})}/></div>
         <div><Lbl>IUM</Lbl><Inp value={form.ium} onChange={v=>setForm({...form,ium:v})}/></div>
         <button onClick={()=>{ const code=form.epicor_code.trim(); if(!code) return; if((rows||[]).some(r=>r.epicor_code===code)){ alert(`มี ${code} อยู่แล้ว — แก้ไขในตารางด้านล่างแทน`); return; } onAdd({ epicor_code:code, description:form.description.trim(), ium:form.ium.trim()||'EA' }); setForm({ epicor_code:'', description:'', ium:'EA' }); }} disabled={!form.epicor_code.trim()} className="text-xs font-semibold rounded-lg px-3 py-1.5 disabled:opacity-40" style={{background:'#0ea5e9',color:'#0b0f17'}}>{Icon.plus} เพิ่มวัสดุ</button>
-      </div>
+      </div>}
       <div className="px-5 py-2 border-b border-slate-800"><input value={q} onChange={e=>setQ(e.target.value)} placeholder="🔍 ค้นหา Epicor Code / Description" className="w-full md:w-72 bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 px-2.5 py-1.5 focus:outline-none focus:border-amber-500/60"/></div>
       <div className="overflow-x-auto max-h-80 overflow-y-auto">
         <table className="w-full text-sm whitespace-nowrap">
@@ -2608,9 +2610,9 @@ function CatalogSettings({rows, onAdd, onUpdateRow, onDeleteRow, onImport}){
             {list.map(r=>(
               <tr key={r.id} className="border-b border-slate-800/60">
                 <td className="px-5 py-2 mono text-slate-300">{r.epicor_code}</td>
-                <td className="px-3 py-2"><EditText value={r.description} onCommit={v=>onUpdateRow('catalog','item_catalog',r.id,{description:v})}/></td>
-                <td className="px-3 py-2"><EditText value={r.ium} onCommit={v=>onUpdateRow('catalog','item_catalog',r.id,{ium:v.trim()||'EA'})}/></td>
-                <td className="px-3 py-2 text-right"><button onClick={()=>{ if(confirm(`ลบ "${r.epicor_code}" ออกจากฐานข้อมูลวัสดุ?`)) onDeleteRow('catalog','item_catalog',r.id); }} className="text-slate-500 hover:text-rose-600" title="ลบ">{Icon.trash}</button></td>
+                <td className="px-3 py-2">{canEdit ? <EditText value={r.description} onCommit={v=>onUpdateRow('catalog','item_catalog',r.id,{description:v})}/> : <span className="text-slate-300">{r.description}</span>}</td>
+                <td className="px-3 py-2">{canEdit ? <EditText value={r.ium} onCommit={v=>onUpdateRow('catalog','item_catalog',r.id,{ium:v.trim()||'EA'})}/> : <span className="text-slate-300">{r.ium}</span>}</td>
+                <td className="px-3 py-2 text-right">{canEdit && <button onClick={()=>{ if(confirm(`ลบ "${r.epicor_code}" ออกจากฐานข้อมูลวัสดุ?`)) onDeleteRow('catalog','item_catalog',r.id); }} className="text-slate-500 hover:text-rose-600" title="ลบ">{Icon.trash}</button>}</td>
               </tr>
             ))}
           </tbody>
@@ -2626,13 +2628,16 @@ function Settings({state, role, onSetRole, onRevoke, onDeleteRow, onUpdateRow, o
   const pending = users.filter(u=>!u.department && !u.is_developer);
   const [openKey,setOpenKey]=useState(null);
   const [edit,setEdit]=useState(null);   // {en, row} ที่กำลังแก้ไข
+  const [showUsers,setShowUsers]=useState(false);   // การ์ดพับได้ — เริ่มต้นซ่อน
+  const [showCrud,setShowCrud]=useState(false);
   const roleLabel = u => u.is_developer ? 'Developer' : (u.department ? DEPT[u.department]?.label||u.department : null);
   return (
     <div className="space-y-5">
-      {/* A) ผู้ใช้งาน & สิทธิ์ */}
+      {/* A) ผู้ใช้งาน & สิทธิ์ — พับได้ เริ่มต้นซ่อน */}
       <Card className="overflow-hidden">
-        <div className="px-5 py-3.5 border-b border-slate-800 flex items-center gap-2"><span style={{color:'#0ea5e9'}}>{Icon.users}</span><h3 className="text-slate-200 font-semibold">ผู้ใช้งาน & สิทธิ์ (อนุมัติ/ยกเลิก)</h3><span className="text-[11px] text-slate-500">({users.length} บัญชี · รออนุมัติ {pending.length})</span></div>
-        {pending.length>0 && <div className="px-5 py-2 bg-amber-500/10 border-b border-slate-800 text-[12px] text-amber-700 font-medium">⏳ มีผู้สมัครรออนุมัติ {pending.length} ราย — เลือกฝ่ายเพื่ออนุมัติ</div>}
+        <div className="px-5 py-3.5 border-b border-slate-800 flex items-center gap-2 cursor-pointer hover:bg-slate-800/20" onClick={()=>setShowUsers(s=>!s)}><span className="text-slate-500">{showUsers?'▼':'▶'}</span><span style={{color:'#0ea5e9'}}>{Icon.users}</span><h3 className="text-slate-200 font-semibold">ผู้ใช้งาน & สิทธิ์ (อนุมัติ/ยกเลิก)</h3><span className="text-[11px] text-slate-500">({users.length} บัญชี · รออนุมัติ {pending.length})</span></div>
+        {pending.length>0 && <div className="px-5 py-2 bg-amber-500/10 border-b border-slate-800 text-[12px] text-amber-700 font-medium cursor-pointer" onClick={()=>setShowUsers(true)}>⏳ มีผู้สมัครรออนุมัติ {pending.length} ราย — เลือกฝ่ายเพื่ออนุมัติ</div>}
+        {showUsers && <>
         <div className="overflow-x-auto">
         <table className="w-full text-sm whitespace-nowrap">
           <thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-800">
@@ -2658,11 +2663,13 @@ function Settings({state, role, onSetRole, onRevoke, onDeleteRow, onUpdateRow, o
         </table>
         </div>
         <div className="px-5 py-2.5 border-t border-slate-800 text-[11px] text-slate-500">อนุมัติ = เลือกฝ่าย · เลื่อนเป็นผู้ดูแล = ติ๊ก Developer · ยกเลิกสิทธิ์ = กลับเป็น "รออนุมัติ" (ใช้งานไม่ได้จนกว่าจะกำหนดใหม่)</div>
+        </>}
       </Card>
 
-      {/* B) จัดการข้อมูลทุกฝ่าย (ดูภาพรวม + ลบ) */}
+      {/* B) จัดการข้อมูลทุกฝ่าย (ดูภาพรวม + ลบ) — พับได้ เริ่มต้นซ่อน */}
       <Card className="overflow-hidden">
-        <div className="px-5 py-3.5 border-b border-slate-800 flex items-center gap-2"><span style={{color:'#0ea5e9'}}>{Icon.box}</span><h3 className="text-slate-200 font-semibold">จัดการข้อมูลทุกฝ่าย (CRUD)</h3></div>
+        <div className="px-5 py-3.5 border-b border-slate-800 flex items-center gap-2 cursor-pointer hover:bg-slate-800/20" onClick={()=>setShowCrud(s=>!s)}><span className="text-slate-500">{showCrud?'▼':'▶'}</span><span style={{color:'#0ea5e9'}}>{Icon.box}</span><h3 className="text-slate-200 font-semibold">จัดการข้อมูลทุกฝ่าย (CRUD)</h3></div>
+        {showCrud && <>
         <div className="px-5 py-2 text-[11px] text-slate-500 border-b border-slate-800">เพิ่มทำได้จากหน้าแต่ละฝ่าย · ส่วนนี้สำหรับ Developer <b className="text-sky-600">ดู / แก้ไข ✎ / ลบ</b> ข้ามฝ่ายได้ทุกตาราง</div>
         <div className="p-3 grid grid-cols-1 md:grid-cols-2 gap-2">
           {DATA_ENTITIES.map(en => { const rows=state[en.key]||[]; const isOpen=openKey===en.key; return (
@@ -2686,6 +2693,7 @@ function Settings({state, role, onSetRole, onRevoke, onDeleteRow, onUpdateRow, o
             </div>
           );})}
         </div>
+        </>}
       </Card>
       {/* B2) ฐานข้อมูลวัสดุ (Item Catalog) — Import/Export Excel */}
       <CatalogSettings rows={state.catalog} onAdd={onAddCatalog} onUpdateRow={onUpdateRow} onDeleteRow={onDeleteRow} onImport={onImportCatalog}/>
@@ -2999,6 +3007,7 @@ function App(){
           {page==='project'    && <ProjectDept state={state} role={role} onCreateStock={handleCreateStock} genDefaults={genDefaults} onGoStocks={()=>setPage('project-stocks')} onReturnSR={(id,note)=>handleUpdateSR(id,{returned:true,return_note:note})}/>}
           {page==='project-stocks' && <ProjectStocks state={state} role={role} onAddBom={handleAddBom} onUpdateBom={handleUpdateBom} onDeleteBom={handleDeleteBom} onSendBom={handleSendBom} onUpdateProject={handleUpdateProject} onHandoff={handleHandoff} onReject={handleReject} onAck={handleAck} onDeleteProject={(id)=>handleDeleteRow('projects','projects',id)}/>}
           {page==='project-inventory' && <ProjectInventory state={state} role={role} onWithdraw={handleWithdrawSR} onApprove={handleApprovePlan} onReject={handleRejectPlan}/>}
+          {page==='project-catalog' && <CatalogSettings rows={state.catalog} canEdit={role==='project'||role==='developer'} onAdd={handleAddCatalog} onUpdateRow={handleUpdateRow} onDeleteRow={handleDeleteRow} onImport={handleImportCatalog}/>}
           {page==='purchasing' && <Procurement state={state} role={role} onUpdateBom={handleUpdateBom} onCreatePO={handleCreatePO} onOpenPO={setPoProject} genPoNo={genPoNo}/>}
           {page==='purchasing-done' && <PurchasingDone state={state}/>}
           {page==='service'    && <FieldService state={state} role={role} onAddMember={handleAddMember} onRemoveMember={handleRemoveMember} onAddSchedule={handleAddSchedule} onRemoveSchedule={handleRemoveSchedule} onReceive={handleSvcReceive} onAssign={handleSvcAssign} onDeliver={handleSvcDeliver} onWarranty={handleSvcWarranty} onClose={handleHandoff} onReturnStock={handleReturnStock}/>}

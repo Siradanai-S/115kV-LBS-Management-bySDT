@@ -654,7 +654,7 @@ CREATE POLICY p_notif_read  ON notif_settings FOR SELECT TO authenticated USING 
 DROP POLICY IF EXISTS p_notif_write ON notif_settings;
 CREATE POLICY p_notif_write ON notif_settings FOR ALL TO authenticated USING (is_developer()) WITH CHECK (is_developer());
 
--- ---------- ฐานข้อมูลวัสดุ (Item Catalog) — จัดการที่ Setting (developer) · ทุกฝ่ายอ่านเพื่อ autocomplete ในฟอร์ม BOM ----------
+-- ---------- ฐานข้อมูลวัสดุ (Item Catalog) — จัดการที่ Setting (developer) + ฝ่ายโครงการ (เมนู Project → ฐานข้อมูลวัสดุ) · ทุกฝ่ายอ่านเพื่อ autocomplete ในฟอร์ม BOM ----------
 CREATE TABLE IF NOT EXISTS item_catalog (
   id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   epicor_code TEXT NOT NULL UNIQUE,      -- คีย์ upsert ตอน Import Excel (trim แล้วจากฝั่ง client)
@@ -666,7 +666,9 @@ ALTER TABLE item_catalog ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS p_catalog_read ON item_catalog;
 CREATE POLICY p_catalog_read  ON item_catalog FOR SELECT TO authenticated USING (TRUE);
 DROP POLICY IF EXISTS p_catalog_write ON item_catalog;
-CREATE POLICY p_catalog_write ON item_catalog FOR ALL TO authenticated USING (is_developer()) WITH CHECK (is_developer());
+CREATE POLICY p_catalog_write ON item_catalog FOR ALL TO authenticated
+  USING (is_developer() OR current_department() = 'project')
+  WITH CHECK (is_developer() OR current_department() = 'project');
 
 -- คลังสินค้า: อ่านได้ทุกฝ่าย · บันทึกรับ/เบิกได้ developer + purchasing/project/service
 ALTER TABLE inventory_moves ENABLE ROW LEVEL SECURITY;
