@@ -198,10 +198,10 @@ function seedDemo(){
   ];
   // ---- Project Stock — ครบทุกเฟส: service / project / purchasing / closed ----
   const projects = [
-    { id:1, project_stock_no:'STK-2026-001', job_no:'JOB-2026-001', bom_no:'BOM-2026-001', bom_status:'Sent to Purchasing', name:'ปรับปรุงสถานี+นิคม (ภาคตะวันออก)', current_phase:'service',    phase_acked:true,  target_lbs:10, total_budget:14700000, margin:18.0, cash_flow_status:'ปกติ',     delivery_date:isoIn(7),  do_signed:false },
-    { id:2, project_stock_no:'STK-2026-002', job_no:'JOB-2026-002', bom_no:'BOM-2026-002', bom_status:'Draft',              name:'ขยายเขตจ่ายไฟ ปิโตรเคมีระยอง',  current_phase:'project',    phase_acked:true,  target_lbs:3,  total_budget:4100000,  margin:20.0, cash_flow_status:'เฝ้าระวัง', delivery_date:isoIn(45), do_signed:false },
-    { id:3, project_stock_no:'STK-2026-003', job_no:'JOB-2026-003', bom_no:'BOM-2026-003', bom_status:'Sent to Purchasing', name:'โรงไฟฟ้า SPP กัลฟ์ สระบุรี',     current_phase:'purchasing', phase_acked:true,  target_lbs:8,  total_budget:9800000,  margin:16.5, cash_flow_status:'ปกติ',     delivery_date:isoIn(20), do_signed:false },
-    { id:4, project_stock_no:'STK-2026-004', job_no:'JOB-2026-004', bom_no:'BOM-2026-004', bom_status:'Sent to Purchasing', name:'เปลี่ยน LBS ศรีราชา (ปิดงาน)',   current_phase:'closed',     phase_acked:true,  target_lbs:4,  total_budget:3950000,  margin:22.0, cash_flow_status:'ปกติ',     delivery_date:isoIn(-3), do_signed:true  },
+    { id:1, project_stock_no:'STK-2026-001', job_no:'JOB-2026-001', bom_no:'BOM-2026-001', bom_status:'Sent to Purchasing', name:'ปรับปรุงสถานี+นิคม (ภาคตะวันออก)', current_phase:'service',    phase_acked:true,  target_lbs:10, total_budget:14700000, margin:18.0, cash_flow_status:'ปกติ',     delivery_date:isoIn(7),  do_signed:false, jobs:{ 'JOB-2026-001-1':{cust_id:1, sell_price:14700000, cost_budget:12200000} } },
+    { id:2, project_stock_no:'STK-2026-002', job_no:'JOB-2026-002', bom_no:'BOM-2026-002', bom_status:'Draft',              name:'ขยายเขตจ่ายไฟ ปิโตรเคมีระยอง',  current_phase:'project',    phase_acked:true,  target_lbs:3,  total_budget:4100000,  margin:20.0, cash_flow_status:'เฝ้าระวัง', delivery_date:isoIn(45), do_signed:false, jobs:{ 'JOB-2026-002-1':{cust_id:3, sell_price:2800000, cost_budget:2300000}, 'JOB-2026-002-2':{cust_id:3, sell_price:1300000, cost_budget:1000000} } },
+    { id:3, project_stock_no:'STK-2026-003', job_no:'JOB-2026-003', bom_no:'BOM-2026-003', bom_status:'Sent to Purchasing', name:'โรงไฟฟ้า SPP กัลฟ์ สระบุรี',     current_phase:'purchasing', phase_acked:true,  target_lbs:8,  total_budget:9800000,  margin:16.5, cash_flow_status:'ปกติ',     delivery_date:isoIn(20), do_signed:false, jobs:{ 'JOB-2026-003-1':{cust_id:7, sell_price:9800000, cost_budget:8200000} } },
+    { id:4, project_stock_no:'STK-2026-004', job_no:'JOB-2026-004', bom_no:'BOM-2026-004', bom_status:'Sent to Purchasing', name:'เปลี่ยน LBS ศรีราชา (ปิดงาน)',   current_phase:'closed',     phase_acked:true,  target_lbs:4,  total_budget:3950000,  margin:22.0, cash_flow_status:'ปกติ',     delivery_date:isoIn(-3), do_signed:true,  jobs:{ 'JOB-2026-004-1':{cust_id:8, sell_price:3950000, cost_budget:3150000} } },
   ];
   const tasks = [];
   // งานฝ่ายขาย → ผูกลูกค้า
@@ -675,7 +675,7 @@ function phaseDataGate(project, state){
   const pid=project.id, ph=project.current_phase;
   if(ph==='closed') return { ok:false, reason:'โครงการปิดงานแล้ว' };
   if(ph==='project'){
-    if(!project.job_no) return { ok:false, reason:'ยังไม่มี Job No.' };
+    // Job No. อยู่ระดับลูกค้า (projects.jobs) แล้ว — ไม่บังคับ projects.job_no ระดับ Stock อีก
     const items=state.bom.filter(b=>b.project_id===pid);
     if(items.length===0) return { ok:false, reason:'ยังไม่มีรายการ BOM' };
     if(!bomSent(state, project)) return { ok:false, reason:'ยังส่ง BOM ให้จัดซื้อไม่ครบทุกครั้ง (ครั้ง/รอบ)' };
@@ -712,7 +712,7 @@ const incomingCount = (state, dep) => {
 const NAV = [
   { id:'dashboard',  label:'Executive Dashboard',   icon:Icon.grid },
   { id:'sales',      label:'Sales Department',      icon:Icon.pipeline, dep:'sales',      kids:[ { id:'sales-sr', label:'Sales Requisition & ติดตาม PO' } ] },
-  { id:'project',    label:'Project Department',    icon:Icon.layers,   dep:'project',    kids:[ { id:'project-stocks', label:'Purchase Requisition (Job No.)' }, { id:'project-inventory', label:'คลังสินค้า (Inventory)' }, { id:'project-catalog', label:'📚 ฐานข้อมูลวัสดุ (Item Catalog)' } ] },
+  { id:'project',    label:'Project Department',    icon:Icon.layers,   dep:'project',    kids:[ { id:'project', label:'Project Job No. (สร้าง Project Stock No.)' }, { id:'project-stocks', label:'Project Job No. (BOM list)' }, { id:'project-inventory', label:'คลังสินค้า (Inventory)' }, { id:'project-catalog', label:'📚 ฐานข้อมูลวัสดุ (Item Catalog)' } ] },
   { id:'purchasing', label:'Purchasing Department', icon:Icon.cart,     dep:'purchasing', kids:[ { id:'purchasing-done', label:'BOM Delivered completed' } ] },
   { id:'service',    label:'Service Department',    icon:Icon.truck,    dep:'service',    kids:[ { id:'map-tracking', label:'🗺️ Map Tracking' } ] },
   { id:'settings',   label:'Setting (ผู้ดูแล)',      icon:Icon.gear,     devOnly:true },
@@ -1285,7 +1285,7 @@ function ProjectDept({state, role, onCreateStock, genDefaults, onGoStocks, onRet
     const sumLbs = selCusts.reduce((s,c)=>s+num(c.lbs_qty),0);
     setMk({ name: selCusts[0] ? (selCusts[0].location || selCusts[0].name) : 'Project Stock', stockNo:d.stockNo, jobNo:d.jobNo, bomNo:d.bomNo, target_lbs:sumLbs });
   };
-  const confirmCreate = () => { if(!mk.stockNo.trim()) return; onCreateStock(sel, { name:mk.name.trim()||'Project Stock', stockNo:mk.stockNo.trim(), jobNo:mk.jobNo.trim(), bomNo:mk.bomNo.trim(), target_lbs:num(mk.target_lbs) }); setSel([]); setMk(null); };
+  const confirmCreate = () => { if(!mk.stockNo.trim()) return; onCreateStock(sel, { name:mk.name.trim()||'Project Stock', stockNo:mk.stockNo.trim(), jobNo:'', bomNo:mk.bomNo.trim(), target_lbs:num(mk.target_lbs) }); setSel([]); setMk(null); };   // Job No. ระดับ Stock เลิกใช้ — Job สร้างต่อลูกค้าที่หน้า BOM list
   return (
     <div className="space-y-4">
       {/* Inbox: SR รอสร้าง Stock */}
@@ -1295,7 +1295,7 @@ function ProjectDept({state, role, onCreateStock, genDefaults, onGoStocks, onRet
         <Card tone="orange" className="overflow-hidden" style={{borderColor:DEPT.project.c+'55'}}>
           <div className="px-5 py-3 border-b border-slate-800 flex items-center justify-between flex-wrap gap-2" style={{background:DEPT.project.c+'12'}}>
             <div className="flex items-center gap-2"><span style={{color:DEPT.project.c}}>📥</span><h3 className="text-slate-200 font-semibold">Sales Requisition ที่ฝ่ายขายส่งมา — เลือกหลายใบเพื่อสร้าง 1 Project Stock</h3><span className="text-[11px] text-slate-500">({inbox.length} ใบ)</span></div>
-            {canEdit && <button onClick={openCreate} disabled={!sel.length} className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-1.5" style={sel.length?{background:DEPT.project.c,color:'#0b0f17'}:{background:'#e2e8f0',color:'#94a3b8',cursor:'not-allowed'}}>{Icon.plus} Import → Purchase Requisition ({sel.length})</button>}
+            {canEdit && <button onClick={openCreate} disabled={!sel.length} className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-1.5" style={sel.length?{background:DEPT.project.c,color:'#0b0f17'}:{background:'#e2e8f0',color:'#94a3b8',cursor:'not-allowed'}}>{Icon.plus} Import → สร้าง Project Stock No. ({sel.length})</button>}
           </div>
           <div className="p-3 space-y-3">
             {inbox.map(sr => { const custs=srCusts(sr); const lbs=custs.reduce((s,c)=>s+num(c.lbs_qty),0); const selected=sel.includes(sr.id); const dd=custs.map(c=>c.desired_date).filter(Boolean).sort()[0]; const doneCt=custs.filter(c=>c.contract_status==='ทำสัญญาแล้ว').length; const isOpen=!!show[sr.id]; return (
@@ -1350,7 +1350,7 @@ function ProjectDept({state, role, onCreateStock, genDefaults, onGoStocks, onRet
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onClick={()=>setMk(null)}>
           <div className="w-full max-w-2xl rounded-xl border border-slate-700 bg-slate-900 fade-up" onClick={e=>e.stopPropagation()}>
             <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between">
-              <div className="text-slate-100 font-semibold flex items-center gap-2">{Icon.layers} Import → Purchase Requisition (สร้าง Job No.)</div>
+              <div className="text-slate-100 font-semibold flex items-center gap-2">{Icon.layers} Import Sales Requisition → สร้าง Project Stock No.</div>
               <button onClick={()=>setMk(null)} className="text-slate-400 hover:text-slate-100">{Icon.x}</button>
             </div>
             <div className="p-5 space-y-3">
@@ -1360,11 +1360,11 @@ function ProjectDept({state, role, onCreateStock, genDefaults, onGoStocks, onRet
                 <Lbl>จำนวน LBS เป้าหมายที่จะสั่งผลิต (ใช้ตรวจสอบกับ BOM)</Lbl>
                 <input type="number" value={mk.target_lbs} onChange={e=>setMk({...mk,target_lbs:num(e.target.value)})} className="w-full bg-slate-900 border border-amber-500/50 rounded-lg text-lg font-bold text-amber-700 px-3 py-2 focus:outline-none"/>
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <div><Lbl>Project Stock No.</Lbl><Inp value={mk.stockNo} onChange={v=>setMk({...mk,stockNo:v})}/></div>
-                <div><Lbl>Job No.</Lbl><Inp value={mk.jobNo} onChange={v=>setMk({...mk,jobNo:v})}/></div>
                 <div><Lbl>BOM No.</Lbl><Inp value={mk.bomNo} onChange={v=>setMk({...mk,bomNo:v})}/></div>
               </div>
+              <div className="text-[11px] text-slate-500">Project Job No. จะสร้างภายหลังในเมนู <b>Project Job No. (BOM list)</b> — แยกตามลูกค้าของ Stock นี้</div>
             </div>
             <div className="px-5 py-3 border-t border-slate-800 flex justify-end gap-2">
               <button onClick={()=>setMk(null)} className="text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300">ยกเลิก</button>
@@ -1419,17 +1419,21 @@ function ProjectBom({state, project, role, canEdit, onAddBom, onUpdateBom, onDel
   const firstNof = job => Math.min(...rounds0.filter(r=>roundJobNo(project,r)===job));
   const rounds = [...rounds0].sort((a,b)=>{ const ja=roundJobNo(project,a), jb=roundJobNo(project,b); return ja===jb ? a-b : firstNof(ja)-firstNof(jb); });
   const custs = stockCustomers(state, project.id);
-  const openMk = () => { setMkJob(`${String(project.project_stock_no||'STK').replace(/STK/i,'JOB')}-${Math.max(0,...rounds)+1}`); setMkCust(''); setMkOpen(true); };
-  const createRound = () => { const newN=Math.max(0,...rounds)+1; onUpdateProject(project.id,{ bom_rounds:{...(project.bom_rounds||{}), [newN]:{job_no:mkJob.trim()||null, cust_id:mkCust||null}} }); setExtra(e=>[...e,newN]); setMkOpen(false); };
+  // Project Job No. ต่อลูกค้า — meta อยู่ใน projects.jobs { job_no: {cust_id, sell_price, cost_budget} }
+  const jobsMeta = project.jobs||{};
+  const jobBase = String(project.project_stock_no||'STK').replace(/STK/i,'JOB');
+  const openMk = () => { setMkJob(`${jobBase}-${Object.keys(jobsMeta).length+1}`); setMkCust(''); setMkOpen(true); };
+  const createJob = () => { const j=mkJob.trim(); if(!j) return; if(jobsMeta[j]){ alert(`มี Job No. ${j} อยู่แล้ว`); return; } onUpdateProject(project.id, { jobs:{...jobsMeta, [j]:{ cust_id:mkCust||null }} }); setMkOpen(false); };
+  const updateJob = (job, patch) => onUpdateProject(project.id, { jobs:{...(project.jobs||{}), [job]:{...((project.jobs||{})[job]||{}), ...patch}} });
+  const deleteJob = (job) => { if(!confirm(`ลบ Project Job No. ${job}?`)) return; const jj={...(project.jobs||{})}; delete jj[job]; onUpdateProject(project.id,{jobs:jj}); };
   // Developer: ลบ Material List ทั้งครั้ง (รายการ BOM + meta round) — ทำได้แม้ส่งจัดซื้อแล้ว
   const deleteRound = n => { const its=roundItems(state, project.id, n); if(!confirm(`ลบ ${roundName(project,n)} ทั้งครั้ง?\n⚠ จะลบรายการ BOM ${its.length} รายการในครั้งนี้ด้วย`)) return; its.forEach(b=>onDeleteBom(b.id)); const rr={...(project.bom_rounds||{})}; delete rr[n]; onUpdateProject(project.id,{bom_rounds:rr}); setExtra(e=>e.filter(x=>x!==n)); };
-  const budgetLeft = num(project.total_budget) - matValue;   // งบคงเหลือ = งบรวม − มูลค่าวัสดุ BOM (ตัดอัตโนมัติ)
   // Export Excel — รวมทุกครั้ง จัดกลุ่มตาม Job No.
   const exportByJob = () => exportXLSX(`material-list-${project.project_stock_no}.xlsx`, 'Material List', [
     ['Job No.','ครั้ง','Epicor Code','Description','Category','Due Date','IUM','Qty','Currency','Cost/unit','FX','Total THB','Phase','PO Status','สถานะส่งจัดซื้อ'],
     ...rounds.flatMap(n=>roundItems(state,project.id,n).map(b=>[roundJobNo(project,n),roundSeq(project,n),b.epicor_code,b.description,b.category,b.due_date,b.ium,b.quantity,b.currency,b.unit_cost,b.fx_rate,Math.round(lineTHB(b)),b.project_phase,b.po_status,roundIsSent(state,project.id,n)?'ส่งจัดซื้อแล้ว':'ร่าง']))]);
-  // จัดกลุ่ม "ครั้ง" ตาม Job No. → 1 Job No. = กล่องใหญ่ 1 กล่อง (rounds เรียงให้ Job เดียวกันติดกันแล้ว)
-  const jobGroups = rounds.reduce((acc,n)=>{ const job=roundJobNo(project,n); let g=acc.find(x=>x.job===job); if(!g){ g={job, ns:[]}; acc.push(g); } g.ns.push(n); return acc; }, []);
+  // จัดกลุ่ม "ครั้ง" ตาม Job No. → 1 Job No. = กล่องใหญ่ 1 กล่อง — เริ่มจาก Job ใน projects.jobs (อาจยังไม่มีครั้ง) แล้วเติมกลุ่มจาก rounds เดิม (legacy)
+  const jobGroups = rounds.reduce((acc,n)=>{ const job=roundJobNo(project,n); let g=acc.find(x=>x.job===job); if(!g){ g={job, ns:[]}; acc.push(g); } g.ns.push(n); return acc; }, Object.keys(jobsMeta).map(j=>({job:j, ns:[]})));
   // เพิ่ม "ครั้ง" (round) ใหม่ภายใต้ Job No. เดิม — สืบทอดลูกค้าที่อ้างจากครั้งก่อนใน Job นั้น
   const addRoundToJob = (job, custId) => { const newN=Math.max(0,...rounds,...extra)+1; onUpdateProject(project.id,{ bom_rounds:{...(project.bom_rounds||{}), [newN]:{job_no:job, cust_id:custId||null}} }); setExtra(e=>[...e,newN]); };
   return (
@@ -1437,16 +1441,13 @@ function ProjectBom({state, project, role, canEdit, onAddBom, onUpdateBom, onDel
       {/* Budget (กว้าง) + ตรวจ LBS (compact) — เรียงตาม Flow */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card className="p-5 lg:col-span-2">
-          <h3 className="text-slate-200 font-semibold mb-4 flex items-center gap-2">{Icon.layers} Project Budget <span className="mono text-[13px] text-slate-400">{project.job_no||project.project_stock_no}</span> <span className="text-[12px] text-slate-500 font-normal">· {project.name}</span></h3>
+          <h3 className="text-slate-200 font-semibold mb-4 flex items-center gap-2">{Icon.layers} Project Stock <span className="mono text-[13px] text-slate-400">{project.project_stock_no}</span> <span className="text-[12px] text-slate-500 font-normal">· {project.name}</span></h3>
           {canEdit && <div className="mb-4"><Lbl>ชื่อโครงการ (แก้ไขได้)</Lbl><EditText value={project.name} onCommit={v=>onUpdateProject(project.id,{name:v.trim()||project.name})}/></div>}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div><Lbl>งบประมาณรวม (฿)</Lbl>{canEdit ? <Inp type="number" value={project.total_budget} onChange={v=>onUpdateProject(project.id,{total_budget:num(v)})}/> : <div className="text-lg font-semibold" style={{color:'#3b82f6'}}>{baht(project.total_budget)}</div>}</div>
-            <Field label="มูลค่าวัสดุ BOM (฿)" value={baht(matValue)} color="#f97316"/>
-            <Field label="งบประมาณคงเหลือ (฿)" value={baht(budgetLeft)} color={budgetLeft<0?'#f43f5e':'#16a34a'}/>
-          </div>
-          <div className="mt-4 pt-4 border-t border-slate-800">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Project Stock No." value={project.project_stock_no} mono/>
+            <Field label="มูลค่าวัสดุ BOM รวมทุก Job (฿)" value={baht(matValue)} color="#f97316"/>
           </div>
+          <div className="mt-3 text-[11px] text-slate-500">💰 Project Budget (ราคาขาย − ต้นทุน − กำไร · ต้นทุนคงเหลือ) อยู่ในกล่อง <b>Project Job No.</b> ด้านล่าง — แยกตามลูกค้า</div>
         </Card>
         {/* LBS reconcile — compact */}
         <Card className="p-3.5" style={{borderColor:lbsOK?'#16a34a55':'#f43f5e55'}}>
@@ -1468,46 +1469,66 @@ function ProjectBom({state, project, role, canEdit, onAddBom, onUpdateBom, onDel
         <div className="flex items-center gap-2 flex-wrap">
         {rounds.length>0 && <button onClick={exportByJob} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:'#16a34a22',color:'#16a34a'}}>⬇ Excel (ทุกครั้ง)</button>}
         {canEdit && (!mkOpen
-          ? <button onClick={openMk} className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-1.5" style={{background:'#f97316',color:'#0b0f17'}}>{Icon.plus} สร้าง Job No. (Material List)</button>
+          ? <button onClick={openMk} className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-1.5" style={{background:'#f97316',color:'#0b0f17'}}>{Icon.plus} สร้าง Project Job No. (เลือกลูกค้า)</button>
           : <div className="flex items-center gap-2 flex-wrap rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-1.5">
+              <span className="text-[11px] text-slate-300">ลูกค้า (จาก Stock นี้):</span>
+              <Sel value={mkCust} onChange={setMkCust} options={['', ...custs.map(c=>String(c.id))]} labels={Object.assign({'':'— เลือกลูกค้า —'}, Object.fromEntries(custs.map(c=>{ const hasJob=Object.values(jobsMeta).some(m=>String(m.cust_id)===String(c.id)); return [String(c.id), `${c.name} (LBS ${c.lbs_qty})${hasJob?' · มี Job แล้ว':''}`]; })))}/>
               <span className="text-[11px] text-slate-300">Job No.</span>
-              <Inp value={mkJob} onChange={setMkJob} placeholder="กรอกเลข Job No." className="!w-44"/>
-              <span className="text-[11px] text-slate-300">อ้างลูกค้า:</span>
-              <Sel value={mkCust} onChange={setMkCust} options={['', ...custs.map(c=>String(c.id))]} labels={Object.assign({'':'— ไม่ระบุ —'}, Object.fromEntries(custs.map(c=>[String(c.id), `${c.name} (LBS ${c.lbs_qty})`])))}/>
-              <button onClick={createRound} disabled={!mkJob.trim()} className="text-xs font-semibold rounded-md px-3 py-1 disabled:opacity-40" style={{background:'#f97316',color:'#0b0f17'}}>สร้าง</button>
+              <Inp value={mkJob} onChange={setMkJob} placeholder="เลขอัตโนมัติ แก้ได้"/>
+              <button onClick={createJob} disabled={!mkJob.trim()||!mkCust} className="text-xs font-semibold rounded-md px-3 py-1 disabled:opacity-40" style={{background:'#f97316',color:'#0b0f17'}}>สร้าง Job</button>
               <button onClick={()=>setMkOpen(false)} className="text-xs rounded-md px-2 py-1 border border-slate-700 text-slate-300">ยกเลิก</button>
             </div>)}
         </div>
       </div>
-      {rounds.length===0 && <div className="text-center text-slate-500 text-sm py-8 rounded-xl border border-dashed border-slate-700">ยังไม่มี Material List — กด <b>“สร้าง Job No. (Material List)”</b> เพื่อเริ่ม</div>}
-      {jobGroups.map(g => <JobGroupCard key={g.job} state={state} project={project} job={g.job} ns={g.ns} role={role} canEdit={canEdit} onAddBom={onAddBom} onUpdateBom={onUpdateBom} onDeleteBom={onDeleteBom} onSendBom={onSendBom} onDeleteRound={isDev(role)?deleteRound:null} onAddRound={canEdit?addRoundToJob:null}/>)}
+      {jobGroups.length===0 && <div className="text-center text-slate-500 text-sm py-8 rounded-xl border border-dashed border-slate-700">ยังไม่มี Project Job No. — กด <b>“สร้าง Project Job No. (เลือกลูกค้า)”</b> เพื่อเริ่ม (1 ลูกค้า = 1 Job)</div>}
+      {jobGroups.map(g => <JobGroupCard key={g.job} state={state} project={project} job={g.job} ns={g.ns} role={role} canEdit={canEdit} onAddBom={onAddBom} onUpdateBom={onUpdateBom} onDeleteBom={onDeleteBom} onSendBom={onSendBom} onDeleteRound={isDev(role)?deleteRound:null} onAddRound={canEdit?addRoundToJob:null} onUpdateJob={canEdit?updateJob:null} onDeleteJob={canEdit?deleteJob:null}/>)}
       {!canEdit && <p className="text-[11px] text-slate-500">ดูอย่างเดียว — การจัดการ BOM/ส่งจัดซื้อ สงวนให้ฝ่ายโครงการ และ Developer</p>}
     </div>
   );
 }
 
 // กล่องใหญ่ต่อ Job No. — ครอบการ์ด "BOM List (ครั้งn)" ที่อ้าง Job No. เดียวกัน เพื่อทำงานแยกตาม Job
-function JobGroupCard({state, project, job, ns, role, canEdit, onAddBom, onUpdateBom, onDeleteBom, onSendBom, onDeleteRound, onAddRound}){
+function JobGroupCard({state, project, job, ns, role, canEdit, onAddBom, onUpdateBom, onDeleteBom, onSendBom, onDeleteRound, onAddRound, onUpdateJob, onDeleteJob}){
   const [show, setShow] = useState(false);
   const items = ns.flatMap(n=>roundItems(state, project.id, n));
   const value = items.reduce((s,b)=>s+lineTHB(b),0);
   const custs = stockCustomers(state, project.id);
-  const custId = ns.map(n=>roundMeta(project,n).cust_id).find(Boolean);      // ลูกค้าที่ Job นี้อ้าง (จากครั้งแรกที่ระบุ)
+  const meta = (project.jobs||{})[job] || {};                                 // meta ของ Job (cust/งบ) จาก projects.jobs
+  const custId = meta.cust_id ?? ns.map(n=>roundMeta(project,n).cust_id).find(Boolean);   // ลูกค้าที่ Job นี้อ้าง (meta ก่อน · legacy จากครั้งแรก)
   const rCust = custs.find(c=>String(c.id)===String(custId));
   const sentCount = ns.filter(n=>roundIsSent(state, project.id, n)).length;
   const allSent = ns.length>0 && sentCount===ns.length;
+  // Project Budget ต่อ Job — กำไร = ราคาขาย − ต้นทุน(งบ) · ต้นทุนคงเหลือ = ต้นทุน(งบ) − มูลค่า BOM ของ Job นี้
+  const sell = num(meta.sell_price), costB = num(meta.cost_budget);
+  const profit = sell - costB, costLeft = costB - value;
   return (
     <Card tone="orange" className="overflow-hidden">
       <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between flex-wrap gap-2" style={{background:allSent?'#16a34a12':'#f9731614'}}>
         <h3 className="text-slate-100 font-semibold flex items-center gap-2 flex-wrap cursor-pointer" onClick={()=>setShow(s=>!s)}>
-          <span className="text-slate-500">{show?'▼':'▶'}</span>{Icon.layers} <span className="mono text-base">Job No. {job}</span>
+          <span className="text-slate-500">{show?'▼':'▶'}</span>{Icon.layers} <span className="mono text-base">Project Job No. {job}</span>
           <Pill color={allSent?'#16a34a':'#f97316'}>{ns.length} ครั้ง{sentCount>0?` · ส่งแล้ว ${sentCount}/${ns.length}`:''}</Pill>
           {rCust && <Pill color="#3b82f6">👤 {rCust.name} · LBS {rCust.lbs_qty}</Pill>}
           <span className="text-[11px] text-slate-500 font-normal">{items.length} รายการ · {baht(value)}</span>
         </h3>
-        {onAddRound && <button onClick={()=>onAddRound(job, custId)} className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-1.5" style={{background:'#f9731622',color:'#f97316'}}>{Icon.plus} เพิ่มครั้งใน Job นี้</button>}
+        <div className="flex items-center gap-2">
+          {onAddRound && <button onClick={()=>onAddRound(job, custId)} className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-1.5" style={{background:'#f9731622',color:'#f97316'}}>{Icon.plus} เพิ่มครั้งใน Job นี้</button>}
+          {onDeleteJob && ns.length===0 && <button onClick={()=>onDeleteJob(job)} title="ลบ Job (ยังไม่มี Material List)" className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:'#f43f5e22',color:'#f43f5e'}}>{Icon.trash} ลบ Job</button>}
+        </div>
       </div>
       {show && <div className="p-3 space-y-3 bg-slate-900/20">
+        {/* 💰 Project Budget ต่อ Job — ราคาขาย/ต้นทุน กรอกเอง · กำไร/ต้นทุนคงเหลือ คำนวณอัตโนมัติ */}
+        <div className="rounded-lg border border-slate-800 bg-slate-900/40 px-4 py-3">
+          <div className="text-[12px] font-semibold text-slate-300 mb-2">💰 Project Budget · Job {job}</div>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <div><Lbl>ราคาขาย (฿)</Lbl>{onUpdateJob ? <EditText type="number" value={meta.sell_price??''} onCommit={v=>onUpdateJob(job,{sell_price:num(v)})}/> : <div className="text-sm font-semibold" style={{color:'#3b82f6'}}>{baht(sell)}</div>}</div>
+            <div><Lbl>ต้นทุน — งบ (฿)</Lbl>{onUpdateJob ? <EditText type="number" value={meta.cost_budget??''} onCommit={v=>onUpdateJob(job,{cost_budget:num(v)})}/> : <div className="text-sm font-semibold" style={{color:'#f97316'}}>{baht(costB)}</div>}</div>
+            <Field label="กำไร (ขาย − ต้นทุน)" value={baht(profit)} color={profit<0?'#f43f5e':'#16a34a'}/>
+            <Field label="มูลค่าวัสดุ BOM (฿)" value={baht(value)} color="#f97316"/>
+            <Field label="ต้นทุนคงเหลือ (฿)" value={baht(costLeft)} color={costLeft<0?'#f43f5e':'#16a34a'}/>
+          </div>
+          {costLeft<0 && <div className="mt-2 text-[11px] text-rose-500">⚠ มูลค่าวัสดุ BOM เกินต้นทุน (งบ) ที่ตั้งไว้ {baht(-costLeft)}</div>}
+        </div>
+        {ns.length===0 && <div className="text-center text-slate-500 text-[12px] py-4 rounded-lg border border-dashed border-slate-700">ยังไม่มี Material List — กด "เพิ่มครั้งใน Job นี้" เพื่อสร้าง BOM List ครั้งแรก</div>}
         {ns.map(n => <BomRoundCard key={n} state={state} project={project} n={n} role={role} canEdit={canEdit} onAddBom={onAddBom} onUpdateBom={onUpdateBom} onDeleteBom={onDeleteBom} onSendBom={onSendBom} onDeleteRound={onDeleteRound} nested/>)}
       </div>}
     </Card>
@@ -2852,7 +2873,7 @@ function App(){
     const target = (custom && custom.target_lbs!=null) ? custom.target_lbs : custs.reduce((s,c)=>s+num(c.lbs_qty),0);
     if(state.projects.some(p=>p.project_stock_no===stockNo)) throw new Error(`Project Stock No. "${stockNo}" มีอยู่แล้ว — กรุณาใช้เลขอื่น`);
     const r=await db.createStock(srIds, stockNo, jobNo, bomNo, name, target);
-    notify('stock', '📦 สร้าง Project Stock ใหม่', `${stockNo} (Job ${jobNo})\n${name}\nLBS เป้าหมาย: ${target}`);
+    notify('stock', '📦 สร้าง Project Stock ใหม่', `${stockNo}${jobNo?` (Job ${jobNo})`:''}\n${name}\nLBS เป้าหมาย: ${target}`);
     await reload();
     if(r) { setActiveId(r.id); setPage('project-stocks'); }
   });

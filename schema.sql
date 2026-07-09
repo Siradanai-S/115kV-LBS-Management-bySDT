@@ -85,6 +85,7 @@ CREATE TABLE IF NOT EXISTS projects (
   updated_at        TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS bom_rounds JSONB DEFAULT '{}'::jsonb;   -- เมตาดาต้าราย Material List/ครั้ง: { "1": {cust_id}, ... } (Job No. + Ref ลูกค้า ต่อครั้ง)
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS jobs       JSONB DEFAULT '{}'::jsonb;   -- Project Job No. ต่อลูกค้า: { "JOB-xxxx-n": {cust_id, sell_price, cost_budget} } (กำไร/ต้นทุนคงเหลือ derive ฝั่ง client)
 CREATE INDEX IF NOT EXISTS idx_projects_phase    ON projects (current_phase);
 CREATE INDEX IF NOT EXISTS idx_projects_delivery ON projects (delivery_date);
 
@@ -436,7 +437,7 @@ BEGIN
   THEN RAISE EXCEPTION 'งานในเฟสนี้ยังไม่ครบทุกข้อ'; END IF;
   -- gate เฉพาะเฟส
   IF cur = 'project' THEN
-    IF (SELECT job_no FROM projects WHERE id=p_id) IS NULL THEN RAISE EXCEPTION 'ยังไม่มี Job No.'; END IF;
+    -- Job No. อยู่ระดับลูกค้า (projects.jobs JSONB) แล้ว — ไม่บังคับ projects.job_no ระดับ Stock อีก
     IF NOT EXISTS (SELECT 1 FROM bom_items WHERE project_id=p_id) THEN RAISE EXCEPTION 'ยังไม่มีรายการ BOM'; END IF;
     IF EXISTS (SELECT 1 FROM bom_items WHERE project_id=p_id AND is_sent=FALSE) THEN RAISE EXCEPTION 'ยังส่ง BOM ให้จัดซื้อไม่ครบทุกครั้ง (ครั้ง/รอบ)'; END IF;
     SELECT COALESCE(target_lbs,0) INTO req FROM projects WHERE id=p_id;        -- เป้าหมาย LBS ของ Stock
