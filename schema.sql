@@ -235,8 +235,8 @@ ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS approved        BOOLEAN DEFAU
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS approved_by     TEXT;
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS has_po          BOOLEAN DEFAULT FALSE;   -- ลูกค้ามี PO/สัญญา (ข้อมูลประกอบการอนุมัติ)
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS advance_payment BOOLEAN DEFAULT FALSE;   -- เรียกเก็บ advance payment
--- ข้อมูลเดิม (ก่อนมีระบบอนุมัติ) ถือว่าอนุมัติแล้ว เพื่อไม่ให้งานที่ค้างอยู่หลุดจาก Service
-UPDATE service_plans SET approved=TRUE WHERE approved IS NOT TRUE AND sent=TRUE;
+-- (migration ครั้งเดียว — รันไปแล้วบน LIVE ตอน deploy ระบบอนุมัติ จึงถอดออก)
+-- ห้ามใส่ UPDATE approved=TRUE แบบไม่มี guard กลับมา: รัน schema ซ้ำจะ auto-approve ใบที่รอ DM โดยไม่ตัดสต็อก
 -- Service flow: เช็กลิสต์หน้างาน + ลูกค้าเซ็นรับ + ใบรับประกัน
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS checklist      JSONB DEFAULT '{}'::jsonb;
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS received_by    VARCHAR(120);
@@ -447,8 +447,8 @@ BEGIN
     IF pending > 0 THEN RAISE EXCEPTION 'ของยังเข้าไม่ครบ (ต้อง Delivered ทุกรายการ)'; END IF;
   ELSIF cur = 'service' THEN
     IF NOT (SELECT do_signed FROM projects WHERE id=p_id) THEN RAISE EXCEPTION 'ยังไม่ได้ลงนาม DO'; END IF;
-    -- ปิดงานได้เมื่อทุกใบเบิก (sent) ส่งมอบครบ (กันปิดก่อนกำหนดเมื่อมีหลายใบเบิก/ลูกค้า)
-    SELECT COUNT(*) INTO pending FROM service_plans WHERE project_id=p_id AND sent=TRUE AND delivered IS NOT TRUE;
+    -- ปิดงานได้เมื่อทุกใบเบิกที่ "อนุมัติแล้ว" ส่งมอบครบ (ใบรออนุมัติ DM ไม่บล็อกปิดงาน — ตรงกับ allPlansDelivered ฝั่ง client)
+    SELECT COUNT(*) INTO pending FROM service_plans WHERE project_id=p_id AND sent=TRUE AND approved=TRUE AND delivered IS NOT TRUE;
     IF pending > 0 THEN RAISE EXCEPTION 'ยังส่งมอบใบเบิกไม่ครบ (เหลือ % ใบ)', pending; END IF;
   END IF;
   i := array_position(seq, cur::text);

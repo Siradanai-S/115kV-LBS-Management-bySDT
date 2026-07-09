@@ -273,7 +273,7 @@ function seedDemo(){
   const lineOf = pid => bom.filter(b=>b.project_id===pid).map(b=>({ bom_id:b.id, qty:b.quantity }));
   const plans = [
     { id:nid(), project_id:1, sr_id:1, wd_no:'WD-2026-001', lines:lineOf(1), plan_start:ym+'-05', plan_end:ym+'-12', delivery_date:projects[0].delivery_date, location:'บางปะกง ฉะเชิงเทรา / นิคมอมตะนคร', team_need:'ทีมติดตั้ง 4-5 คน', team_ids:[], note:'ส่งมอบ+ติดตั้ง LBS 10 ชุด ตามแผน PEA', sent:true, acked:false, created_at:new Date().toISOString() },
-    { id:nid(), project_id:4, sr_id:5, wd_no:'WD-2026-002', lines:lineOf(4), plan_start:ym+'-02', plan_end:ym+'-03', actual_start:ym+'-02', actual_end:ym+'-03', delivery_date:projects[3].delivery_date, location:'ศรีราชา ชลบุรี', team_need:'ทีม 2 คน', team_ids:[team[2].id, team[4].id], note:'เปลี่ยน LBS เดิม — ปิดงานแล้ว', sent:true, acked:true, delivered:true, proof_name:null, proof_url:null, created_at:new Date().toISOString() },
+    { id:nid(), project_id:4, sr_id:5, wd_no:'WD-2026-002', lines:lineOf(4), plan_start:ym+'-02', plan_end:ym+'-03', actual_start:ym+'-02', actual_end:ym+'-03', delivery_date:projects[3].delivery_date, location:'ศรีราชา ชลบุรี', team_need:'ทีม 2 คน', team_ids:[team[2].id, team[4].id], note:'เปลี่ยน LBS เดิม — ปิดงานแล้ว', sent:true, approved:true, approved_by:'Executive', acked:true, delivered:true, proof_name:null, proof_url:null, created_at:new Date().toISOString() },
   ];
   // ---- handoff_log (ประวัติส่งงาน/ตีกลับ — สำหรับ Audit timeline) ----
   const handoffs=[]; let hid=5000;
@@ -669,8 +669,8 @@ function phaseDataGate(project, state){
     if(items.length>0 && !items.every(b=>b.po_status==='Delivered')) return { ok:false, reason:'ของยังเข้าไม่ครบ (ต้อง Delivered ทุกรายการ)' };
   }
   if(ph==='service'){
-    // ปิดงานได้เมื่อ "ทุกใบเบิกที่ส่ง Service" ส่งมอบครบ (กันปิดก่อนกำหนดเมื่อมีหลายใบเบิก/ลูกค้า)
-    const ps=(state.plans||[]).filter(p=>p.project_id===pid && p.sent);
+    // ปิดงานได้เมื่อ "ทุกใบเบิกที่อนุมัติแล้ว" ส่งมอบครบ (ใบรออนุมัติ DM ไม่บล็อกปิดงาน — ให้ตรงกับ allPlansDelivered)
+    const ps=(state.plans||[]).filter(p=>p.project_id===pid && p.sent && p.approved);
     if(!project.do_signed) return { ok:false, reason:'ยังไม่ได้ลงนาม DO' };
     if(ps.length>0 && !ps.every(p=>p.delivered)){ const left=ps.filter(p=>!p.delivered).length; return { ok:false, reason:`ยังส่งมอบใบเบิกไม่ครบ (เหลือ ${left}/${ps.length} ใบ)` }; }
   }
