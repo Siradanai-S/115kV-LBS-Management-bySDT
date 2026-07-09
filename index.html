@@ -325,7 +325,15 @@ function seedDemo(){
   mv({ epicor_code:'LBS-115-MOT', description:'LBS 115kV 3-Pole Motorized', project_id:1, type:'OUT', reason:'ติดตั้งงาน', qty:2, note:'ติดตั้ง บางปะกง', created_at:isoIn(-6) });
   mv({ epicor_code:'LBS-115-MAN', description:'LBS 115kV 3-Pole Manual',    project_id:4, type:'OUT', reason:'ติดตั้งงาน', qty:4, note:'ติดตั้ง ศรีราชา', created_at:isoIn(-6) });
   mv({ epicor_code:'ACC-CC-01',   description:'Control Cabinet',             project_id:4, type:'OUT', reason:'ติดตั้งงาน', qty:4, note:'ติดตั้ง ศรีราชา', created_at:isoIn(-6) });
-  return { customers, srs, projects, tasks, bom, pos, team, schedule, plans, handoffs, users, inventory, notifSettings:{...NOTIF_DEFAULT} };
+  // ---- ฐานข้อมูลวัสดุ (Item Catalog — จัดการที่ Setting, ใช้ autocomplete ในฟอร์ม BOM) ----
+  const catalog = [
+    { id:nid(), epicor_code:'LBS-115-MOT', description:'LBS 115kV 3-Pole Motorized', ium:'EA' },
+    { id:nid(), epicor_code:'LBS-115-MAN', description:'LBS 115kV 3-Pole Manual',    ium:'EA' },
+    { id:nid(), epicor_code:'ACC-SA-115',  description:'Surge Arrester 115kV',        ium:'EA' },
+    { id:nid(), epicor_code:'ACC-CC-01',   description:'Control Cabinet',             ium:'EA' },
+    { id:nid(), epicor_code:'ACC-CBL-35',  description:'Control Cable 35 sq.mm.',     ium:'M'  },
+  ];
+  return { customers, srs, projects, tasks, bom, pos, team, schedule, plans, handoffs, users, inventory, catalog, notifSettings:{...NOTIF_DEFAULT} };
 }
 
 let demo = null;
@@ -347,7 +355,8 @@ const db = {
     const inventory = await sb.from('inventory_moves').select('*').order('id').then(ok);
     let users=[]; try { users = (await sb.rpc('admin_list_users')).data || []; } catch(e){ users=[]; }   // เฉพาะ developer จะได้ข้อมูล
     let notifSettings = {...NOTIF_DEFAULT}; try { const row=(await sb.from('notif_settings').select('*').eq('id',1).maybeSingle()).data; if(row) notifSettings={...NOTIF_DEFAULT, ...row}; } catch(e){}
-    return { customers:customers||[], srs:srs||[], projects:projects||[], tasks:tasks||[], bom:bom||[], pos:pos||[], team:team||[], schedule:schedule||[], plans:plans||[], handoffs:handoffs||[], inventory:inventory||[], users, notifSettings };
+    let catalog=[]; try { catalog = (await sb.from('item_catalog').select('*').order('epicor_code')).data || []; } catch(e){ catalog=[]; }   // DB เก่าที่ยังไม่รัน schema ใหม่ → ไม่พังทั้งแอป
+    return { customers:customers||[], srs:srs||[], projects:projects||[], tasks:tasks||[], bom:bom||[], pos:pos||[], team:team||[], schedule:schedule||[], plans:plans||[], handoffs:handoffs||[], inventory:inventory||[], catalog, users, notifSettings };
   },
 
   /* ---- งาน (tasks) ---- */
@@ -459,6 +468,14 @@ const db = {
   async updateRow(demoKey, table, id, patch){ if(!LIVE){ const r=demo[demoKey].find(x=>x.id===id); if(r) Object.assign(r, patch); return; } ok(await sb.from(table).update(patch).eq('id',id)); },
   // Reset Data (เฉพาะ Developer) — DEMO: คืนค่าข้อมูลตัวอย่างใหม่ · LIVE: ป้องกันไว้ ให้ใช้ reset-clean.sql แทน
   async resetData(){ if(!LIVE){ demo = seedDemo(); return; } throw new Error('Reset Data ใช้ได้เฉพาะโหมด DEMO — สำหรับ LIVE ให้รัน reset-clean.sql บน Supabase'); },
+
+  /* ---- ฐานข้อมูลวัสดุ (Item Catalog — Setting/developer) ---- */
+  async addCatalogItem(row){ if(!LIVE){ const r={ id:nid(), ium:'EA', ...row }; demo.catalog.push(r); return r; } return ok(await sb.from('item_catalog').insert(row).select().single()); },
+  // Import Excel = upsert ด้วย epicor_code (มีอยู่→อัปเดต description/ium · ไม่มี→เพิ่มใหม่ · ไม่ลบของเดิมที่ไม่อยู่ในไฟล์)
+  async upsertCatalog(rows){
+    if(!LIVE){ rows.forEach(r=>{ const ex=demo.catalog.find(x=>x.epicor_code===r.epicor_code); if(ex) Object.assign(ex, r); else demo.catalog.push({ id:nid(), ...r }); }); return; }
+    ok(await sb.from('item_catalog').upsert(rows.map(r=>({...r, updated_at:new Date().toISOString()})), { onConflict:'epicor_code' }));
+  },
   // ตั้งค่าการแจ้งเตือน (LINE/Email) — singleton row id=1
   async saveNotifSettings(patch){ if(!LIVE){ demo.notifSettings={...demo.notifSettings, ...patch}; return; } ok(await sb.from('notif_settings').upsert({ id:1, ...patch, updated_at:new Date().toISOString() })); },
 
@@ -1360,6 +1377,29 @@ function ProjectDept({state, role, onCreateStock, genDefaults, onGoStocks, onRet
   );
 }
 const BOM_BLANK = { epicor_code:'', description:'', category:'LBS', serial_lvb:'', serial_om:'', due_date:'', ium:'EA', quantity:1, currency:'THB', unit_cost:0, fx_rate:36.5, project_phase:'Phase 1', cust_id:'' };
+// ช่อง Epicor Code แบบค้นหาจากฐานข้อมูลวัสดุ (Setting → Item Catalog) — เลือกแล้วเติม Description/IUM อัตโนมัติ · หรือพิมพ์เองอิสระ
+function CodeSearch({value, catalog, onChange, onPick}){
+  const [open,setOpen]=useState(false);
+  const q=String(value||'').toLowerCase();
+  const hits=(catalog||[]).filter(c=> !q || String(c.epicor_code||'').toLowerCase().includes(q) || String(c.description||'').toLowerCase().includes(q)).slice(0,8);
+  return (
+    <div className="relative">
+      <input value={value} placeholder={(catalog||[]).length?'ค้นหา / พิมพ์เอง':''}
+        onChange={e=>{ onChange(e.target.value); setOpen(true); }} onFocus={()=>setOpen(true)} onBlur={()=>setTimeout(()=>setOpen(false),150)}
+        className="w-full bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 px-2.5 py-1.5 focus:outline-none focus:border-amber-500/60"/>
+      {open && hits.length>0 && (
+        <div className="absolute z-30 left-0 mt-1 rounded-lg border border-slate-700 bg-slate-900 shadow-xl max-h-48 overflow-y-auto" style={{minWidth:'280px'}}>
+          {hits.map(c=>(
+            <button key={c.id} type="button" onMouseDown={e=>{ e.preventDefault(); onPick(c); setOpen(false); }} className="w-full text-left px-2.5 py-1.5 hover:bg-slate-800 border-b border-slate-800/40">
+              <div className="mono text-[12px]" style={{color:'#0ea5e9'}}>{c.epicor_code}</div>
+              <div className="text-[11px] text-slate-400 truncate">{c.description} <span className="text-slate-500">· {c.ium}</span></div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 // LBS (หมวด LBS) ที่ลงให้ลูกค้ารายนี้ไปแล้วทั้ง Stock (ทุกครั้ง/รอบ)
 const custBomLBS = (state, pid, custId) => (state.bom||[]).filter(b=>b.project_id===pid && String(b.cust_id)===String(custId) && b.category==='LBS').reduce((s,b)=>s+num(b.quantity),0);
 function ProjectBom({state, project, role, canEdit, onAddBom, onUpdateBom, onDeleteBom, onSendBom, onUpdateProject}){
@@ -1504,7 +1544,7 @@ function BomRoundCard({state, project, n, role, canEdit, onAddBom, onUpdateBom, 
       {show && <>
       {open && editable && (
         <div className="px-5 py-4 bg-slate-800/30 border-b border-slate-800 grid grid-cols-2 md:grid-cols-6 gap-3 items-end">
-          <div><Lbl>Epicor Code</Lbl><Inp value={form.epicor_code} onChange={v=>setForm({...form,epicor_code:v})}/></div>
+          <div><Lbl>Epicor Code</Lbl><CodeSearch value={form.epicor_code} catalog={state.catalog} onChange={v=>setForm({...form,epicor_code:v})} onPick={c=>setForm(f=>({...f, epicor_code:c.epicor_code, description:c.description||f.description, ium:c.ium||f.ium}))}/></div>
           <div className="col-span-2"><Lbl>Description</Lbl><Inp value={form.description} onChange={v=>setForm({...form,description:v})}/></div>
           <div><Lbl>Category</Lbl><Sel value={form.category} onChange={v=>setForm({...form,category:v})} options={BOM_CAT}/></div>
           {form.category==='LBS' && <div><Lbl>Serial LVB</Lbl><Inp value={form.serial_lvb} onChange={v=>setForm({...form,serial_lvb:v})} placeholder="S/N LVB"/></div>}
@@ -2512,7 +2552,75 @@ function NotifSettings({cfg, log, onSave, onTest}){
     </Card>
   );
 }
-function Settings({state, role, onSetRole, onRevoke, onDeleteRow, onUpdateRow, onResetData, notifLog, onSaveNotif, onTestNotif}){
+// ฐานข้อมูลวัสดุ (Item Catalog) — Developer เพิ่ม/แก้/ลบ + Import/Export Excel · ฟอร์ม BOM ใช้ค้นหา (CodeSearch)
+function CatalogSettings({rows, onAdd, onUpdateRow, onDeleteRow, onImport}){
+  const [q,setQ]=useState('');
+  const [form,setForm]=useState({ epicor_code:'', description:'', ium:'EA' });
+  const fileRef=useRef(null);
+  const list=(rows||[]).filter(r=>!q || (String(r.epicor_code)+' '+String(r.description||'')).toLowerCase().includes(q.toLowerCase()));
+  const doExport=()=>exportXLSX('item-catalog.xlsx','Item Catalog',[['Epicor Code','Description','IUM'], ...(rows||[]).map(r=>[r.epicor_code,r.description,r.ium])]);
+  // Import Excel — หัวตารางยืดหยุ่น (Epicor Code/Description/IUM) · trim + dedupe ในไฟล์ (แถวหลังชนะ) · upsert ไม่ลบของเดิม
+  const doImport=async(file)=>{
+    try{
+      if(typeof XLSX==='undefined') throw new Error('SheetJS (CDN) ยังไม่โหลด — รีเฟรชหน้าแล้วลองใหม่');
+      const wb=XLSX.read(await file.arrayBuffer(),{type:'array'});
+      const aoa=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''});
+      const hi=aoa.findIndex(r=>(r||[]).some(c=>/epicor|code|รหัส/i.test(String(c))));
+      if(hi<0) throw new Error('ไม่พบหัวตาราง — ต้องมีคอลัมน์ "Epicor Code"');
+      const H=aoa[hi].map(c=>String(c).trim().toLowerCase());
+      const ci=H.findIndex(h=>/epicor|code|รหัส/.test(h));
+      const di=H.findIndex(h=>/desc|รายละเอียด|ชื่อ/.test(h));
+      const ui=H.findIndex(h=>/ium|uom|unit|หน่วย/.test(h));
+      const map={};
+      aoa.slice(hi+1).forEach(r=>{ const code=String((r||[])[ci]??'').trim(); if(!code) return; map[code]={ epicor_code:code, description:String(di>=0?(r[di]??''):'').trim(), ium:String(ui>=0?(r[ui]??''):'').trim()||'EA' }; });
+      const items=Object.values(map);
+      if(!items.length) throw new Error('ไม่พบรายการในไฟล์ (คอลัมน์ Epicor Code ว่างทั้งหมด)');
+      const exist=new Set((rows||[]).map(r=>r.epicor_code));
+      const nNew=items.filter(x=>!exist.has(x.epicor_code)).length;
+      if(!confirm(`พบ ${items.length} รายการ — เพิ่มใหม่ ${nNew} · อัปเดต ${items.length-nNew}\n(upsert ตาม Epicor Code · ไม่ลบรายการเดิมที่ไม่อยู่ในไฟล์)\n\nยืนยันนำเข้า?`)) return;
+      await onImport(items);
+    }catch(e){ alert('นำเข้าไม่สำเร็จ: '+(e.message||e)); }
+  };
+  return (
+    <Card className="overflow-hidden">
+      <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between flex-wrap gap-2">
+        <h3 className="text-slate-200 font-semibold flex items-center gap-2"><span style={{color:'#0ea5e9'}}>📚</span> ฐานข้อมูลวัสดุ (Item Catalog) <span className="text-[11px] text-slate-500 font-normal">({(rows||[]).length} รายการ · ใช้ค้นหาในฟอร์ม BOM)</span></h3>
+        <div className="flex items-center gap-2">
+          <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e=>{ const f=e.target.files[0]; e.target.value=''; if(f) doImport(f); }}/>
+          <button onClick={()=>fileRef.current&&fileRef.current.click()} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:'#0ea5e922',color:'#0ea5e9'}}>⬆ Import Excel</button>
+          <button onClick={doExport} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:'#16a34a22',color:'#16a34a'}}>⬇ Export Excel</button>
+        </div>
+      </div>
+      <div className="px-5 py-3 border-b border-slate-800 grid grid-cols-2 md:grid-cols-5 gap-3 items-end bg-slate-800/20">
+        <div><Lbl>Epicor Code</Lbl><Inp value={form.epicor_code} onChange={v=>setForm({...form,epicor_code:v})}/></div>
+        <div className="col-span-2"><Lbl>Description</Lbl><Inp value={form.description} onChange={v=>setForm({...form,description:v})}/></div>
+        <div><Lbl>IUM</Lbl><Inp value={form.ium} onChange={v=>setForm({...form,ium:v})}/></div>
+        <button onClick={()=>{ const code=form.epicor_code.trim(); if(!code) return; if((rows||[]).some(r=>r.epicor_code===code)){ alert(`มี ${code} อยู่แล้ว — แก้ไขในตารางด้านล่างแทน`); return; } onAdd({ epicor_code:code, description:form.description.trim(), ium:form.ium.trim()||'EA' }); setForm({ epicor_code:'', description:'', ium:'EA' }); }} disabled={!form.epicor_code.trim()} className="text-xs font-semibold rounded-lg px-3 py-1.5 disabled:opacity-40" style={{background:'#0ea5e9',color:'#0b0f17'}}>{Icon.plus} เพิ่มวัสดุ</button>
+      </div>
+      <div className="px-5 py-2 border-b border-slate-800"><input value={q} onChange={e=>setQ(e.target.value)} placeholder="🔍 ค้นหา Epicor Code / Description" className="w-full md:w-72 bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-100 px-2.5 py-1.5 focus:outline-none focus:border-amber-500/60"/></div>
+      <div className="overflow-x-auto max-h-80 overflow-y-auto">
+        <table className="w-full text-sm whitespace-nowrap">
+          <thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-800">
+            <th className="px-5 py-2.5 font-medium">Epicor Code</th><th className="px-3 py-2.5 font-medium">Description</th><th className="px-3 py-2.5 font-medium w-24">IUM</th><th className="px-3 py-2.5 w-10"/>
+          </tr></thead>
+          <tbody>
+            {list.length===0 && <tr><td colSpan="4" className="px-5 py-6 text-center text-slate-500 text-[12px]">— {q?'ไม่พบที่ค้นหา':'ยังไม่มีข้อมูล — เพิ่มด้านบน หรือ Import Excel'} —</td></tr>}
+            {list.map(r=>(
+              <tr key={r.id} className="border-b border-slate-800/60">
+                <td className="px-5 py-2 mono text-slate-300">{r.epicor_code}</td>
+                <td className="px-3 py-2"><EditText value={r.description} onCommit={v=>onUpdateRow('catalog','item_catalog',r.id,{description:v})}/></td>
+                <td className="px-3 py-2"><EditText value={r.ium} onCommit={v=>onUpdateRow('catalog','item_catalog',r.id,{ium:v.trim()||'EA'})}/></td>
+                <td className="px-3 py-2 text-right"><button onClick={()=>{ if(confirm(`ลบ "${r.epicor_code}" ออกจากฐานข้อมูลวัสดุ?`)) onDeleteRow('catalog','item_catalog',r.id); }} className="text-slate-500 hover:text-rose-600" title="ลบ">{Icon.trash}</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="px-5 py-2.5 border-t border-slate-800 text-[11px] text-slate-500">Import = <b>upsert ตาม Epicor Code</b> (ของเดิมที่ไม่อยู่ในไฟล์ไม่ถูกลบ) · ไฟล์จาก Export แก้แล้วนำเข้ากลับได้เลย · Epicor Code แก้ไม่ได้ — ถ้าผิดให้ลบแล้วเพิ่มใหม่</div>
+    </Card>
+  );
+}
+function Settings({state, role, onSetRole, onRevoke, onDeleteRow, onUpdateRow, onResetData, notifLog, onSaveNotif, onTestNotif, onAddCatalog, onImportCatalog}){
   if(role!=='developer') return <Empty msg="เฉพาะผู้ดูแล (Developer) เท่านั้น"/>;
   const users = state.users||[];
   const pending = users.filter(u=>!u.department && !u.is_developer);
@@ -2579,6 +2687,9 @@ function Settings({state, role, onSetRole, onRevoke, onDeleteRow, onUpdateRow, o
           );})}
         </div>
       </Card>
+      {/* B2) ฐานข้อมูลวัสดุ (Item Catalog) — Import/Export Excel */}
+      <CatalogSettings rows={state.catalog} onAdd={onAddCatalog} onUpdateRow={onUpdateRow} onDeleteRow={onDeleteRow} onImport={onImportCatalog}/>
+
       {/* C) การแจ้งเตือน LINE/Email */}
       <NotifSettings key={JSON.stringify(state.notifSettings)} cfg={state.notifSettings} log={notifLog} onSave={onSaveNotif} onTest={onTestNotif}/>
 
@@ -2855,6 +2966,9 @@ function App(){
   const handleUpdateRow = run(async (demoKey, table, id, patch) => { await db.updateRow(demoKey, table, id, patch); },
     (s, demoKey, table, id, patch) => ({...s, [demoKey]: s[demoKey].map(x=>x.id===id?{...x,...patch}:x)}));
   const handleResetData = run(async () => { await db.resetData(); setActiveId('all'); setPage('dashboard'); });
+  /* ฐานข้อมูลวัสดุ (Item Catalog — Setting) */
+  const handleAddCatalog = run(async (row) => { await db.addCatalogItem(row); });
+  const handleImportCatalog = run(async (rows) => { await db.upsertCatalog(rows); });
 
 
   /* Linkage */
@@ -2890,7 +3004,7 @@ function App(){
           {page==='service'    && <FieldService state={state} role={role} onAddMember={handleAddMember} onRemoveMember={handleRemoveMember} onAddSchedule={handleAddSchedule} onRemoveSchedule={handleRemoveSchedule} onReceive={handleSvcReceive} onAssign={handleSvcAssign} onDeliver={handleSvcDeliver} onWarranty={handleSvcWarranty} onClose={handleHandoff} onReturnStock={handleReturnStock}/>}
           {page==='map-tracking' && <MapTracking state={state}/>}
           {page==='workflow'   && <WorkflowBoard state={state} project={activeProject} role={role} onTask={handleTask} onAddTask={handleAddTask} onHandoff={handleHandoff} onReject={handleReject} onAck={handleAck} onPickStock={(id)=>setActiveId(id)}/>}
-          {page==='settings'   && role==='developer' && <Settings state={state} role={role} onSetRole={handleSetRole} onRevoke={handleRevoke} onDeleteRow={handleDeleteRow} onUpdateRow={handleUpdateRow} onResetData={handleResetData} notifLog={notifLog} onSaveNotif={handleSaveNotif} onTestNotif={handleTestNotif}/>}
+          {page==='settings'   && role==='developer' && <Settings state={state} role={role} onSetRole={handleSetRole} onRevoke={handleRevoke} onDeleteRow={handleDeleteRow} onUpdateRow={handleUpdateRow} onResetData={handleResetData} notifLog={notifLog} onSaveNotif={handleSaveNotif} onTestNotif={handleTestNotif} onAddCatalog={handleAddCatalog} onImportCatalog={handleImportCatalog}/>}
         </main>
       </div>
       {poProj && <PoModal project={poProj} pos={state.pos} role={role} onDelete={(id)=>handleDeleteRow('pos','purchase_orders',id)} onClose={()=>setPoProject(null)}/>}
