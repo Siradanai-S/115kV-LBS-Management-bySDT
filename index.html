@@ -177,15 +177,17 @@ function curYM(){ return new Date().toISOString().slice(0,7); }
 function seedDemo(){
   // ===== ชุดข้อมูลทดสอบครบทุกเฟส: Sales → Project → Purchasing → Service → Closed =====
   // ---- ลูกค้า (Sales) — ผูกกับ SR ผ่าน sr_id ----
+  // Serial LVB/OM ต่อ LBS 1 ตัว (กรอกครบแล้วสำหรับลูกค้าที่สร้าง Stock ไปแล้ว · SR-003 เว้นว่างไว้เดโม gate)
+  const mkSerials = (pre,n) => Array.from({length:n},(_,i)=>({ lvb:`LVB-${pre}-${String(i+1).padStart(2,'0')}`, om:`OM-${pre}-${String(i+1).padStart(2,'0')}` }));
   const customers = [
-    { id:1, name:'การไฟฟ้าส่วนภูมิภาค (PEA)', customer_type:'ราชการ',  work_type:'Supply & Construction', contact:'คุณสมชาย 081-111-2222', lbs_qty:6, desired_date:isoIn(7),  location:'บางปะกง ฉะเชิงเทรา', scope:'ปรับปรุงสถานีไฟฟ้า 115kV', note:'', sr_id:1, cust_po_no:'CPO-PEA-115/2569', contract_status:'ทำสัญญาแล้ว' },
-    { id:2, name:'บ.อมตะ คอร์ปอเรชัน',  customer_type:'เอกชน',      work_type:'Supply & Construction', contact:'คุณวิภา 089-333-4444',  lbs_qty:4, desired_date:isoIn(13), location:'นิคมอมตะนคร ชลบุรี', scope:'ติดตั้ง LBS ในนิคม',  note:'', sr_id:1, cust_po_no:'CPO-AMATA-2569/12', contract_status:'ได้รับ PO แล้ว' },
-    { id:3, name:'บ.ปิโตรเคมีไทย',     customer_type:'เอกชน',      work_type:'Supply',                contact:'คุณเอก 086-555-6666',  lbs_qty:3, desired_date:isoIn(45), location:'มาบตาพุด ระยอง',    scope:'ขยายเขตจ่ายไฟโรงงาน',  note:'', sr_id:2, cust_po_no:'CPO-PTC-008', contract_status:'ได้รับ PO แล้ว' },
+    { id:1, name:'การไฟฟ้าส่วนภูมิภาค (PEA)', customer_type:'ราชการ',  work_type:'Supply & Construction', contact:'คุณสมชาย 081-111-2222', lbs_qty:6, desired_date:isoIn(7),  location:'บางปะกง ฉะเชิงเทรา', scope:'ปรับปรุงสถานีไฟฟ้า 115kV', note:'', serials:mkSerials('PEA',6), sr_id:1, cust_po_no:'CPO-PEA-115/2569', contract_status:'ทำสัญญาแล้ว' },
+    { id:2, name:'บ.อมตะ คอร์ปอเรชัน',  customer_type:'เอกชน',      work_type:'Supply & Construction', contact:'คุณวิภา 089-333-4444',  lbs_qty:4, desired_date:isoIn(13), location:'นิคมอมตะนคร ชลบุรี', scope:'ติดตั้ง LBS ในนิคม',  note:'', serials:mkSerials('AMT',4), sr_id:1, cust_po_no:'CPO-AMATA-2569/12', contract_status:'ได้รับ PO แล้ว' },
+    { id:3, name:'บ.ปิโตรเคมีไทย',     customer_type:'เอกชน',      work_type:'Supply',                contact:'คุณเอก 086-555-6666',  lbs_qty:3, desired_date:isoIn(45), location:'มาบตาพุด ระยอง',    scope:'ขยายเขตจ่ายไฟโรงงาน',  note:'', serials:mkSerials('PTC',3), sr_id:2, cust_po_no:'CPO-PTC-008', contract_status:'ได้รับ PO แล้ว' },
     { id:4, name:'เทศบาลนครนนทบุรี',   customer_type:'ราชการ',     work_type:'Supply',                contact:'กองช่าง 02-777-8888',  lbs_qty:2, desired_date:null,      location:'เมือง นนทบุรี',      scope:'สำรวจความต้องการ LBS', note:'ยังไม่รวบรวมส่ง — ทดสอบสร้าง SR', sr_id:null, cust_po_no:'', contract_status:'รอ PO/สัญญา' },
     { id:5, name:'บ.สหวิริยาสตีลอินดัสตรี', customer_type:'เอกชน',  work_type:'Supply & Construction', contact:'คุณมานพ 088-999-0000', lbs_qty:5, desired_date:isoIn(35), location:'บางสะพาน ประจวบฯ', scope:'ติดตั้ง LBS โรงเหล็ก', note:'', sr_id:3, cust_po_no:'PO-SVI-2569/077', contract_status:'ได้รับ PO แล้ว' },
     { id:6, name:'เทศบาลเมืองมาบตาพุด',  customer_type:'ราชการ',     work_type:'Supply',                contact:'กองช่าง 038-222-3333',lbs_qty:2, desired_date:isoIn(50), location:'มาบตาพุด ระยอง',   scope:'ขยายเขตจ่ายไฟชุมชน',   note:'', sr_id:3, cust_po_no:'', contract_status:'รอ PO/สัญญา' },
-    { id:7, name:'บ.กัลฟ์ เอ็นเนอร์จี',  customer_type:'เอกชน',      work_type:'Supply & Construction', contact:'คุณปกรณ์ 081-444-5555',lbs_qty:8, desired_date:isoIn(20), location:'หนองแซง สระบุรี',   scope:'โรงไฟฟ้า SPP LBS 115kV', note:'', sr_id:4, cust_po_no:'CPO-GULF-441', contract_status:'ทำสัญญาแล้ว' },
-    { id:8, name:'บ.โกลบอล เพาเวอร์ ซินเนอร์ยี่', customer_type:'เอกชน', work_type:'Supply',           contact:'คุณนภา 089-666-7777',  lbs_qty:4, desired_date:isoIn(-3), location:'ศรีราชา ชลบุรี',    scope:'เปลี่ยน LBS เดิม',     note:'ส่งมอบเสร็จแล้ว', sr_id:5, cust_po_no:'CPO-GPSC-220', contract_status:'ทำสัญญาแล้ว' },
+    { id:7, name:'บ.กัลฟ์ เอ็นเนอร์จี',  customer_type:'เอกชน',      work_type:'Supply & Construction', contact:'คุณปกรณ์ 081-444-5555',lbs_qty:8, desired_date:isoIn(20), location:'หนองแซง สระบุรี',   scope:'โรงไฟฟ้า SPP LBS 115kV', note:'', serials:mkSerials('GLF',8), sr_id:4, cust_po_no:'CPO-GULF-441', contract_status:'ทำสัญญาแล้ว' },
+    { id:8, name:'บ.โกลบอล เพาเวอร์ ซินเนอร์ยี่', customer_type:'เอกชน', work_type:'Supply',           contact:'คุณนภา 089-666-7777',  lbs_qty:4, desired_date:isoIn(-3), location:'ศรีราชา ชลบุรี',    scope:'เปลี่ยน LBS เดิม',     note:'ส่งมอบเสร็จแล้ว', serials:mkSerials('GPS',4), sr_id:5, cust_po_no:'CPO-GPSC-220', contract_status:'ทำสัญญาแล้ว' },
   ];
   // ---- Sales Requisition ----
   const srs = [
@@ -712,7 +714,7 @@ const incomingCount = (state, dep) => {
 const NAV = [
   { id:'dashboard',  label:'Executive Dashboard',   icon:Icon.grid },
   { id:'sales',      label:'Sales Department',      icon:Icon.pipeline, dep:'sales',      kids:[ { id:'sales-sr', label:'Sales Requisition & ติดตาม PO' } ] },
-  { id:'project',    label:'Project Department',    icon:Icon.layers,   dep:'project',    kids:[ { id:'project', label:'Project Job No. (สร้าง Project Stock No.)' }, { id:'project-stocks', label:'Project Job No. (BOM list)' }, { id:'project-inventory', label:'คลังสินค้า (Inventory)' }, { id:'project-catalog', label:'📚 ฐานข้อมูลวัสดุ (Item Catalog)' } ] },
+  { id:'project',    label:'Project Department',    icon:Icon.layers,   dep:'project',    kids:[ { id:'project', label:'สร้าง Project Stock No.' }, { id:'project-stocks', label:'Project Job No. (BOM list)' }, { id:'project-inventory', label:'คลังสินค้า (Inventory)' }, { id:'project-catalog', label:'📚 ฐานข้อมูลวัสดุ (Item Catalog)' } ] },
   { id:'purchasing', label:'Purchasing Department', icon:Icon.cart,     dep:'purchasing', kids:[ { id:'purchasing-done', label:'BOM Delivered completed' } ] },
   { id:'service',    label:'Service Department',    icon:Icon.truck,    dep:'service',    kids:[ { id:'map-tracking', label:'🗺️ Map Tracking' } ] },
   { id:'settings',   label:'Setting (ผู้ดูแล)',      icon:Icon.gear,     devOnly:true },
@@ -1268,24 +1270,65 @@ function SalesSR({state, role, onUpdateCustomer, onClearReturn}){
 const Field = ({label, value, color, mono}) => (
   <div><div className="text-[11px] text-slate-500">{label}</div><div className={"text-lg font-semibold mt-0.5 "+(mono?'mono ':'')} style={color?{color}:{color:'#1e293b'}}>{value}</div></div>
 );
-function ProjectDept({state, role, onCreateStock, genDefaults, onGoStocks, onReturnSR}){
+/* ===== Serial LVB/OM ต่อ LBS 1 ตัว (เก็บใน customers.serials = [{lvb,om}] ยาว lbs_qty) ===== */
+const serialPairs = c => { const s=Array.isArray(c.serials)?c.serials:[]; return Array.from({length:num(c.lbs_qty)}, (_,i)=>({ lvb:(s[i]&&s[i].lvb)||'', om:(s[i]&&s[i].om)||'' })); };
+const serialDone  = c => serialPairs(c).filter(p=>p.lvb.trim()&&p.om.trim()).length;
+const serialsOk   = c => num(c.lbs_qty)===0 || serialDone(c)===num(c.lbs_qty);   // ครบทุกตัวจึงผ่าน (ไม่มี LBS = ผ่าน)
+// ตารางกรอก Serial ของลูกค้า 1 ราย — แถวละ 1 ตัว LBS (ใช้ทั้ง modal หน้า SR และในกล่อง Job)
+// ร่างใน local state แล้วกด "บันทึก" เขียนทั้งชุดครั้งเดียว — กัน commit ทีละช่องเขียนทับกันเองตอน re-render ช้า
+function SerialTable({cust, canEdit, onUpdateCustomer}){
+  const [rows,setRows]=useState(()=>serialPairs(cust));
+  const set=(i,k,v)=>setRows(rs=>rs.map((p,j)=> j===i ? {...p,[k]:v} : p));
+  const saved=serialPairs(cust);
+  const dirty=JSON.stringify(rows.map(p=>({lvb:p.lvb.trim(),om:p.om.trim()})))!==JSON.stringify(saved);
+  const doneCt=rows.filter(p=>p.lvb.trim()&&p.om.trim()).length;
+  if(rows.length===0) return <div className="text-[12px] text-slate-500">ลูกค้ารายนี้ไม่มีจำนวน LBS</div>;
+  return (
+    <div>
+      <table className="w-full text-sm border-collapse">
+        <thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-800">
+          <th className="px-2 py-1.5 font-medium w-16">LBS #</th><th className="px-2 py-1.5 font-medium">Serial LVB</th><th className="px-2 py-1.5 font-medium">Serial OM</th>
+        </tr></thead>
+        <tbody>
+          {rows.map((p,i)=>(
+            <tr key={i} className="border-b border-slate-800/40">
+              <td className="px-2 py-1.5 mono text-slate-500">#{i+1}</td>
+              <td className="px-2 py-1.5">{canEdit ? <Inp value={p.lvb} placeholder="LVB-..." onChange={v=>set(i,'lvb',v)}/> : <span className="mono text-slate-300">{p.lvb||'—'}</span>}</td>
+              <td className="px-2 py-1.5">{canEdit ? <Inp value={p.om} placeholder="OM-..." onChange={v=>set(i,'om',v)}/> : <span className="mono text-slate-300">{p.om||'—'}</span>}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {canEdit && (
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <span className="text-[11px]" style={{color:doneCt===rows.length?'#16a34a':'#f59e0b'}}>กรอกแล้ว {doneCt}/{rows.length} ตัว{dirty?' · ยังไม่ได้บันทึก':''}</span>
+          <button onClick={()=>onUpdateCustomer(cust.id, { serials: rows.map(p=>({lvb:p.lvb.trim(), om:p.om.trim()})) })} disabled={!dirty} className="text-xs font-semibold rounded-lg px-4 py-1.5 disabled:opacity-40" style={{background:'#0ea5e9',color:'#0b0f17'}}>{Icon.check} บันทึก Serial</button>
+        </div>
+      )}
+    </div>
+  );
+}
+function ProjectDept({state, role, onCreateStock, genDefaults, onGoStocks, onReturnSR, onUpdateCustomer}){
   const canEdit = role==='developer' || role==='project';
   const inbox = state.srs.filter(s=>!s.stock_id && !s.returned);   // SR รอสร้าง Stock (ตีกลับแล้วไม่โชว์)
   const [sel,setSel]=useState([]);
   const [mk,setMk]=useState(null);                             // Popup ฟอร์มสร้าง Stock (null = ปิด)
   const [show,setShow]=useState({});                           // sr.id -> กาง (เริ่มต้นซ่อน)
+  const [serialFor,setSerialFor]=useState(null);               // ลูกค้าที่กำลังกรอก Serial (modal)
   const toggle = id => setSel(s => s.includes(id) ? s.filter(x=>x!==id) : [...s,id]);
   const srCusts = sr => (state.customers||[]).filter(c=>c.sr_id===sr.id);
   const selCusts = (state.customers||[]).filter(c=>sel.includes(c.sr_id));
   const cellTh = "border border-slate-700/70 px-2.5 py-2 font-medium text-[11px] uppercase tracking-wide text-slate-500 text-left";
   const cell   = "border border-slate-700/70 px-2.5 py-2 align-top";
+  // สร้าง Stock ได้เมื่อลูกค้าที่เลือกกรอก Serial LVB/OM ครบทุกตัว LBS
+  const serialMissing = selCusts.filter(c=>!serialsOk(c));
   const openCreate = () => {
-    if(!sel.length) return;
+    if(!sel.length || serialMissing.length) return;
     const d=genDefaults();
     const sumLbs = selCusts.reduce((s,c)=>s+num(c.lbs_qty),0);
-    setMk({ name: selCusts[0] ? (selCusts[0].location || selCusts[0].name) : 'Project Stock', stockNo:d.stockNo, jobNo:d.jobNo, bomNo:d.bomNo, target_lbs:sumLbs });
+    setMk({ name: selCusts[0] ? (selCusts[0].location || selCusts[0].name) : 'Project Stock', stockNo:d.stockNo, bomNo:'', target_lbs:sumLbs });
   };
-  const confirmCreate = () => { if(!mk.stockNo.trim()) return; onCreateStock(sel, { name:mk.name.trim()||'Project Stock', stockNo:mk.stockNo.trim(), jobNo:'', bomNo:mk.bomNo.trim(), target_lbs:num(mk.target_lbs) }); setSel([]); setMk(null); };   // Job No. ระดับ Stock เลิกใช้ — Job สร้างต่อลูกค้าที่หน้า BOM list
+  const confirmCreate = () => { if(!mk.stockNo.trim()) return; onCreateStock(sel, { name:mk.name.trim()||'Project Stock', stockNo:mk.stockNo.trim(), jobNo:'', bomNo:'', target_lbs:num(mk.target_lbs) }); setSel([]); setMk(null); };   // Job/BOM No. ระดับ Stock เลิกใช้ — Job สร้างต่อลูกค้าที่หน้า BOM list
   return (
     <div className="space-y-4">
       {/* Inbox: SR รอสร้าง Stock */}
@@ -1295,8 +1338,9 @@ function ProjectDept({state, role, onCreateStock, genDefaults, onGoStocks, onRet
         <Card tone="orange" className="overflow-hidden" style={{borderColor:DEPT.project.c+'55'}}>
           <div className="px-5 py-3 border-b border-slate-800 flex items-center justify-between flex-wrap gap-2" style={{background:DEPT.project.c+'12'}}>
             <div className="flex items-center gap-2"><span style={{color:DEPT.project.c}}>📥</span><h3 className="text-slate-200 font-semibold">Sales Requisition ที่ฝ่ายขายส่งมา — เลือกหลายใบเพื่อสร้าง 1 Project Stock</h3><span className="text-[11px] text-slate-500">({inbox.length} ใบ)</span></div>
-            {canEdit && <button onClick={openCreate} disabled={!sel.length} className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-1.5" style={sel.length?{background:DEPT.project.c,color:'#0b0f17'}:{background:'#e2e8f0',color:'#94a3b8',cursor:'not-allowed'}}>{Icon.plus} Import → สร้าง Project Stock No. ({sel.length})</button>}
+            {canEdit && <button onClick={openCreate} disabled={!sel.length || serialMissing.length>0} className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-1.5" style={(sel.length && !serialMissing.length)?{background:DEPT.project.c,color:'#0b0f17'}:{background:'#e2e8f0',color:'#94a3b8',cursor:'not-allowed'}}>{Icon.plus} Import → สร้าง Project Stock No. ({sel.length})</button>}
           </div>
+          {sel.length>0 && serialMissing.length>0 && <div className="px-5 py-2 bg-rose-500/10 border-b border-slate-800 text-[12px] text-rose-500 font-medium">⚠ กรอก Serial LVB/OM ให้ครบทุกตัว LBS ก่อนสร้าง Stock — ยังไม่ครบ: {serialMissing.map(c=>`${c.name} (${serialDone(c)}/${c.lbs_qty})`).join(' · ')}</div>}
           <div className="p-3 space-y-3">
             {inbox.map(sr => { const custs=srCusts(sr); const lbs=custs.reduce((s,c)=>s+num(c.lbs_qty),0); const selected=sel.includes(sr.id); const dd=custs.map(c=>c.desired_date).filter(Boolean).sort()[0]; const doneCt=custs.filter(c=>c.contract_status==='ทำสัญญาแล้ว').length; const isOpen=!!show[sr.id]; return (
               <div key={sr.id} className="rounded-lg border overflow-hidden" style={selected?{borderColor:DEPT.project.c}:{borderColor:'#cbd5e1aa'}}>
@@ -1318,17 +1362,23 @@ function ProjectDept({state, role, onCreateStock, genDefaults, onGoStocks, onRet
                   <table className="w-full text-sm border-collapse">
                     <thead><tr className="bg-slate-800/15">
                       <th className={cellTh}>ชื่อลูกค้า</th><th className={cellTh}>ประเภท</th><th className={cellTh}>งาน</th>
-                      <th className={cellTh+' text-right'}>LBS</th><th className={cellTh}>ชื่อโครงการ</th><th className={cellTh}>วันที่ต้องการ</th>
+                      <th className={cellTh+' text-right'}>LBS</th><th className={cellTh}>Serial LVB/OM</th><th className={cellTh}>ชื่อโครงการ</th><th className={cellTh}>วันที่ต้องการ</th>
                       <th className={cellTh}>สถานที่ติดตั้ง</th><th className={cellTh}>ผู้ติดต่อ</th><th className={cellTh}>Scope</th>
                     </tr></thead>
                     <tbody>
-                      {custs.length===0 && <tr><td className={cell+' text-center text-slate-500'} colSpan="9">— ไม่มีลูกค้าในใบนี้ —</td></tr>}
+                      {custs.length===0 && <tr><td className={cell+' text-center text-slate-500'} colSpan="10">— ไม่มีลูกค้าในใบนี้ —</td></tr>}
                       {custs.map(c=>(
                         <tr key={c.id} className="hover:bg-slate-800/20">
                           <td className={cell+' text-slate-200 font-medium'}>{c.name}</td>
                           <td className={cell}><Pill color={ctypeColor(c.customer_type)}>{c.customer_type}</Pill></td>
                           <td className={cell}><Pill color={c.work_type==='Supply'?'#64748b':'#16a34a'}>{c.work_type}</Pill></td>
                           <td className={cell+' text-right mono font-semibold'} style={{color:'#f97316'}}>{c.lbs_qty}</td>
+                          <td className={cell}>
+                            <div className="flex items-center gap-1.5">
+                              <Pill color={serialsOk(c)?'#16a34a':'#f43f5e'}>{serialDone(c)}/{num(c.lbs_qty)}</Pill>
+                              {canEdit && num(c.lbs_qty)>0 && <button onClick={()=>setSerialFor(c.id)} className="text-[11px] font-medium rounded-md px-2 py-0.5 border" style={{borderColor:'#f9731666',color:'#f97316'}}>✎ กรอก Serial</button>}
+                            </div>
+                          </td>
                           <td className={cell+' text-slate-300'}>{c.project_name||'—'}</td>
                           <td className={cell+' mono text-slate-400'}>{c.desired_date||'—'}</td>
                           <td className={cell+' text-slate-400'}>{c.location||'—'}</td>
@@ -1345,6 +1395,23 @@ function ProjectDept({state, role, onCreateStock, genDefaults, onGoStocks, onRet
         </Card>
       )}
 
+      {/* Modal กรอก Serial LVB/OM ต่อ LBS ของลูกค้า 1 ราย (ก่อนสร้าง Stock) */}
+      {serialFor && (() => { const c=(state.customers||[]).find(x=>x.id===serialFor); if(!c) return null; return (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onClick={()=>setSerialFor(null)}>
+          <div className="w-full max-w-xl rounded-xl border border-slate-700 bg-slate-900 fade-up max-h-[85vh] flex flex-col" onClick={e=>e.stopPropagation()}>
+            <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between">
+              <div className="text-slate-100 font-semibold">Serial LVB / OM — {c.name} <Pill color={serialsOk(c)?'#16a34a':'#f43f5e'}>{serialDone(c)}/{num(c.lbs_qty)} ตัว</Pill></div>
+              <button onClick={()=>setSerialFor(null)} className="text-slate-400 hover:text-slate-100">{Icon.x}</button>
+            </div>
+            <div className="p-4 overflow-y-auto"><SerialTable cust={c} canEdit={canEdit} onUpdateCustomer={onUpdateCustomer}/></div>
+            <div className="px-5 py-3 border-t border-slate-800 flex items-center justify-between">
+              <span className="text-[11px] text-slate-500">กรอกครบแล้วกด "บันทึก Serial" ในตาราง ก่อนปิดหน้าต่าง</span>
+              <button onClick={()=>setSerialFor(null)} className="text-xs font-medium rounded-lg px-4 py-1.5 border border-slate-700 text-slate-300">ปิด</button>
+            </div>
+          </div>
+        </div>
+      ); })()}
+
       {/* Popup สร้าง Stock — ตั้งชื่อ/เลขเอกสาร + ถามจำนวน LBS เป้าหมาย */}
       {mk && canEdit && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onClick={()=>setMk(null)}>
@@ -1360,10 +1427,7 @@ function ProjectDept({state, role, onCreateStock, genDefaults, onGoStocks, onRet
                 <Lbl>จำนวน LBS เป้าหมายที่จะสั่งผลิต (ใช้ตรวจสอบกับ BOM)</Lbl>
                 <input type="number" value={mk.target_lbs} onChange={e=>setMk({...mk,target_lbs:num(e.target.value)})} className="w-full bg-slate-900 border border-amber-500/50 rounded-lg text-lg font-bold text-amber-700 px-3 py-2 focus:outline-none"/>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div><Lbl>Project Stock No.</Lbl><Inp value={mk.stockNo} onChange={v=>setMk({...mk,stockNo:v})}/></div>
-                <div><Lbl>BOM No.</Lbl><Inp value={mk.bomNo} onChange={v=>setMk({...mk,bomNo:v})}/></div>
-              </div>
+              <div><Lbl>Project Stock No.</Lbl><Inp value={mk.stockNo} onChange={v=>setMk({...mk,stockNo:v})}/></div>
               <div className="text-[11px] text-slate-500">Project Job No. จะสร้างภายหลังในเมนู <b>Project Job No. (BOM list)</b> — แยกตามลูกค้าของ Stock นี้</div>
             </div>
             <div className="px-5 py-3 border-t border-slate-800 flex justify-end gap-2">
@@ -1376,7 +1440,7 @@ function ProjectDept({state, role, onCreateStock, genDefaults, onGoStocks, onRet
     </div>
   );
 }
-const BOM_BLANK = { epicor_code:'', description:'', category:'LBS', serial_lvb:'', serial_om:'', due_date:'', ium:'EA', quantity:1, currency:'THB', unit_cost:0, fx_rate:36.5, project_phase:'Phase 1', cust_id:'' };
+const BOM_BLANK = { epicor_code:'', description:'', category:'LBS', due_date:'', ium:'EA', quantity:1, currency:'THB', unit_cost:0, fx_rate:36.5, project_phase:'Phase 1', cust_id:'' };   // Serial LVB/OM ย้ายไปกรอกต่อตัวที่หน้า SR (customers.serials)
 // ช่อง Epicor Code แบบค้นหาจากฐานข้อมูลวัสดุ (Setting → Item Catalog) — เลือกแล้วเติม Description/IUM อัตโนมัติ · หรือพิมพ์เองอิสระ
 function CodeSearch({value, catalog, onChange, onPick}){
   const [open,setOpen]=useState(false);
@@ -1402,7 +1466,7 @@ function CodeSearch({value, catalog, onChange, onPick}){
 }
 // LBS (หมวด LBS) ที่ลงให้ลูกค้ารายนี้ไปแล้วทั้ง Stock (ทุกครั้ง/รอบ)
 const custBomLBS = (state, pid, custId) => (state.bom||[]).filter(b=>b.project_id===pid && String(b.cust_id)===String(custId) && b.category==='LBS').reduce((s,b)=>s+num(b.quantity),0);
-function ProjectBom({state, project, role, canEdit, onAddBom, onUpdateBom, onDeleteBom, onSendBom, onUpdateProject}){
+function ProjectBom({state, project, role, canEdit, onAddBom, onUpdateBom, onDeleteBom, onSendBom, onUpdateProject, onUpdateCustomer}){
   const items = state.bom.filter(b=>b.project_id===project.id);
   const matValue = items.reduce((s,b)=>s+lineTHB(b),0);
   const reqLBS = requestedLBS(state, project.id);
@@ -1481,14 +1545,15 @@ function ProjectBom({state, project, role, canEdit, onAddBom, onUpdateBom, onDel
         </div>
       </div>
       {jobGroups.length===0 && <div className="text-center text-slate-500 text-sm py-8 rounded-xl border border-dashed border-slate-700">ยังไม่มี Project Job No. — กด <b>“สร้าง Project Job No. (เลือกลูกค้า)”</b> เพื่อเริ่ม (1 ลูกค้า = 1 Job)</div>}
-      {jobGroups.map(g => <JobGroupCard key={g.job} state={state} project={project} job={g.job} ns={g.ns} role={role} canEdit={canEdit} onAddBom={onAddBom} onUpdateBom={onUpdateBom} onDeleteBom={onDeleteBom} onSendBom={onSendBom} onDeleteRound={isDev(role)?deleteRound:null} onAddRound={canEdit?addRoundToJob:null} onUpdateJob={canEdit?updateJob:null} onDeleteJob={canEdit?deleteJob:null}/>)}
+      {jobGroups.map(g => <JobGroupCard key={g.job} state={state} project={project} job={g.job} ns={g.ns} role={role} canEdit={canEdit} onAddBom={onAddBom} onUpdateBom={onUpdateBom} onDeleteBom={onDeleteBom} onSendBom={onSendBom} onDeleteRound={isDev(role)?deleteRound:null} onAddRound={canEdit?addRoundToJob:null} onUpdateJob={canEdit?updateJob:null} onDeleteJob={canEdit?deleteJob:null} onUpdateCustomer={canEdit?onUpdateCustomer:null}/>)}
       {!canEdit && <p className="text-[11px] text-slate-500">ดูอย่างเดียว — การจัดการ BOM/ส่งจัดซื้อ สงวนให้ฝ่ายโครงการ และ Developer</p>}
     </div>
   );
 }
 
 // กล่องใหญ่ต่อ Job No. — ครอบการ์ด "BOM List (ครั้งn)" ที่อ้าง Job No. เดียวกัน เพื่อทำงานแยกตาม Job
-function JobGroupCard({state, project, job, ns, role, canEdit, onAddBom, onUpdateBom, onDeleteBom, onSendBom, onDeleteRound, onAddRound, onUpdateJob, onDeleteJob}){
+function JobGroupCard({state, project, job, ns, role, canEdit, onAddBom, onUpdateBom, onDeleteBom, onSendBom, onDeleteRound, onAddRound, onUpdateJob, onDeleteJob, onUpdateCustomer}){
+  const [showSerial, setShowSerial] = useState(false);
   const [show, setShow] = useState(false);
   const items = ns.flatMap(n=>roundItems(state, project.id, n));
   const value = items.reduce((s,b)=>s+lineTHB(b),0);
@@ -1528,6 +1593,16 @@ function JobGroupCard({state, project, job, ns, role, canEdit, onAddBom, onUpdat
           </div>
           {costLeft<0 && <div className="mt-2 text-[11px] text-rose-500">⚠ มูลค่าวัสดุ BOM เกินต้นทุน (งบ) ที่ตั้งไว้ {baht(-costLeft)}</div>}
         </div>
+        {/* 🔢 Serial LVB/OM ของลูกค้า Job นี้ (ต่อ LBS 1 ตัว — แก้ได้เมื่อของจริงเปลี่ยน) */}
+        {rCust && num(rCust.lbs_qty)>0 && (
+          <div className="rounded-lg border border-slate-800 bg-slate-900/40 px-4 py-3">
+            <button onClick={()=>setShowSerial(s=>!s)} className="text-[12px] font-semibold text-slate-300 flex items-center gap-2">
+              <span className="text-slate-500">{showSerial?'▼':'▶'}</span>🔢 Serial LVB/OM · {rCust.name}
+              <Pill color={serialsOk(rCust)?'#16a34a':'#f43f5e'}>{serialDone(rCust)}/{num(rCust.lbs_qty)} ตัว</Pill>
+            </button>
+            {showSerial && <div className="mt-2"><SerialTable cust={rCust} canEdit={!!onUpdateCustomer} onUpdateCustomer={onUpdateCustomer}/></div>}
+          </div>
+        )}
         {ns.length===0 && <div className="text-center text-slate-500 text-[12px] py-4 rounded-lg border border-dashed border-slate-700">ยังไม่มี Material List — กด "เพิ่มครั้งใน Job นี้" เพื่อสร้าง BOM List ครั้งแรก</div>}
         {ns.map(n => <BomRoundCard key={n} state={state} project={project} n={n} role={role} canEdit={canEdit} onAddBom={onAddBom} onUpdateBom={onUpdateBom} onDeleteBom={onDeleteBom} onSendBom={onSendBom} onDeleteRound={onDeleteRound} nested/>)}
       </div>}
@@ -1568,8 +1643,6 @@ function BomRoundCard({state, project, n, role, canEdit, onAddBom, onUpdateBom, 
           <div><Lbl>Epicor Code</Lbl><CodeSearch value={form.epicor_code} catalog={state.catalog} onChange={v=>setForm({...form,epicor_code:v})} onPick={c=>setForm(f=>({...f, epicor_code:c.epicor_code, description:c.description||f.description, ium:c.ium||f.ium}))}/></div>
           <div className="col-span-2"><Lbl>Description</Lbl><Inp value={form.description} onChange={v=>setForm({...form,description:v})}/></div>
           <div><Lbl>Category</Lbl><Sel value={form.category} onChange={v=>setForm({...form,category:v})} options={BOM_CAT}/></div>
-          {form.category==='LBS' && <div><Lbl>Serial LVB</Lbl><Inp value={form.serial_lvb} onChange={v=>setForm({...form,serial_lvb:v})} placeholder="S/N LVB"/></div>}
-          {form.category==='LBS' && <div><Lbl>Serial OM</Lbl><Inp value={form.serial_om} onChange={v=>setForm({...form,serial_om:v})} placeholder="S/N OM"/></div>}
           <div><Lbl>Due Date</Lbl><Inp type="date" value={form.due_date} onChange={v=>setForm({...form,due_date:v})}/></div>
           <div><Lbl>IUM</Lbl><Inp value={form.ium} onChange={v=>setForm({...form,ium:v})}/></div>
           <div><Lbl>Qty</Lbl><Inp type="number" value={form.quantity} onChange={v=>setForm({...form,quantity:num(v)})}/></div>
@@ -1639,7 +1712,7 @@ function HandoffTimeline({list}){
   );
 }
 // แท็บกิ่งย่อย: Stock No. — กล่องข้อมูลรายโครงการ (พับได้, เริ่มต้นซ่อน) + ส่งแผนส่งมอบให้ Service
-function ProjectStocks({state, role, onAddBom, onUpdateBom, onDeleteBom, onSendBom, onUpdateProject, onHandoff, onReject, onAck, onDeleteProject}){
+function ProjectStocks({state, role, onAddBom, onUpdateBom, onDeleteBom, onSendBom, onUpdateProject, onUpdateCustomer, onHandoff, onReject, onAck, onDeleteProject}){
   const canEdit = role==='developer' || role==='project';
   const [open,setOpen]=useState({});
   const [q,setQ]=useState('');
@@ -1669,7 +1742,7 @@ function ProjectStocks({state, role, onAddBom, onUpdateBom, onDeleteBom, onSendB
             {plans.length>0 && <div className="px-5 py-2 border-t border-slate-800 flex flex-wrap gap-2">{plans.map(pl=><span key={pl.id} className="text-[11px] rounded-full px-2.5 py-1" style={pl.acked?{background:'#16a34a22',color:'#16a34a'}:{background:'#f9731622',color:'#f97316'}}>📋 {pl.wd_no||'แผนส่ง'} · {pl.acked?'Service รับแล้ว':'รอ Service รับ'}</span>)}</div>}
             {isOpen && <div className="border-t border-slate-800 p-4 space-y-4">
               <PhaseRibbon project={p} state={state} role={role} onHandoff={onHandoff} onReject={onReject} onAck={onAck}/>
-              <ProjectBom state={state} project={p} role={role} canEdit={canEdit} onAddBom={onAddBom} onUpdateBom={onUpdateBom} onDeleteBom={onDeleteBom} onSendBom={onSendBom} onUpdateProject={onUpdateProject}/>
+              <ProjectBom state={state} project={p} role={role} canEdit={canEdit} onAddBom={onAddBom} onUpdateBom={onUpdateBom} onDeleteBom={onDeleteBom} onSendBom={onSendBom} onUpdateProject={onUpdateProject} onUpdateCustomer={onUpdateCustomer}/>
               <Card className="p-4"><h3 className="text-slate-200 font-semibold mb-3 flex items-center gap-2">📜 ประวัติการส่งงาน (Audit Timeline)</h3><HandoffTimeline list={(state.handoffs||[]).filter(h=>h.project_id===p.id)}/></Card>
             </div>}
           </Card>
@@ -3025,8 +3098,8 @@ function App(){
           {page==='dashboard'  && <Dashboard state={state} onNav={setPage} onSelectProject={goProject} onOpenPO={setPoProject}/>}
           {page==='sales'      && <SalesPipeline state={state} role={role} onAddCustomer={handleAddCustomer} onUpdateCustomer={handleUpdateCustomer} onCreateSR={handleCreateSR} onUpdateSR={handleUpdateSR} onTask={handleTask} onDeleteCustomer={(id)=>handleDeleteRow('customers','customers',id)}/>}
           {page==='sales-sr'   && <SalesSR state={state} role={role} onUpdateCustomer={handleUpdateCustomer} onClearReturn={(id)=>handleUpdateSR(id,{returned:false,return_note:null})}/>}
-          {page==='project'    && <ProjectDept state={state} role={role} onCreateStock={handleCreateStock} genDefaults={genDefaults} onGoStocks={()=>setPage('project-stocks')} onReturnSR={(id,note)=>handleUpdateSR(id,{returned:true,return_note:note})}/>}
-          {page==='project-stocks' && <ProjectStocks state={state} role={role} onAddBom={handleAddBom} onUpdateBom={handleUpdateBom} onDeleteBom={handleDeleteBom} onSendBom={handleSendBom} onUpdateProject={handleUpdateProject} onHandoff={handleHandoff} onReject={handleReject} onAck={handleAck} onDeleteProject={(id)=>handleDeleteRow('projects','projects',id)}/>}
+          {page==='project'    && <ProjectDept state={state} role={role} onCreateStock={handleCreateStock} genDefaults={genDefaults} onGoStocks={()=>setPage('project-stocks')} onReturnSR={(id,note)=>handleUpdateSR(id,{returned:true,return_note:note})} onUpdateCustomer={handleUpdateCustomer}/>}
+          {page==='project-stocks' && <ProjectStocks state={state} role={role} onAddBom={handleAddBom} onUpdateBom={handleUpdateBom} onDeleteBom={handleDeleteBom} onSendBom={handleSendBom} onUpdateProject={handleUpdateProject} onUpdateCustomer={handleUpdateCustomer} onHandoff={handleHandoff} onReject={handleReject} onAck={handleAck} onDeleteProject={(id)=>handleDeleteRow('projects','projects',id)}/>}
           {page==='project-inventory' && <ProjectInventory state={state} role={role} onWithdraw={handleWithdrawSR} onApprove={handleApprovePlan} onReject={handleRejectPlan}/>}
           {page==='project-catalog' && <CatalogSettings rows={state.catalog} canEdit={role==='project'||role==='developer'} onAdd={handleAddCatalog} onUpdateRow={handleUpdateRow} onDeleteRow={handleDeleteRow} onImport={handleImportCatalog}/>}
           {page==='purchasing' && <Procurement state={state} role={role} onUpdateBom={handleUpdateBom} onCreatePO={handleCreatePO} onOpenPO={setPoProject} genPoNo={genPoNo}/>}
