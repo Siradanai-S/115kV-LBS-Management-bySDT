@@ -97,6 +97,8 @@ async function fetchFxToTHB(cur){
   catch(e){ return FX_FALLBACK[cur]||1; }
 }
 const BOM_CAT = ['LBS','Accessory'];
+const LBS_EPICOR_CODES = ['01-032-01-00-001'];   // Epicor Code ที่นับเป็น LBS — โค้ดอื่นทั้งหมด = Accessory (เพิ่มโค้ดใหม่ในลิสต์นี้)
+const catOfCode = code => LBS_EPICOR_CODES.includes(String(code||'').trim()) ? 'LBS' : 'Accessory';
 const PROJECT_PHASES = ['Phase 1','Phase 2','Phase 3'];
 const MONTHS_TH = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
 // เหตุการณ์ที่ส่งแจ้งเตือนได้ (LINE/Email) — key ใช้เป็นชื่อคอลัมน์ ev_<key> ในตั้งค่า
@@ -1623,7 +1625,10 @@ function BomRoundCard({state, project, n, role, canEdit, onAddBom, onUpdateBom, 
   const [form, setForm] = useState(BOM_BLANK);
   const [open, setOpen] = useState(false);
   const [show, setShow] = useState(false);              // พับ/กางรายการของครั้งนี้ (เริ่มต้นซ่อน)
-  const editable = canEdit && (!sent || isDev(role));   // Developer แก้ไข/ลบรายการได้แม้ส่งจัดซื้อแล้ว
+  const editable = canEdit && (!sent || isDev(role));   // Developer แก้ไข/ลบรายการเดิมได้แม้ส่งจัดซื้อแล้ว
+  const canAdd   = canEdit && !sent;                    // ส่งจัดซื้อแล้ว "เพิ่มรายการ" ไม่ได้ทุก role — ต้องสร้าง BOM List ครั้งใหม่ใน Job เดิม
+  const custLBS  = rCust ? custBomLBS(state, project.id, rCust.id) : 0;   // LBS ที่ลงให้ลูกค้ารายนี้แล้วทั้ง Stock (ทุกครั้ง/รอบ)
+  const lbsBlocked = form.category==='LBS' && rCust && (custLBS + num(form.quantity)) > num(rCust.lbs_qty);   // เกินโควตาลูกค้า → ห้ามบันทึก
   // เปลี่ยนสกุลเงิน → ดึงเรตปัจจุบันมาเติมช่อง FX อัตโนมัติ (แก้มือทับได้)
   const onCurrency = async v => { setForm(f=>({...f, currency:v, fx_rate:v==='THB'?1:(FX_FALLBACK[v]||f.fx_rate||1)})); if(v!=='THB'){ const rate=await fetchFxToTHB(v); setForm(f=> f.currency===v ? {...f, fx_rate:rate} : f); } };
   return (
@@ -1633,16 +1638,16 @@ function BomRoundCard({state, project, n, role, canEdit, onAddBom, onUpdateBom, 
         <div className="flex items-center gap-2">
           {items.length>0 && <button onClick={()=>exportXLSX(`${name}.xlsx`, `ครั้ง${n}`, [['Epicor Code','Description','Category','Due Date','IUM','Qty','Currency','Cost/unit','FX','Total THB','Project Phase','PO Status'], ...items.map(b=>[b.epicor_code,b.description,b.category,b.due_date,b.ium,b.quantity,b.currency,b.unit_cost,b.fx_rate,Math.round(lineTHB(b)),b.project_phase,b.po_status])])} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:'#16a34a22',color:'#16a34a'}}>⬇ Excel</button>}
           {editable && !sent && items.length>0 && <button onClick={()=>{ if(confirm(`ส่ง ${name} (${items.length} รายการ) ให้จัดซื้อ?`)) onSendBom(project.id, n); }} className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-1.5" style={{background:'#16a34a',color:'#0b0f17'}}>{Icon.send} ส่ง BOM (ครั้ง{n}) ให้จัดซื้อ</button>}
-          {editable && <button onClick={()=>{ setShow(true); setOpen(o=>!o); }} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:'#f9731622',color:'#f97316'}}>{Icon.plus} เพิ่มรายการ</button>}
+          {canAdd && <button onClick={()=>{ setShow(true); setOpen(o=>!o); }} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:'#f9731622',color:'#f97316'}}>{Icon.plus} เพิ่มรายการ</button>}
           {onDeleteRound && <button onClick={()=>onDeleteRound(n)} title="ลบ Material List ครั้งนี้ (Developer)" className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:'#f43f5e22',color:'#f43f5e'}}>{Icon.trash} ลบครั้งนี้</button>}
         </div>
       </div>
       {show && <>
-      {open && editable && (
+      {open && canAdd && (
         <div className="px-5 py-4 bg-slate-800/30 border-b border-slate-800 grid grid-cols-2 md:grid-cols-6 gap-3 items-end">
-          <div><Lbl>Epicor Code</Lbl><CodeSearch value={form.epicor_code} catalog={state.catalog} onChange={v=>setForm({...form,epicor_code:v})} onPick={c=>setForm(f=>({...f, epicor_code:c.epicor_code, description:c.description||f.description, ium:c.ium||f.ium}))}/></div>
+          <div><Lbl>Epicor Code</Lbl><CodeSearch value={form.epicor_code} catalog={state.catalog} onChange={v=>setForm(f=>({...f, epicor_code:v, category:catOfCode(v)}))} onPick={c=>setForm(f=>({...f, epicor_code:c.epicor_code, description:c.description||f.description, ium:c.ium||f.ium, category:catOfCode(c.epicor_code)}))}/></div>
           <div className="col-span-2"><Lbl>Description</Lbl><Inp value={form.description} onChange={v=>setForm({...form,description:v})}/></div>
-          <div><Lbl>Category</Lbl><Sel value={form.category} onChange={v=>setForm({...form,category:v})} options={BOM_CAT}/></div>
+          <div><Lbl>Category (อัตโนมัติจาก Code)</Lbl><div className="py-1.5"><Pill color={form.category==='LBS'?'#f97316':'#64748b'}>{form.category}</Pill></div></div>
           <div><Lbl>Due Date</Lbl><Inp type="date" value={form.due_date} onChange={v=>setForm({...form,due_date:v})}/></div>
           <div><Lbl>IUM</Lbl><Inp value={form.ium} onChange={v=>setForm({...form,ium:v})}/></div>
           <div><Lbl>Qty</Lbl><Inp type="number" value={form.quantity} onChange={v=>setForm({...form,quantity:num(v)})}/></div>
@@ -1650,10 +1655,18 @@ function BomRoundCard({state, project, n, role, canEdit, onAddBom, onUpdateBom, 
           <div><Lbl>Cost/unit</Lbl><Inp type="number" value={form.unit_cost} onChange={v=>setForm({...form,unit_cost:num(v)})}/></div>
           {form.currency!=='THB' && <div><div className="flex items-center gap-1 mb-1"><span className="text-[11px] text-slate-500">FX (฿/{form.currency})</span><button type="button" onClick={()=>onCurrency(form.currency)} title="ดึงเรตปัจจุบัน" className="text-[10px] text-sky-500 hover:text-sky-400">🔄</button></div><Inp type="number" value={form.fx_rate} onChange={v=>setForm({...form,fx_rate:num(v)})}/></div>}
           <div><Lbl>Project Phase</Lbl><Inp value={form.project_phase} onChange={v=>setForm({...form,project_phase:v})} placeholder="เช่น Phase 1 / งวดที่ 1"/></div>
-          {form.category==='LBS' && rCust && (()=>{ const after=roundLBS+num(form.quantity); return after>num(rCust.lbs_qty) ? <div className="col-span-2 md:col-span-6 text-[11px] text-rose-500">⚠ LBS ของ {rCust.name} จะเกินโควตา ({after}/{rCust.lbs_qty})</div> : <div className="col-span-2 md:col-span-6 text-[11px] text-slate-500">LBS {rCust.name}: {roundLBS} + {num(form.quantity)} = {after}/{rCust.lbs_qty}</div>; })()}
+          {/* LBS → โชว์ Serial LVB/OM จากข้อมูลลูกค้าของ Job นี้ (อัตโนมัติ, แหล่งจริง = customers.serials) */}
+          {form.category==='LBS' && rCust && (
+            <div className="col-span-2 md:col-span-6 rounded-lg border border-slate-800 bg-slate-900/40 px-3 py-2">
+              <div className="text-[11px] font-semibold text-slate-300 mb-1.5">🔢 Serial LVB/OM ของ {rCust.name} (อัตโนมัติจากข้อมูลลูกค้า — แก้ที่ section Serial ของ Job)</div>
+              <div className="flex flex-wrap gap-1.5">{serialPairs(rCust).map((sp,i)=><span key={i} className="text-[10px] mono rounded-md px-2 py-0.5" style={{background:'#0ea5e918',color:'#0ea5e9'}}>#{i+1} LVB: {sp.lvb||'—'} · OM: {sp.om||'—'}</span>)}</div>
+            </div>
+          )}
+          {form.category==='LBS' && !rCust && <div className="col-span-2 md:col-span-6 text-[11px] text-amber-600">⚠ Job นี้ไม่ได้อ้างลูกค้า — ไม่มี Serial/โควตา LBS ให้ตรวจสอบ</div>}
+          {form.category==='LBS' && rCust && (()=>{ const after=custLBS+num(form.quantity); return lbsBlocked ? <div className="col-span-2 md:col-span-6 text-[11px] text-rose-500 font-semibold">⛔ สั่งซื้อ LBS เกินจำนวนของลูกค้าไม่ได้ — {rCust.name} ({after}/{rCust.lbs_qty} รวมทุกครั้งใน Stock)</div> : <div className="col-span-2 md:col-span-6 text-[11px] text-slate-500">LBS {rCust.name} (รวมทุกครั้งใน Stock): {custLBS} + {num(form.quantity)} = {after}/{rCust.lbs_qty}</div>; })()}
           <div className="col-span-2 md:col-span-6 flex justify-end gap-2">
             <button onClick={()=>setOpen(false)} className="text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300">ยกเลิก</button>
-            <button onClick={()=>{ if(!form.description)return; onAddBom({project_id:project.id, round:n, is_sent:false, ...form, cust_id:roundMeta(project,n).cust_id||null, fx_rate:form.currency!=='THB'?(num(form.fx_rate)||1):1, po_status:'Awaiting PO'}); setForm(BOM_BLANK); setOpen(false); }} className="text-xs px-3 py-1.5 rounded-lg font-medium" style={{background:'#f97316',color:'#0b0f17'}}>บันทึกเข้า ครั้ง{n}</button>
+            <button onClick={()=>{ if(!form.description || lbsBlocked)return; onAddBom({project_id:project.id, round:n, is_sent:false, ...form, category:catOfCode(form.epicor_code), cust_id:roundMeta(project,n).cust_id||null, fx_rate:form.currency!=='THB'?(num(form.fx_rate)||1):1, po_status:'Awaiting PO'}); setForm(BOM_BLANK); setOpen(false); }} disabled={lbsBlocked} className="text-xs px-3 py-1.5 rounded-lg font-medium disabled:opacity-40 disabled:cursor-not-allowed" style={{background:'#f97316',color:'#0b0f17'}}>บันทึกเข้า ครั้ง{n}</button>
           </div>
         </div>
       )}
@@ -1670,7 +1683,7 @@ function BomRoundCard({state, project, n, role, canEdit, onAddBom, onUpdateBom, 
           {items.map(b => (
             <tr key={b.id} className="border-b border-slate-800/60">
               <td className="px-4 py-3 mono text-slate-300">{b.epicor_code||'—'}</td>
-              <td className="px-3 py-3 text-slate-200">{b.description}{b.category==='LBS'&&(b.serial_lvb||b.serial_om)?<div className="text-[10px] text-slate-500 mono">{b.serial_lvb?`S/N LVB: ${b.serial_lvb}`:''}{b.serial_lvb&&b.serial_om?' · ':''}{b.serial_om?`S/N OM: ${b.serial_om}`:''}</div>:''}</td>
+              <td className="px-3 py-3 text-slate-200">{b.description}{b.category==='LBS'&&(b.serial_lvb||b.serial_om)?<div className="text-[10px] text-slate-500 mono">{b.serial_lvb?`S/N LVB: ${b.serial_lvb}`:''}{b.serial_lvb&&b.serial_om?' · ':''}{b.serial_om?`S/N OM: ${b.serial_om}`:''}</div>:(b.category==='LBS'&&rCust?<div className="text-[10px] text-sky-600 mono">{serialPairs(rCust).map((sp,i)=>`#${i+1} ${sp.lvb||'—'}/${sp.om||'—'}`).join(' · ')}</div>:'')}</td>
               <td className="px-3 py-3"><Pill color={b.category==='LBS'?'#f97316':'#64748b'}>{b.category}</Pill></td>
               <td className="px-3 py-3 mono text-slate-400">{b.due_date||'—'}</td>
               <td className="px-3 py-3 text-slate-400">{b.ium}</td>
@@ -1686,8 +1699,8 @@ function BomRoundCard({state, project, n, role, canEdit, onAddBom, onUpdateBom, 
         {items.length>0 && <tfoot><tr className="border-t border-slate-700"><td colSpan="7" className="px-4 py-3 text-right text-slate-400 text-xs">รวม ครั้ง{n} (฿)</td><td className="px-3 py-3 text-right font-bold text-slate-100 mono">{baht(matValue)}</td><td colSpan="3"/></tr></tfoot>}
       </table>
       </div>
-      {sent && canEdit && !isDev(role) && <p className="px-5 py-2.5 text-[11px] text-emerald-700/80 border-t border-slate-800">ครั้งนี้ส่งให้จัดซื้อแล้ว — แก้ไขรายการไม่ได้ (ฝ่ายจัดซื้อจะอัปเดตสถานะ PO กลับมา)</p>}
-      {sent && isDev(role) && <p className="px-5 py-2.5 text-[11px] text-amber-600/80 border-t border-slate-800">⚙ Developer: ครั้งนี้ส่งจัดซื้อแล้ว แต่ยังแก้ไข/ลบรายการได้ (สิทธิ์ผู้ดูแลระบบ)</p>}
+      {sent && canEdit && !isDev(role) && <p className="px-5 py-2.5 text-[11px] text-emerald-700/80 border-t border-slate-800">ครั้งนี้ส่งให้จัดซื้อแล้ว — เพิ่ม/แก้ไขรายการไม่ได้ · ต้องการสั่งเพิ่ม กด <b>"เพิ่มครั้งใน Job นี้"</b> เพื่อสร้าง BOM List ครั้งใหม่ (ฝ่ายจัดซื้อจะอัปเดตสถานะ PO กลับมา)</p>}
+      {sent && isDev(role) && <p className="px-5 py-2.5 text-[11px] text-amber-600/80 border-t border-slate-800">⚙ Developer: ครั้งนี้ส่งจัดซื้อแล้ว — ยังแก้ไข/ลบรายการเดิมได้ แต่เพิ่มรายการใหม่ไม่ได้ (สร้าง BOM List ครั้งใหม่ใน Job นี้แทน)</p>}
       </>}
     </Card>
   );
@@ -1753,19 +1766,19 @@ function ProjectStocks({state, role, onAddBom, onUpdateBom, onDeleteBom, onSendB
 }
 
 /* ============================ PURCHASING DEPARTMENT ============================ */
-const PO_FORM_BLANK = { po_no:'', supplier:'', expected_date:'', status:'ออกแล้ว', pdf_name:null, pdf_url:null, qtys:{} };
 const posCovering = (state, bomId) => (state.pos||[]).filter(o=>(o.lines||[]).some(l=>l.bom_id===bomId));
 function Procurement({state, role, onUpdateBom, onCreatePO, onOpenPO, genPoNo}){
   const canEdit = role==='developer' || role==='purchasing';
   const sentProjects = state.projects.filter(p=> state.bom.some(b=>b.project_id===p.id && b.is_sent));   // เฉพาะ Stock ที่ส่ง BOM (ครั้งใด ๆ) มาแล้ว
   const [expanded,setExpanded]=useState({});            // การ์ดที่กางอยู่ (เริ่มต้นซ่อนทั้งหมด)
-  const [poForm,setPoForm]=useState(PO_FORM_BLANK); const [poOpen,setPoOpen]=useState(null);
+  const [linePO,setLinePO]=useState(null);              // popup ออก PO รายรายการ: {pid, b, rem, po_no, supplier, expected_date, qty, pdf_name, pdf_url}
   const poCount = pid => state.pos.filter(o=>o.project_id===pid).length;
   const toggleCard = id => setExpanded(e=>({...e,[id]:!e[id]}));
-  const startPO = (pid) => { setExpanded(e=>({...e,[pid]:true})); setPoForm({...PO_FORM_BLANK, qtys:{}, po_no:''}); setPoOpen(pid); };   // เริ่มว่าง — บังคับกรอกเลข PO เอง
-  const onPdf = (file) => { if(!file) return; const reader=new FileReader(); reader.onload=()=>setPoForm(f=>({...f, pdf_name:file.name, pdf_url:reader.result})); reader.readAsDataURL(file); };
-  const toggleQty = (id, remaining) => setPoForm(f=>{ const q={...f.qtys}; if(q[id]!=null) delete q[id]; else q[id]=remaining; return {...f,qtys:q}; });
-  const setQty = (id, v, remaining) => setPoForm(f=>({...f, qtys:{...f.qtys, [id]: Math.max(1, Math.min(remaining, num(v)))}}));
+  const openLinePO = (pid, b, rem) => setLinePO({ pid, b, rem, po_no:'', supplier:'', expected_date:'', qty:rem, pdf_name:null, pdf_url:null });   // เริ่มว่าง — บังคับกรอกเลข PO เอง
+  const onPdf = (file) => { if(!file) return; const reader=new FileReader(); reader.onload=()=>setLinePO(f=>f?{...f, pdf_name:file.name, pdf_url:reader.result}:f); reader.readAsDataURL(file); };
+  const lineAmount = f => Math.max(1,Math.min(num(f.qty),f.rem)) * num(f.b.unit_cost) * (f.b.currency&&f.b.currency!=='THB' ? (num(f.b.fx_rate)||1) : 1);
+  const submitLinePO = () => { const f=linePO; if(!f || !f.po_no.trim() || num(f.qty)<1) return; const qty=Math.min(num(f.qty), f.rem);
+    onCreatePO(f.pid, { po_no:f.po_no.trim(), supplier:f.supplier, expected_date:f.expected_date||null, status:'ออกแล้ว', amount:lineAmount(f), pdf_name:f.pdf_name, pdf_url:f.pdf_url }, [{bom_id:f.b.id, qty}]); setLinePO(null); };   // Submit → สถานะรายการเป็น PO Received อัตโนมัติ (db.addPO)
   const [q,setQ]=useState('');
   const list = sentProjects.filter(p=> !q || (p.bom_no+' '+p.project_stock_no+' '+p.name).toLowerCase().includes(q.toLowerCase()));
   return (
@@ -1776,54 +1789,21 @@ function Procurement({state, role, onUpdateBom, onCreatePO, onOpenPO, genPoNo}){
         const items = state.bom.filter(b=>b.project_id===p.id && b.is_sent);   // เฉพาะรายการที่ส่งจัดซื้อแล้ว (รอบที่ส่งแล้ว)
         const delivered = items.filter(b=>b.po_status==='Delivered').length;
         const fullyOrdered = items.filter(b=>bomRemaining(state,b)<=0).length;
-        const available = items.filter(b=>bomRemaining(state,b)>0);   // ยังลงใบ PO ไม่ครบจำนวน
         const isExp = !!expanded[p.id];
-        const formOpen = poOpen===p.id && canEdit;
-        const lines = Object.entries(poForm.qtys).map(([id,qty])=>({bom_id:Number(id), qty:num(qty)})).filter(l=>l.qty>0);
-        const selTHB = formOpen ? lines.reduce((s,l)=>{ const b=items.find(x=>x.id===l.bom_id); return s + (b? num(l.qty)*num(b.unit_cost)*(b.currency&&b.currency!=='THB'?(num(b.fx_rate)||1):1) : 0); },0) : 0;
         return (
           <Card key={p.id} tone="gray" className="overflow-hidden">
             {/* หัวการ์ด — คลิกเพื่อกาง/ยุบ */}
             <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between flex-wrap gap-2 cursor-pointer hover:bg-slate-800/20" onClick={()=>toggleCard(p.id)}>
-              <div><h3 className="text-slate-200 font-semibold flex items-center gap-2"><span className="text-slate-500">{isExp?'▼':'▶'}</span>{Icon.cart} {p.bom_no} <span className="text-[11px] text-slate-500 mono">{p.project_stock_no} · {p.name}</span></h3>
-                <div className="text-[11px] text-slate-500 mt-0.5 ml-5">ของเข้าแล้ว {delivered}/{items.length} · ลงใบ PO ครบ {fullyOrdered}/{items.length} · {poCount(p.id)} PO · กำหนดส่ง {p.delivery_date||'—'}</div></div>
+              <div><h3 className="text-slate-200 font-semibold flex items-center gap-2"><span className="text-slate-500">{isExp?'▼':'▶'}</span>{Icon.cart} <span className="mono">{p.bom_no ? `${p.bom_no}·${p.project_stock_no}` : p.project_stock_no}</span></h3>
+                <div className="text-[11px] text-slate-500 mt-0.5 ml-5">{p.name} · ของเข้าแล้ว {delivered}/{items.length} · ลงใบ PO ครบ {fullyOrdered}/{items.length} · {poCount(p.id)} PO · กำหนดส่ง {p.delivery_date||'—'}</div></div>
               <div className="flex items-center gap-2" onClick={e=>e.stopPropagation()}>
+                {items.length>0 && <button onClick={()=>exportXLSX(`${p.bom_no||p.project_stock_no}-bom.xlsx`, 'BOM', [['Epicor Code','Description','Cat','Due','IUM','Qty','Cost/unit','Total(฿)','Phase'], ...items.map(b=>[b.epicor_code,b.description,b.category,b.due_date,b.ium,b.quantity,num(b.unit_cost),Math.round(lineTHB(b)),b.project_phase])])} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={{background:'#16a34a22',color:'#16a34a'}}>⬇ Excel</button>}
                 {poCount(p.id)>0 && <button onClick={()=>onOpenPO(p.id)} className="inline-flex items-center gap-1 text-xs font-medium rounded-md px-2.5 py-1.5" style={{background:'#3b82f622',color:'#2563eb'}}>{poCount(p.id)} PO →</button>}
-                {canEdit && <button onClick={()=>startPO(p.id)} disabled={available.length===0} title={available.length?'':'ทุกรายการลงใบ PO ครบจำนวนแล้ว'} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5" style={available.length?{background:'#f43f5e22',color:'#f43f5e'}:{background:'#e2e8f0',color:'#94a3b8',cursor:'not-allowed'}}>{Icon.plus} ออก PO</button>}
               </div>
             </div>
 
             {isExp && (<>
-              {/* ฟอร์มออก PO — เลือกรายการ + ระบุจำนวนต่อรายการ (แยกบางส่วนได้) */}
-              {formOpen && (
-                <div className="px-5 py-4 bg-slate-800/30 border-b border-slate-800 space-y-3">
-                  <div className="text-[12px] text-slate-300 font-medium">เลือกรายการ BOM เข้าใบสั่งซื้อ + ระบุจำนวน <span className="text-slate-500">(ใส่จำนวนได้ไม่เกินที่เหลือ — ลงครบแล้วจะถูกตัดออก)</span></div>
-                  <div className="space-y-1.5">
-                    {available.length===0 && <div className="text-[12px] text-slate-500">— ทุกรายการลงใบ PO ครบจำนวนแล้ว —</div>}
-                    {available.map(b=>{ const rem=bomRemaining(state,b); const on=poForm.qtys[b.id]!=null; return (
-                      <div key={b.id} className="flex items-center gap-2 rounded-lg border p-2" style={on?{borderColor:'#f43f5e',background:'#f43f5e12'}:{borderColor:'#cbd5e1aa'}}>
-                        <input type="checkbox" checked={on} onChange={()=>toggleQty(b.id, rem)} className="accent-rose-500"/>
-                        <span className="flex-1 text-[12px] text-slate-200"><Pill color={b.category==='LBS'?'#f97316':'#64748b'}>{b.category}</Pill> {b.epicor_code} · {b.description} <span className="text-[10px] text-slate-500">(ครั้ง{roundOf(b)})</span></span>
-                        <span className="text-[10px] text-slate-500">เหลือ {rem}/{b.quantity} {b.ium}</span>
-                        {on && <input type="number" value={poForm.qtys[b.id]} min="1" max={rem} onChange={e=>setQty(b.id, e.target.value, rem)} className="w-16 bg-slate-900 border border-rose-500/50 rounded px-2 py-1 text-xs text-rose-800 text-center focus:outline-none"/>}
-                      </div>
-                    );})}
-                  </div>
-                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3 items-end pt-1">
-                    <div><Lbl>เลขที่ PO *</Lbl><Inp value={poForm.po_no} onChange={v=>setPoForm({...poForm,po_no:v})} placeholder="ระบุเลขที่ PO (จำเป็น)"/></div>
-                    <div className="col-span-2"><Lbl>ผู้ขาย (Supplier)</Lbl><Inp value={poForm.supplier} onChange={v=>setPoForm({...poForm,supplier:v})}/></div>
-                    <div><Lbl>กำหนดรับ</Lbl><Inp type="date" value={poForm.expected_date} onChange={v=>setPoForm({...poForm,expected_date:v})}/></div>
-                    <div><Lbl>สถานะ</Lbl><Sel value={poForm.status} onChange={v=>setPoForm({...poForm,status:v})} options={['รอออก','ออกแล้ว','กำลังส่ง','รับครบ']}/></div>
-                    <div className="col-span-2"><Lbl>แนบไฟล์ PDF</Lbl><input type="file" accept="application/pdf" onChange={e=>onPdf(e.target.files[0])} className="w-full text-[11px] text-slate-400 file:mr-2 file:rounded file:border-0 file:bg-slate-700 file:text-slate-200 file:px-2 file:py-1"/>{poForm.pdf_name && <span className="text-[10px] text-emerald-600">✓ {poForm.pdf_name}</span>}</div>
-                    <div><Lbl>มูลค่ารวม (฿)</Lbl><div className="text-sm font-bold mono py-1.5" style={{color:'#f97316'}}>{baht(selTHB)}</div></div>
-                    <div className="col-span-2 flex items-end justify-end gap-2">
-                      <button onClick={()=>setPoOpen(null)} className="text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300">ยกเลิก</button>
-                      <button onClick={()=>{ if(!lines.length||!poForm.po_no.trim())return; onCreatePO(p.id, { po_no:poForm.po_no.trim(), supplier:poForm.supplier, expected_date:poForm.expected_date||null, status:poForm.status, amount:selTHB, pdf_name:poForm.pdf_name, pdf_url:poForm.pdf_url }, lines); setPoOpen(null); }} disabled={!lines.length||!poForm.po_no.trim()} className="text-xs px-3 py-1.5 rounded-lg font-medium" style={(lines.length&&poForm.po_no.trim())?{background:'#f43f5e',color:'#0b0f17'}:{background:'#e2e8f0',color:'#94a3b8'}}>บันทึก PO ({lines.length})</button>
-                    </div>
-                  </div>
-                </div>
-              )}
-              {/* ตารางรายการ BOM ครบทุกคอลัมน์ + สถานะ PO (แจ้งกลับ Project) */}
+              {/* ตารางรายการ BOM ครบทุกคอลัมน์ + สถานะ PO (แจ้งกลับ Project) — ออก PO รายรายการที่ปุ่มท้ายแถว */}
               <div className="overflow-x-auto">
               <table className="w-full text-sm whitespace-nowrap">
                 <thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-800">
@@ -1846,8 +1826,14 @@ function Procurement({state, role, onUpdateBom, onCreatePO, onOpenPO, genPoNo}){
                       <td className="px-3 py-3 text-slate-400 text-[12px]">{b.project_phase}</td>
                       <td className="px-3 py-3">
                         <div className="flex flex-col gap-1 items-start">
-                          {canEdit ? <select value={b.po_status} onChange={e=>onUpdateBom(b.id,{po_status:e.target.value})} className="text-xs rounded-md px-2 py-1.5 border bg-slate-900" style={{borderColor:poColor(b.po_status)+'66',color:poColor(b.po_status)}}><option className="bg-slate-800 text-slate-100">Awaiting PO</option><option className="bg-slate-800 text-slate-100">PO Received</option><option className="bg-slate-800 text-slate-100">Delivered</option></select> : <Pill color={poColor(b.po_status)}>{b.po_status}</Pill>}
-                          {covers.length>0 ? covers.map(po=>{ const ln=(po.lines||[]).find(l=>l.bom_id===b.id); return <span key={po.id} className="text-[10px] text-indigo-600 flex items-center gap-1.5 mono">{po.po_no} ×{ln?ln.qty:''}{po.pdf_url && <button onClick={()=>window.open(po.pdf_url,'_blank')} className="text-sky-600 hover:underline">📎</button>}</span>; }) : <span className="text-[10px] text-slate-600">ยังไม่ลงใบ PO</span>}
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {/* ห้ามแก้สถานะจนกว่าจะ Submit PO — ก่อนมี PO โชว์ pill + ปุ่มออก PO เท่านั้น · หลังมี PO เหลือปุ่ม Update Delivered */}
+                            <Pill color={poColor(b.po_status)}>{b.po_status}{covers.length>0 && b.po_status==='PO Received' ? ' · รอ Delivered' : ''}</Pill>
+                            {canEdit && covers.length===0 && rem>0 && <button onClick={()=>openLinePO(p.id, b, rem)} className="text-[11px] font-semibold rounded-md px-2.5 py-1" style={{background:'#f43f5e',color:'#fff'}}>🧾 ออก PO</button>}
+                            {canEdit && covers.length>0 && b.po_status!=='Delivered' && <button onClick={()=>{ if(confirm(`ยืนยันรับของเข้า (Delivered): ${b.epicor_code} · ${b.description}?`)) onUpdateBom(b.id,{po_status:'Delivered'}); }} className="text-[11px] font-semibold rounded-md px-2.5 py-1" style={{background:'#16a34a',color:'#fff'}}>✓ Update Delivered</button>}
+                            {canEdit && covers.length>0 && rem>0 && <button onClick={()=>openLinePO(p.id, b, rem)} className="text-[11px] font-medium rounded-md px-2 py-1 border" style={{borderColor:'#f43f5e66',color:'#f43f5e'}}>+ PO เพิ่ม (เหลือ {rem})</button>}
+                          </div>
+                          {covers.length>0 ? covers.map(po=>{ const ln=(po.lines||[]).find(l=>l.bom_id===b.id); return <span key={po.id} className="text-[10px] text-indigo-600 flex items-center gap-1.5 mono">{po.po_no} ×{ln?ln.qty:''}{po.pdf_url && <button onClick={()=>window.open(po.pdf_url,'_blank')} className="text-sky-600 hover:underline">📎</button>}</span>; }) : <span className="text-[10px] text-slate-600">ยังไม่ลงใบ PO — กด "ออก PO" เพื่อออกใบสั่งซื้อ</span>}
                         </div>
                       </td>
                     </tr>
@@ -1860,6 +1846,37 @@ function Procurement({state, role, onUpdateBom, onCreatePO, onOpenPO, genPoNo}){
         );
       })}
       {!canEdit && sentProjects.length>0 && <p className="text-[11px] text-slate-500">อัปเดตสถานะ PO / ออก PO ได้เฉพาะฝ่ายจัดซื้อ และ Developer (จำลองสิทธิ์ RLS)</p>}
+
+      {/* Popup ออก PO รายรายการ — กรอก เลขที่ PO / Supplier / กำหนดรับ / จำนวน → Submit PO (สถานะเป็น PO Received อัตโนมัติ) */}
+      {linePO && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onClick={()=>setLinePO(null)}>
+          <div className="w-full max-w-lg rounded-xl border border-slate-700 bg-slate-900 fade-up" onClick={e=>e.stopPropagation()}>
+            <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between">
+              <div className="text-slate-100 font-semibold">🧾 ออก PO — <span className="mono text-[13px]">{linePO.b.epicor_code}</span></div>
+              <button onClick={()=>setLinePO(null)} className="text-slate-400 hover:text-slate-100">{Icon.x}</button>
+            </div>
+            <div className="p-5 space-y-3">
+              <div className="rounded-lg border border-slate-800 bg-slate-800/30 px-3 py-2 text-[12px] text-slate-300">
+                <Pill color={linePO.b.category==='LBS'?'#f97316':'#64748b'}>{linePO.b.category}</Pill> {linePO.b.description}
+                <span className="text-slate-500"> · เหลือให้สั่ง {linePO.rem}/{linePO.b.quantity} {linePO.b.ium} · {curSym(linePO.b.currency)}{num(linePO.b.unit_cost).toLocaleString()}/หน่วย{linePO.b.currency!=='THB'?` @${linePO.b.fx_rate}`:''}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><Lbl>เลขที่ PO *</Lbl><Inp value={linePO.po_no} onChange={v=>setLinePO({...linePO,po_no:v})} placeholder="ระบุเลขที่ PO (จำเป็น)"/></div>
+                <div><Lbl>ผู้ขาย (Supplier)</Lbl><Inp value={linePO.supplier} onChange={v=>setLinePO({...linePO,supplier:v})}/></div>
+                <div><Lbl>กำหนดรับ</Lbl><Inp type="date" value={linePO.expected_date} onChange={v=>setLinePO({...linePO,expected_date:v})}/></div>
+                <div><Lbl>จำนวน (ไม่เกิน {linePO.rem})</Lbl><Inp type="number" value={linePO.qty} onChange={v=>setLinePO({...linePO,qty:Math.max(1,Math.min(linePO.rem,num(v)))})}/></div>
+                <div><Lbl>แนบไฟล์ PDF (ถ้ามี)</Lbl><input type="file" accept="application/pdf" onChange={e=>onPdf(e.target.files[0])} className="w-full text-[11px] text-slate-400 file:mr-2 file:rounded file:border-0 file:bg-slate-700 file:text-slate-200 file:px-2 file:py-1"/>{linePO.pdf_name && <span className="text-[10px] text-emerald-600">✓ {linePO.pdf_name}</span>}</div>
+                <div><Lbl>มูลค่ารวม (฿)</Lbl><div className="text-sm font-bold mono py-1.5" style={{color:'#f97316'}}>{baht(lineAmount(linePO))}</div></div>
+              </div>
+              <p className="text-[11px] text-slate-500">Submit แล้วสถานะ PO (แจ้งกลับ Project) จะเป็น <b style={{color:'#3b82f6'}}>PO Received</b> อัตโนมัติ — จากนั้นรอกด "✓ Update Delivered" เมื่อของเข้า</p>
+            </div>
+            <div className="px-5 py-3 border-t border-slate-800 flex justify-end gap-2">
+              <button onClick={()=>setLinePO(null)} className="text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300">ยกเลิก</button>
+              <button onClick={submitLinePO} disabled={!linePO.po_no.trim()||num(linePO.qty)<1} className="text-xs px-4 py-1.5 rounded-lg font-semibold disabled:opacity-40" style={{background:'#f43f5e',color:'#fff'}}>Submit PO</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
