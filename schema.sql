@@ -64,6 +64,7 @@ ALTER TABLE customers ADD COLUMN IF NOT EXISTS term_of_payment VARCHAR(120);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS project_name    TEXT;            -- ชื่อโครงการของลูกค้า (ฟอร์มเพิ่มลูกค้า)
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS contract_file_url  TEXT;         -- ไฟล์แนบ PO/สัญญา (บังคับเมื่อสถานะ=ได้รับ PO/ทำสัญญา)
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS contract_file_name TEXT;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS serials JSONB DEFAULT '[]'::jsonb;  -- Serial LVB/OM ต่อ LBS 1 ตัว: [{lvb,om}] ยาว = lbs_qty (ฝ่ายโครงการกรอกก่อนสร้าง Stock)
 
 -- ---------- 3) projects (Project Stock — รวมหลาย SR) ----------
 CREATE TABLE IF NOT EXISTS projects (
@@ -571,6 +572,11 @@ DROP POLICY IF EXISTS p_cust_write ON customers;
 CREATE POLICY p_cust_write ON customers FOR ALL TO authenticated
   USING (is_developer() OR current_department() = 'sales')
   WITH CHECK (is_developer() OR current_department() = 'sales');
+-- ฝ่ายโครงการ UPDATE customers ได้ (กรอก Serial LVB/OM ต่อ LBS ก่อนสร้าง Stock + แก้ในกล่อง Job)
+DROP POLICY IF EXISTS p_cust_upd_project ON customers;
+CREATE POLICY p_cust_upd_project ON customers FOR UPDATE TO authenticated
+  USING (current_department() = 'project')
+  WITH CHECK (current_department() = 'project');
 DROP POLICY IF EXISTS p_sr_write ON sales_requisitions;
 CREATE POLICY p_sr_write ON sales_requisitions FOR ALL TO authenticated
   USING (is_developer() OR current_department() = 'sales')
