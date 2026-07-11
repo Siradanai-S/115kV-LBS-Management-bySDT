@@ -696,10 +696,24 @@ CREATE POLICY p_roles_self ON user_roles FOR SELECT TO authenticated USING (user
 -- ต้องการข้อมูลสาธิตบนฐานข้อมูลเปล่า → รัน  seed-demo.sql  แยกต่างหาก (อย่ารันบน production)
 
 -- ---------- 14) Bootstrap Developer ----------
--- กำหนด siradanai.s@precise.co.th เป็น Developer อัตโนมัติ (รันได้เลย · ถ้ายังไม่สมัคร = no-op, สมัครแล้วรันซ้ำได้)
+-- กำหนด siradanai.s@precise.co.th เป็น Developer อัตโนมัติ (ไม่สนตัวพิมพ์ · ถ้ายังไม่สมัคร = no-op, สมัครแล้วรันซ้ำได้)
 INSERT INTO user_roles (user_id, department, is_developer)
-SELECT id, 'developer', TRUE FROM auth.users WHERE email = 'siradanai.s@precise.co.th'
+SELECT id, 'developer', TRUE FROM auth.users WHERE lower(email) = 'siradanai.s@precise.co.th'
 ON CONFLICT (user_id) DO UPDATE SET is_developer = TRUE, department = 'developer';
+
+-- Trigger: สมัครทีหลังรัน schema ก็ได้ developer อัตโนมัติ (แก้เคส bootstrap ข้างบน no-op เพราะยังไม่สมัคร)
+CREATE OR REPLACE FUNCTION bootstrap_dev_role()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF lower(NEW.email) = 'siradanai.s@precise.co.th' THEN
+    INSERT INTO user_roles (user_id, department, is_developer) VALUES (NEW.id, 'developer', TRUE)
+    ON CONFLICT (user_id) DO UPDATE SET is_developer = TRUE, department = 'developer';
+  END IF;
+  RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS trg_bootstrap_dev ON auth.users;
+CREATE TRIGGER trg_bootstrap_dev AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION bootstrap_dev_role();
 
 -- =====================================================================
 --  Bootstrap หลังสมัครผู้ใช้ผ่านเว็บ:
