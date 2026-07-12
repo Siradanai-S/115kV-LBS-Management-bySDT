@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS sales_requisitions (
   stock_id        BIGINT,                                 -- ถูกดึงเข้า Project Stock ใบไหน (NULL = รอสร้าง)
   created_at      TIMESTAMPTZ DEFAULT NOW()
 );
+ALTER TABLE sales_requisitions ADD COLUMN IF NOT EXISTS stock_id BIGINT;   -- (ตารางรุ่นเก่า) index/FK ถัดไปอ้างถึง
 CREATE INDEX IF NOT EXISTS idx_sr_stock ON sales_requisitions (stock_id);
 -- ตีกลับ SR ให้ฝ่ายขายแก้ (reply ขา Project → Sales)
 ALTER TABLE sales_requisitions ADD COLUMN IF NOT EXISTS returned    BOOLEAN DEFAULT FALSE;
@@ -55,6 +56,7 @@ CREATE TABLE IF NOT EXISTS customers (
   created_at    TIMESTAMPTZ DEFAULT NOW(),
   updated_at    TIMESTAMPTZ DEFAULT NOW()
 );
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS sr_id BIGINT REFERENCES sales_requisitions(id) ON DELETE SET NULL;   -- (ตารางรุ่นเก่า)
 CREATE INDEX IF NOT EXISTS idx_customers_type ON customers (customer_type);
 CREATE INDEX IF NOT EXISTS idx_customers_sr   ON customers (sr_id);
 -- migration (ฐานข้อมูลเดิม): เพิ่มคอลัมน์ติดตาม PO/สัญญา รายลูกค้า + Term of payment
@@ -85,6 +87,7 @@ CREATE TABLE IF NOT EXISTS projects (
   created_at        TIMESTAMPTZ DEFAULT NOW(),
   updated_at        TIMESTAMPTZ DEFAULT NOW()
 );
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS bom_status bom_status_t NOT NULL DEFAULT 'Draft';   -- (ตารางรุ่นเก่า) statement ถัดไปอ้างถึง
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS bom_rounds JSONB DEFAULT '{}'::jsonb;   -- เมตาดาต้าราย Material List/ครั้ง: { "1": {cust_id}, ... } (Job No. + Ref ลูกค้า ต่อครั้ง)
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS jobs       JSONB DEFAULT '{}'::jsonb;   -- Project Job No. ต่อลูกค้า: { "JOB-xxxx-n": {cust_id, sell_price, cost_budget} } (กำไร/ต้นทุนคงเหลือ derive ฝั่ง client)
 CREATE INDEX IF NOT EXISTS idx_projects_phase    ON projects (current_phase);
@@ -118,6 +121,9 @@ CREATE TABLE IF NOT EXISTS bom_items (
   is_sent       BOOLEAN      NOT NULL DEFAULT FALSE,      -- ส่งให้จัดซื้อแล้วหรือยัง (ส่งแยกรายครั้ง)
   created_at    TIMESTAMPTZ DEFAULT NOW()
 );
+-- migration (ตารางรุ่นเก่า): คอลัมน์ที่ index/statement ถัดไปพึ่งพา — กัน 42703 เมื่อ CREATE TABLE no-op
+ALTER TABLE bom_items ADD COLUMN IF NOT EXISTS project_id BIGINT REFERENCES projects(id) ON DELETE CASCADE;
+ALTER TABLE bom_items ADD COLUMN IF NOT EXISTS po_id      BIGINT;
 CREATE INDEX IF NOT EXISTS idx_bom_project ON bom_items (project_id);
 -- migration (ฐานข้อมูลเดิม): เพิ่มคอลัมน์รอบ BOM + Serial LVB/OM ถ้ายังไม่มี
 ALTER TABLE bom_items ADD COLUMN IF NOT EXISTS round      INT     NOT NULL DEFAULT 1;
@@ -151,6 +157,10 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
   notified      BOOLEAN DEFAULT FALSE,                    -- แจ้งกลับฝ่ายโครงการแล้ว
   created_at    TIMESTAMPTZ DEFAULT NOW()
 );
+ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS project_id BIGINT REFERENCES projects(id) ON DELETE CASCADE;
+ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS lines    JSONB DEFAULT '[]';
+ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS pdf_name TEXT;
+ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS pdf_url  TEXT;
 CREATE INDEX IF NOT EXISTS idx_po_project ON purchase_orders (project_id);
 
 -- FK: bom_items.po_id → purchase_orders.id (เพิ่มหลัง purchase_orders ถูกสร้าง)
@@ -172,6 +182,8 @@ CREATE TABLE IF NOT EXISTS department_tasks (
   updated_at  TIMESTAMPTZ DEFAULT NOW(),
   CONSTRAINT chk_task_owner CHECK ((customer_id IS NOT NULL) <> (project_id IS NOT NULL))
 );
+ALTER TABLE department_tasks ADD COLUMN IF NOT EXISTS customer_id BIGINT REFERENCES customers(id) ON DELETE CASCADE;
+ALTER TABLE department_tasks ADD COLUMN IF NOT EXISTS project_id  BIGINT REFERENCES projects(id)  ON DELETE CASCADE;
 CREATE INDEX IF NOT EXISTS idx_tasks_customer ON department_tasks (customer_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_project  ON department_tasks (project_id);
 
@@ -193,6 +205,7 @@ CREATE TABLE IF NOT EXISTS service_schedule (
   end_date    DATE,
   note        TEXT
 );
+ALTER TABLE service_schedule ADD COLUMN IF NOT EXISTS member_id BIGINT REFERENCES service_team(id) ON DELETE CASCADE;   -- (ตารางรุ่นเก่า)
 CREATE INDEX IF NOT EXISTS idx_sched_member ON service_schedule (member_id);
 
 -- ใบแผนส่งมอบ (Project → Service) — Service กดรับ (acked)
@@ -212,6 +225,7 @@ CREATE TABLE IF NOT EXISTS service_plans (
   acked         BOOLEAN DEFAULT FALSE,
   created_at    TIMESTAMPTZ DEFAULT NOW()
 );
+ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS project_id BIGINT REFERENCES projects(id) ON DELETE CASCADE;
 CREATE INDEX IF NOT EXISTS idx_plans_project ON service_plans (project_id);
 -- migration (ฐานข้อมูลเดิม): ใบเบิกติดตั้ง + แผน start/end + ทีม
 ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS wd_no      VARCHAR(40);
@@ -263,6 +277,8 @@ CREATE TABLE IF NOT EXISTS inventory_moves (
   by_user     UUID DEFAULT auth.uid(),
   created_at  TIMESTAMPTZ DEFAULT NOW()
 );
+ALTER TABLE inventory_moves ADD COLUMN IF NOT EXISTS epicor_code VARCHAR(80);
+ALTER TABLE inventory_moves ADD COLUMN IF NOT EXISTS project_id  BIGINT REFERENCES projects(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_inv_code    ON inventory_moves (epicor_code);
 CREATE INDEX IF NOT EXISTS idx_inv_project ON inventory_moves (project_id);
 -- migration (ฐานข้อมูลเดิมที่สร้างก่อนคอลัมน์เหล่านี้จะถูกเพิ่ม — CREATE IF NOT EXISTS ไม่เพิ่มให้ตารางเดิม)
@@ -331,6 +347,10 @@ CREATE TABLE IF NOT EXISTS handoff_log (
   acked       BOOLEAN DEFAULT FALSE,
   created_at  TIMESTAMPTZ DEFAULT NOW()
 );
+ALTER TABLE handoff_log ADD COLUMN IF NOT EXISTS customer_id BIGINT REFERENCES customers(id) ON DELETE CASCADE;
+ALTER TABLE handoff_log ADD COLUMN IF NOT EXISTS sr_id       BIGINT REFERENCES sales_requisitions(id) ON DELETE CASCADE;
+ALTER TABLE handoff_log ADD COLUMN IF NOT EXISTS project_id  BIGINT REFERENCES projects(id) ON DELETE CASCADE;
+ALTER TABLE handoff_log ADD COLUMN IF NOT EXISTS acked       BOOLEAN DEFAULT FALSE;
 CREATE INDEX IF NOT EXISTS idx_handoff_to ON handoff_log (to_phase, acked);
 
 -- ---------- 9) user_roles ----------
